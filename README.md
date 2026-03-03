@@ -1,8 +1,21 @@
-# Telegram Second Brain
+# Synapse
 
-A Telegram bot that connects [Claude Code](https://docs.anthropic.com/en/docs/claude-code) to your Obsidian vault, letting you capture thoughts, search notes, create entries, and review your day — all from your phone.
+Your second brain, in your pocket.
 
-Built to work with the [Obsidian MCP Server](https://github.com/jason-c-dev/obsidian-mcp), which exposes your vault as 15 MCP tools that Claude can call directly.
+Synapse connects your Obsidian vault to Telegram through Claude, giving you a conversational interface to your entire knowledge base from your phone. Capture thoughts on the go, search your notes by asking questions, snap photos of receipts or whiteboards and file them into the right place — all through a chat that understands what you mean, not just what you type.
+
+Built on three pieces that work together:
+- **[Obsidian](https://obsidian.md)** — your vault, the source of truth
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** — the AI that reads, writes, and reasons about your notes
+- **[Obsidian MCP Server](https://github.com/jason-c-dev/obsidian-mcp)** — the bridge that gives Claude direct access to your vault via 16 MCP tools
+
+## Why This Exists
+
+Most "AI + notes" tools bolt a chatbot onto a search index. Synapse is different — Claude doesn't just search your vault, it **writes to it**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
+
+The session system means Claude remembers your earlier messages throughout the day. Ask it to capture something in the morning, then reference it in the afternoon — it knows. When the session ends, Claude does a reconciliation pass: reviewing the conversation, capturing anything missed, and writing a summary to your daily note. Nothing falls through the cracks.
+
+And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your bot, your Claude account. You control the entire pipeline.
 
 ## How It Works
 
@@ -34,7 +47,7 @@ Before you can run the bot, you need a Telegram bot token and your user ID.
 
 1. Open Telegram and search for [@BotFather](https://t.me/BotFather) (the official Telegram tool for creating bots)
 2. Send `/newbot`
-3. Choose a display name (e.g. "Second Brain")
+3. Choose a display name (e.g. "Synapse")
 4. Choose a username — must end in `bot` (e.g. `my_vault_bot`)
 5. BotFather will reply with an API token — copy this for `BOT_TOKEN`
 
@@ -54,8 +67,8 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 
 1. Clone the repo:
    ```bash
-   git clone https://github.com/jason-c-dev/telegram-second-brain.git
-   cd telegram-second-brain
+   git clone https://github.com/jason-c-dev/synapse.git
+   cd synapse
    ```
 
 2. Install dependencies:
@@ -66,13 +79,6 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 3. Copy the example env and fill in your values:
    ```bash
    cp .env.example .env
-   ```
-
-   ```
-   BOT_TOKEN=123456:ABC-DEF...
-   ALLOWED_USER_IDS=12345678
-   SESSION_EXPIRY=daily
-   CLAUDE_TIMEOUT=120000
    ```
 
 4. Verify Claude can reach your vault:
@@ -98,7 +104,7 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the bot |
 | `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
 | `CLAUDE_TIMEOUT` | No | `120000` | Max milliseconds to wait for Claude to respond |
-| `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault (e.g. `/Users/you/Documents/MyVault`). Required for photo support |
+| `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo support |
 | `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
 
 ## Usage
@@ -110,6 +116,7 @@ Send messages to your bot on Telegram. It understands natural language and maps 
 - **"find: session management"** — deep search across your vault
 - **"log: finished the review"** — quick timestamped log entry
 - **"note: Meeting Notes — discussed project timeline"** — creates a new structured note
+- **Send a photo** with a caption — Claude sees the image, saves it to your vault, and files it into the right note
 - **Free-form text** — Claude uses judgment to search, capture, or act
 
 ### Bot Commands
@@ -150,6 +157,7 @@ Sessions give Claude conversational memory across messages:
 - **`--dangerously-skip-permissions`** — required for non-interactive MCP tool use in `claude -p` mode
 - **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
+- **Images bypass Claude's context** — photos are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see and analyze the image without base64 bloating the prompt
 
 ## Related
 
