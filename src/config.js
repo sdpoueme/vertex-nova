@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 function loadEnv() {
   const envPath = resolve(import.meta.dirname, '..', '.env');
@@ -41,4 +42,6 @@ export const config = {
   sessionExpiry,
   claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 120_000,
   projectDir: resolve(import.meta.dirname, '..'),
+  vaultPath: process.env.VAULT_PATH || null,
+  imageTempDir: process.env.IMAGE_TEMP_DIR || join(tmpdir(), 'telegram-second-brain'),
 };

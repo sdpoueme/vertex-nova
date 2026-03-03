@@ -26,6 +26,30 @@ Sessions persist throughout the day (or a configurable window), so Claude rememb
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - Your Telegram user ID (from [@userinfobot](https://t.me/userinfobot))
 
+## Telegram Setup
+
+Before you can run the bot, you need a Telegram bot token and your user ID.
+
+### Creating a Bot
+
+1. Open Telegram and search for [@BotFather](https://t.me/BotFather) (the official Telegram tool for creating bots)
+2. Send `/newbot`
+3. Choose a display name (e.g. "Second Brain")
+4. Choose a username — must end in `bot` (e.g. `my_vault_bot`)
+5. BotFather will reply with an API token — copy this for `BOT_TOKEN`
+
+For more details, see the [Telegram Bot API documentation](https://core.telegram.org/bots#how-do-i-create-a-bot).
+
+### Getting Your User ID
+
+The bot is locked to specific Telegram user IDs so only you can use it. To find yours:
+
+1. Open Telegram and search for [@userinfobot](https://t.me/userinfobot)
+2. Send it any message
+3. It replies with your numeric user ID — copy this for `ALLOWED_USER_IDS`
+
+You can add multiple user IDs as a comma-separated list if you want to allow others access.
+
 ## Setup
 
 1. Clone the repo:
@@ -74,6 +98,8 @@ Sessions persist throughout the day (or a configurable window), so Claude rememb
 | `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the bot |
 | `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
 | `CLAUDE_TIMEOUT` | No | `120000` | Max milliseconds to wait for Claude to respond |
+| `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault (e.g. `/Users/you/Documents/MyVault`). Required for photo support |
+| `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
 
 ## Usage
 

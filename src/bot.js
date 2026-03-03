@@ -1,10 +1,16 @@
 import { Telegraf } from 'telegraf';
+import { writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { runClaude } from './claude.js';
 import { getSession, resetSession, readSession, touchSession } from './session.js';
 import { formatForTelegram, splitMessage } from './format.js';
 
-const bot = new Telegraf(config.botToken);
+const bot = new Telegraf(config.botToken, {
+  // Disable Telegraf's internal handler timeout — we manage our own via CLAUDE_TIMEOUT
+  handlerTimeout: Infinity,
+});
 
 // Auth middleware — silently ignore non-allowed users
 bot.use((ctx, next) => {
@@ -62,10 +68,9 @@ bot.command('status', async (ctx) => {
   await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
 });
 
-// Main text handler
-bot.on('text', async (ctx) => {
+// Shared handler for processing a message through Claude
+async function handleMessage(ctx, message, { addDirs, onComplete } = {}) {
   const userId = ctx.from.id;
-  const message = ctx.message.text;
 
   if (processing.has(userId)) {
     return ctx.reply('Still working on your last message. Hang tight.');
@@ -85,6 +90,7 @@ bot.on('text', async (ctx) => {
 
     // Build claude options
     const claudeOpts = isNew ? { sessionId } : { resume: sessionId };
+    if (addDirs) claudeOpts.addDirs = addDirs;
 
     // Run Claude
     const response = await runClaude(message, claudeOpts);
@@ -110,7 +116,74 @@ bot.on('text', async (ctx) => {
   } finally {
     clearInterval(typingInterval);
     processing.delete(userId);
+    if (onComplete) onComplete();
   }
+}
+
+// Main text handler
+bot.on('text', (ctx) => handleMessage(ctx, ctx.message.text));
+
+// Photo handler — save image to vault + temp dir, let Claude see it via --add-dir
+bot.on('photo', async (ctx) => {
+  if (!config.vaultPath) {
+    return ctx.reply('Image support requires VAULT_PATH in .env');
+  }
+
+  const caption = ctx.message.caption || 'The user sent an image with no caption. Ask what they want to do with it.';
+
+  try {
+    // Get highest resolution photo (last in array)
+    const photo = ctx.message.photo[ctx.message.photo.length - 1];
+    const file = await ctx.telegram.getFile(photo.file_id);
+    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to download photo: ${res.status}`);
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const ext = file.file_path.split('.').pop() || 'jpg';
+
+    // Generate a descriptive filename
+    const date = new Date().toISOString().slice(0, 10);
+    const short = randomUUID().slice(0, 8);
+    const filename = `telegram-${date}-${short}.${ext}`;
+
+    // Save to vault attachments folder
+    const attachDir = join(config.vaultPath, 'attachments');
+    mkdirSync(attachDir, { recursive: true });
+    writeFileSync(join(attachDir, filename), buffer);
+
+    // Save a copy to temp dir so Claude can read/analyze the image via --add-dir
+    mkdirSync(config.imageTempDir, { recursive: true });
+    const tempPath = join(config.imageTempDir, filename);
+    writeFileSync(tempPath, buffer);
+
+    console.log(`[photo] Saved ${filename} (${Math.round(buffer.length / 1024)}KB) to vault + temp`);
+
+    const message = [
+      `The user sent a photo. It has been saved to the vault as ![[${filename}]].`,
+      `A copy is at ${tempPath} — read this file to see the image so you can analyze its contents.`,
+      `The user's message: "${caption}"`,
+      `Analyze the image, then act on their request — create or update the appropriate note with the image embedded using ![[${filename}]].`,
+    ].join('\n');
+
+    await handleMessage(ctx, message, {
+      addDirs: [config.imageTempDir],
+      onComplete: () => {
+        // Clean up temp file after Claude is done
+        try { unlinkSync(tempPath); } catch {}
+      },
+    });
+  } catch (err) {
+    console.error('[photo]', err);
+    await ctx.reply('Failed to process the image: ' + err.message);
+  }
+});
+
+// Catch unhandled errors so the bot doesn't crash
+bot.catch((err, ctx) => {
+  console.error('[bot] Unhandled error:', err.message);
+  ctx.reply('Something went wrong. Try again.').catch(() => {});
 });
 
 // Graceful shutdown

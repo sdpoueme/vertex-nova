@@ -8,9 +8,10 @@ import { config } from './config.js';
  * @param {object} options
  * @param {string} [options.sessionId] - Start a new session with this UUID (--session-id)
  * @param {string} [options.resume] - Resume an existing session (--resume)
+ * @param {string[]} [options.addDirs] - Additional directories to grant tool access to (--add-dir)
  * @returns {Promise<string>} Claude's response text
  */
-export async function runClaude(message, { sessionId, resume } = {}) {
+export async function runClaude(message, { sessionId, resume, addDirs } = {}) {
   const args = [
     '-p', message,
     '--output-format', 'json',
@@ -21,6 +22,10 @@ export async function runClaude(message, { sessionId, resume } = {}) {
     args.push('--resume', resume);
   } else if (sessionId) {
     args.push('--session-id', sessionId);
+  }
+
+  if (addDirs && addDirs.length > 0) {
+    args.push('--add-dir', ...addDirs);
   }
 
   const env = { ...process.env };
