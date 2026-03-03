@@ -1,0 +1,13 @@
+{
+  "name": "my-second-brain",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16"
+  }
+}
