@@ -75,6 +75,10 @@ There is no `vault_edit` tool — to modify existing note content, use the read-
 
 **Never use Bash, Edit, or Write tools on vault files** — always use MCP tools.
 
+## Session Continuity
+
+When a session starts, check today's daily note for recent context. A previous session may have been flushed mid-conversation, and the daily note will contain session summaries and recent activity that help you pick up where things left off.
+
 ## Rules
 
 - ONLY use MCP tools to interact with the vault — never use Bash or direct file access
