@@ -50,6 +50,9 @@ export const config = {
   projectDir: resolve(import.meta.dirname, '..'),
   vaultPath: process.env.VAULT_PATH || null,
   imageTempDir: process.env.IMAGE_TEMP_DIR || join(tmpdir(), 'telegram-second-brain'),
+  whisperPath: process.env.WHISPER_PATH || 'whisper-cli',
+  whisperModel: process.env.WHISPER_MODEL || '',
+  audioTempDir: process.env.AUDIO_TEMP_DIR || join(tmpdir(), 'synapse-audio'),
   progressMode,
   queueDepth: Number(process.env.QUEUE_DEPTH) || 3,
 };

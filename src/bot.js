@@ -1,5 +1,5 @@
 import { Telegraf } from 'telegraf';
-import { writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
@@ -8,6 +8,7 @@ import { getSession, resetSession, readSession, touchSession } from './session.j
 import { formatForTelegram, splitMessage } from './format.js';
 import { createProgressReporter } from './progress.js';
 import { startProcessing, doneProcessing, enqueue, isProcessing } from './queue.js';
+import { transcribe, checkTranscriptionDeps } from './transcribe.js';
 import { logger } from './log.js';
 
 const log = logger('bot');
@@ -218,6 +219,14 @@ bot.on('photo', async (ctx) => {
     const short = randomUUID().slice(0, 8);
     const filename = `telegram-${date}-${short}.${ext}`;
 
+    // Verify the vault path exists — don't create directories in the wrong place
+    if (!existsSync(config.vaultPath)) {
+      await ctx.reply(
+        `Vault path does not exist: ${config.vaultPath}\n\nCheck VAULT_PATH in your .env file.`
+      );
+      return;
+    }
+
     // Save to vault attachments folder
     const attachDir = join(config.vaultPath, 'attachments');
     mkdirSync(attachDir, { recursive: true });
@@ -246,7 +255,58 @@ bot.on('photo', async (ctx) => {
     });
   } catch (err) {
     log.error('Photo processing failed:', err);
-    await ctx.reply('Failed to process the image: ' + err.message);
+    if (err.code === 'EACCES' || err.code === 'EPERM') {
+      await ctx.reply(
+        `Permission denied writing to the vault. Check that VAULT_PATH in .env is correct and writable by this process.\n\nCurrent path: ${config.vaultPath}`
+      );
+    } else {
+      await ctx.reply('Failed to process the image: ' + err.message);
+    }
+  }
+});
+
+// Voice handler — transcribe and process as text
+bot.on('voice', async (ctx) => {
+  if (!config.whisperModel) {
+    return ctx.reply('Voice messages require whisper.cpp.\nSet WHISPER_MODEL in .env to enable.');
+  }
+  try {
+    // Download OGG from Telegram
+    const file = await ctx.telegram.getFile(ctx.message.voice.file_id);
+    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    log.info(`Voice: ${ctx.message.voice.duration}s, ${Math.round(buffer.length / 1024)}KB`);
+
+    // Show status while transcribing
+    const status = await ctx.reply('Transcribing audio...');
+    const typingInterval = setInterval(() => {
+      ctx.sendChatAction('typing').catch(() => {});
+    }, 4_000);
+
+    let text;
+    try {
+      text = await transcribe(buffer, {
+        tempDir: config.audioTempDir,
+        whisperPath: config.whisperPath,
+        whisperModel: config.whisperModel,
+      });
+    } finally {
+      clearInterval(typingInterval);
+      try { await ctx.telegram.deleteMessage(ctx.chat.id, status.message_id); } catch {}
+    }
+
+    // Show transcription to user (italic, fallback to plain)
+    try { await ctx.reply(`_${text}_`, { parse_mode: 'Markdown' }); }
+    catch { await ctx.reply(text); }
+
+    // Process as normal message with voice context prefix
+    await processOrQueue(ctx, `[Voice transcription] ${text}`);
+  } catch (err) {
+    log.error('Voice failed:', err);
+    await ctx.reply('Failed to process voice message: ' + err.message);
   }
 });
 
@@ -265,6 +325,19 @@ function shutdown(signal) {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+// Check voice transcription dependencies
+if (config.whisperModel) {
+  const { ok, errors } = checkTranscriptionDeps(config);
+  if (ok) {
+    log.info('Voice transcription enabled');
+  } else {
+    log.warn('Voice transcription configured but has issues:');
+    for (const err of errors) log.warn(`  ${err}`);
+  }
+} else {
+  log.info('Voice transcription disabled (WHISPER_MODEL not set)');
+}
 
 // Launch
 bot.launch();

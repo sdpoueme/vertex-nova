@@ -69,6 +69,9 @@ Run each of these and record the result:
 | Synapse cloned     | `ls <install_dir>/synapse/package.json`                             | Exists                    |
 | Synapse installed  | `ls <install_dir>/synapse/node_modules/telegraf`                    | Exists                    |
 | .env configured    | Read file, check for `your-` placeholder prefix                     | No placeholders           |
+| ffmpeg             | `which ffmpeg`                                                      | Present                   |
+| whisper-cpp        | `which whisper-cpp`                                                 | Present                   |
+| Whisper model      | `ls /opt/homebrew/share/whisper-cpp/models/ggml-*.bin` (macOS)      | At least one model exists |
 
 **Determining `<install_dir>`:** The install directory is where obsidian-mcp and
 synapse will be cloned. Determine it with this priority:
@@ -104,6 +107,9 @@ in one go rather than asking one at a time.
 - **Progress mode** — `off` (typing indicator only), `standard` (activity
   labels during processing), or `detailed` (tool names and cost summary).
   Default: `standard`.
+- **Voice support** — "Would you like to enable voice message support? Requires
+  ffmpeg + whisper.cpp + a model file (~150MB). You can always add this later."
+  Default: yes if deps are already installed, no otherwise.
 
 ### Status summary
 
@@ -117,6 +123,9 @@ Obsidian running       ✓
 obsidian-mcp           ✗ not found → will clone + build to ~/dev/obsidian-mcp
 MCP server             ✗ not registered → will register
 Synapse                ✗ not found → will clone to ~/dev/synapse
+ffmpeg                 ✓ installed
+whisper-cpp            ✗ not found → will install via brew
+Whisper model          ✗ not found → will download ggml-base.en.bin (~150MB)
 .env                   — will create with your values
 
 Plan:
@@ -259,7 +268,58 @@ This is a manual step — guide the user through it conversationally.
   ```
 - Verify: `ls <install_dir>/synapse/node_modules/telegraf` succeeds
 
-### Step 9: Create .env
+### Step 9: Voice support (optional)
+
+Skip entirely if the user declined voice support in the Gather phase.
+
+#### 9a: ffmpeg
+
+- Check: `which ffmpeg`
+- If missing:
+  - macOS: `brew install ffmpeg`
+  - Linux: `sudo apt install ffmpeg` / `sudo dnf install ffmpeg` / `sudo pacman -S ffmpeg`
+- Skip if present
+
+#### 9b: whisper-cpp
+
+- Check: `which whisper-cpp`
+- If missing:
+  - macOS: `brew install whisper-cpp`
+  - Linux: build from source:
+    ```bash
+    git clone https://github.com/ggerganov/whisper.cpp.git <install_dir>/whisper.cpp
+    cd <install_dir>/whisper.cpp && cmake -B build && cmake --build build --config Release
+    ```
+    The binary will be at `<install_dir>/whisper.cpp/build/bin/whisper-cli`.
+    Set WHISPER_PATH to this path in .env.
+- Skip if present
+
+#### 9c: Whisper model
+
+- Detect existing models:
+  - macOS Homebrew: `ls /opt/homebrew/share/whisper-cpp/models/ggml-*.bin`
+  - Linux build: `ls <install_dir>/whisper.cpp/models/ggml-*.bin`
+- If models found: list them, let user choose (default: `base.en` if available)
+- If no models found: download `ggml-base.en.bin` (~150MB):
+  - macOS: download to `/opt/homebrew/share/whisper-cpp/models/`
+  - Linux: download to `<install_dir>/whisper.cpp/models/`
+  ```bash
+  mkdir -p <model_dir>
+  curl -L --progress-bar -o <model_dir>/ggml-base.en.bin \
+    https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+  ```
+- Record the absolute model path for .env
+
+#### 9d: Verify
+
+```bash
+echo "test" | whisper-cpp --model <model_path> --no-prints /dev/null 2>&1
+```
+
+If whisper-cpp runs without error, voice support is ready. If it fails,
+warn but continue — voice can be configured manually later.
+
+### Step 10: Create .env
 
 - Check: does `<install_dir>/synapse/.env` exist?
 - If it exists, read it and check for `your-` placeholder prefixes
@@ -278,10 +338,26 @@ PROGRESS_MODE=<user preference, default: standard>
 # LOG_FILE=synapse.log
 ```
 
+If voice support was enabled in Step 9, also add:
+
+```
+WHISPER_MODEL=<model_path from step 9c>
+# WHISPER_PATH=whisper-cpp
+# AUDIO_TEMP_DIR=/tmp/synapse-audio
+```
+
+If the user is on Linux and built whisper.cpp from source, also set:
+```
+WHISPER_PATH=<install_dir>/whisper.cpp/build/bin/whisper-cli
+```
+
+On re-runs: if .env already has `WHISPER_MODEL` with a valid path, skip — don't
+re-prompt.
+
 - Write the file using Claude's Write tool — do NOT use shell redirects or echo
 - Do NOT commit this file (it contains secrets and is in .gitignore)
 
-### Step 10: Verify
+### Step 11: Verify
 
 Run what we can verify from within this session:
 
@@ -313,7 +389,7 @@ Run what we can verify from within this session:
 If config validation fails: check .env for missing or placeholder values.
 If MCP list doesn't show obsidian: re-run Step 6.
 
-### Step 11: Launch
+### Step 12: Launch
 
 - Ask: "Everything is configured. Start the bot now?"
 - If yes:
@@ -337,6 +413,10 @@ Common failures and how to diagnose them:
 | .env validation fails           | Missing required vars     | Re-read .env, prompt for missing values            |
 | `ERR_MODULE_NOT_FOUND`          | `npm install` not run     | Run `npm install` in the synapse directory         |
 | Token format invalid             | User pasted wrong thing   | Guide back to BotFather, look for the token line   |
+| `whisper-cpp: command not found` | Not installed              | macOS: `brew install whisper-cpp`; Linux: build from source |
+| ffmpeg not found                 | Not installed              | `brew install ffmpeg` or `apt install ffmpeg`                |
+| Model file not found             | WHISPER_MODEL path wrong   | Re-run wizard or download manually from huggingface.co       |
+| Voice still not working          | WHISPER_MODEL not in .env  | Re-run wizard, say yes to voice support                      |
 
 ## Idempotency
 
@@ -346,6 +426,10 @@ This wizard is safe to re-run. On subsequent runs:
 - Already-cloned repos → `git pull` + rebuild if changes detected
 - Already-registered MCP → verify paths match, update if changed
 - Already-configured .env → only prompt for missing or placeholder values
+- Already-installed voice deps (ffmpeg, whisper-cpp) → "✓ already installed", skip
+- Already-downloaded model → detect and reuse, don't re-download
+- Voice already configured in .env → verify path still valid, skip if good
+- User declines voice on re-run → leave existing config untouched
 - Everything passing → "Your installation is up to date."
 
 When re-running, still do the full GATHER phase to detect current state.

@@ -86,6 +86,7 @@ Send messages to your bot on Telegram:
 - **"log: finished the review"** — quick timestamped log entry
 - **"note: Meeting Notes — discussed project timeline"** — creates a new structured note
 - **Send a photo** with a caption — Claude sees the image, saves it to your vault, and files it into the right note
+- **Send a voice message** — transcribed locally via whisper.cpp, then processed as text
 - **Free-form text** — Claude uses judgment to search, capture, or act
 
 ### Bot Commands
@@ -118,6 +119,7 @@ For manual setup, see [Prerequisites](#prerequisites) below.
 - Node.js 20+
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - Your Telegram user ID (from [@userinfobot](https://t.me/userinfobot))
+- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) + ffmpeg (optional, for voice messages) — `brew install whisper-cpp ffmpeg`
 
 ## Telegram Setup
 
@@ -199,6 +201,9 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `PROGRESS_MODE` | No | `off` | Progress feedback during Claude processing: `off` (typing indicator only), `standard` (acknowledgment + generic activity labels), `detailed` (tool names, inputs, and cost summary) |
 | `QUEUE_DEPTH` | No | `3` | Maximum queued messages per user. Messages beyond this limit are rejected |
 | `LOG_LEVEL` | No | `info` | Logging verbosity: `error`, `warn`, `info`, or `debug` |
+| `WHISPER_PATH` | No | `whisper-cpp` | Path to whisper.cpp binary for voice transcription |
+| `WHISPER_MODEL` | For voice | — | Path to GGML model file. Required to enable voice message support |
+| `AUDIO_TEMP_DIR` | No | OS temp dir | Directory for temporary audio files during transcription |
 | `LOG_FILE` | No | — | Path to a log file. When set, all output is appended here in addition to the console |
 
 ## Session Management
@@ -217,8 +222,86 @@ stateDiagram-v2
   Active --> Active: subsequent messages
   Active --> Flush: day ends or /reset
   Flush --> [*]: reconciliation complete
-  note right of Flush: Claude reviews conversation,\ncaptures missed items,\nwrites daily summary
+  note right of Flush: Claude reviews conversation, captures missed items, writes daily summary
 ```
+
+## Image Handling
+
+Photos follow a dual-write pattern: the image is saved to the vault for permanent storage, and a temp copy is passed to Claude via `--add-dir` so it can actually see the image. Claude processes the caption as a normal message but with the image available for analysis.
+
+```mermaid
+flowchart TB
+  A["📱 Telegram photo + caption"] -->|"getFile API"| B[Download buffer]
+  B --> C{VAULT_PATH set?}
+  C -->|No| X["Reply: set VAULT_PATH"]
+  C -->|Yes| D["Save to vault/attachments/"]
+  D --> E["Save temp copy to IMAGE_TEMP_DIR"]
+  E --> F["Build prompt with ![[filename]]"]
+  F --> G["processOrQueue(ctx, prompt, {addDirs})"]
+  G --> H["claude -p --add-dir IMAGE_TEMP_DIR"]
+  H -->|"Claude sees image + prompt"| I["MCP: vault_append / vault_create"]
+  I --> J["Reply to user"]
+  H -.->|"onComplete callback"| K["Delete temp file"]
+```
+
+The bot generates a descriptive filename (`telegram-YYYY-MM-DD-abcd1234.jpg`) and constructs a prompt telling Claude the image is saved as `![[filename]]` and available at the temp path for visual analysis. Claude then decides what to do based on the caption — append to daily note, create a new note, add to an existing note, etc.
+
+The temp copy exists only for the duration of Claude's processing. The `onComplete` callback in `processOrQueue` deletes it after Claude responds, so `IMAGE_TEMP_DIR` stays clean. The vault copy is permanent.
+
+## Voice Handling
+
+Voice messages are transcribed locally, then the text feeds into the same message pipeline as typed text. There's no special routing — Claude handles intent detection the same way for voice and text.
+
+```mermaid
+flowchart TB
+  A["🎤 Telegram voice message"] --> B{WHISPER_MODEL set?}
+  B -->|No| X["Reply: set WHISPER_MODEL"]
+  B -->|Yes| C["Download OGG Opus from Telegram"]
+  C --> S["Send 'Transcribing audio...' + typing indicator"]
+  S --> D["transcribe.js"]
+
+  subgraph D["transcribe(buffer, config)"]
+    direction TB
+    E["Write OGG to temp file"] --> F["ffmpeg: OGG → 16kHz mono WAV"]
+    F --> G["whisper.cpp: WAV → text"]
+    G --> H["Clean up temp files"]
+  end
+
+  D --> T["Delete status message"]
+  T --> I["Reply with transcription (italic)"]
+  I --> J["processOrQueue(ctx, '[Voice transcription] text')"]
+  J --> K["claude -p — same pipeline as typed text"]
+  K --> L["Reply to user"]
+```
+
+The transcription pipeline in `src/transcribe.js` is backend-agnostic. The public interface is `transcribe(buffer, config) → string`. Internally, it handles format conversion (OGG Opus → WAV) and temp file lifecycle regardless of which STT engine runs. The whisper.cpp backend is one function — to add sherpa-onnx or another engine, add a new backend function and a config key to select it.
+
+Voice is opt-in: if `WHISPER_MODEL` is not set, the bot works normally for text and photos and replies with setup instructions on voice messages. At startup, `checkTranscriptionDeps()` logs whether voice is enabled and warns about missing dependencies (ffmpeg, whisper binary, model file) without blocking the bot from starting.
+
+### Enabling Voice
+
+Voice requires [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and ffmpeg. On macOS:
+
+```bash
+brew install whisper-cpp ffmpeg
+```
+
+Download a model (~150MB):
+
+```bash
+mkdir -p /opt/homebrew/share/whisper-cpp/models
+curl -L --progress-bar -o /opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+```
+
+Add to `.env` and restart:
+
+```
+WHISPER_MODEL=/opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin
+# WHISPER_PATH=whisper-cli  # default works for Homebrew
+```
+
+The bot logs voice status at startup. Send a voice message to test — you'll see the transcription in italics before Claude responds.
 
 ## Project Structure
 
@@ -230,6 +313,7 @@ stateDiagram-v2
 │   ├── bot.js         # Entry point: Telegraf, auth, commands, message handler
 │   ├── claude.js      # Spawns claude -p with session management flags
 │   ├── session.js     # Session lifecycle: create, resume, expire, flush
+│   ├── transcribe.js  # Speech-to-text pipeline (pluggable, default: whisper.cpp)
 │   ├── config.js      # Env loading and validation
 │   ├── format.js      # Obsidian markdown → Telegram formatting, message splitting
 │   ├── progress.js    # Progress reporting: status messages, throttled edits, mode-aware formatting
@@ -263,6 +347,7 @@ This is a deliberate choice:
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
 - **Configurable progress updates** — three modes (`off`/`standard`/`detailed`) control how much feedback the user sees during Claude processing. `off` preserves silent behavior for derived bots targeting non-technical users. `detailed` streams tool call names and inputs for power users. Progress uses a single editable Telegram message (send once, edit in place) to avoid chat clutter, with throttled edits (~1/second) to respect Telegram rate limits
 - **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
+- **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the bot layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
 - **Images bypass Claude's context** — photos are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see and analyze the image without base64 bloating the prompt
 - **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
 
