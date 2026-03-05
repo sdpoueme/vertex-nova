@@ -5,10 +5,11 @@ import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { runClaude } from './claude.js';
 import { getSession, resetSession, readSession, touchSession } from './session.js';
-import { formatForTelegram, splitMessage } from './format.js';
+import { formatForTelegram, splitMessage, stripForSpeech, truncateAtSentence } from './format.js';
 import { createProgressReporter } from './progress.js';
 import { startProcessing, doneProcessing, enqueue, isProcessing } from './queue.js';
 import { transcribe, checkTranscriptionDeps } from './transcribe.js';
+import { synthesize, checkTTSDeps } from './tts.js';
 import { logger } from './log.js';
 
 const log = logger('bot');
@@ -98,7 +99,7 @@ bot.command('status', async (ctx) => {
 });
 
 // Process a single message through Claude with progress reporting
-async function processMessage(ctx, message, { addDirs, onComplete } = {}) {
+async function processMessage(ctx, message, { addDirs, onComplete, voiceReply } = {}) {
   // Start typing indicator, refresh every 4 seconds
   const typingInterval = setInterval(() => {
     ctx.sendChatAction('typing').catch(() => {});
@@ -146,6 +147,47 @@ async function processMessage(ctx, message, { addDirs, onComplete } = {}) {
     const formatted = formatForTelegram(response);
     const chunks = splitMessage(formatted);
 
+    // Voice reply path
+    const ttsEnabled = voiceReply && config.ttsModel;
+    let voiceSent = false;
+
+    if (ttsEnabled) {
+      const stripped = stripForSpeech(response);
+      if (stripped.length >= 5) {
+        const firstPara = stripped.split(/\n\n/)[0] || stripped;
+        const spokenText = truncateAtSentence(firstPara, config.ttsVoiceThreshold);
+        const voiceOnly = stripped.length <= config.ttsVoiceThreshold;
+
+        try {
+          const ttsStatus = await ctx.reply('Generating voice reply...').catch(() => null);
+          const voiceInterval = setInterval(() => {
+            ctx.sendChatAction('record_voice').catch(() => {});
+          }, 4_000);
+          ctx.sendChatAction('record_voice').catch(() => {});
+
+          let audioBuffer;
+          try {
+            audioBuffer = await synthesize(spokenText, {
+              tempDir: config.audioTempDir,
+              ttsPath: config.ttsPath,
+              ttsModel: config.ttsModel,
+            });
+          } finally {
+            clearInterval(voiceInterval);
+            if (ttsStatus)
+              ctx.telegram.deleteMessage(ctx.chat.id, ttsStatus.message_id).catch(() => {});
+          }
+
+          await ctx.replyWithVoice({ source: audioBuffer, filename: 'reply.ogg' });
+          voiceSent = true;
+          if (voiceOnly) return;
+        } catch (ttsErr) {
+          log.warn('TTS failed, falling back to text:', ttsErr.message);
+        }
+      }
+    }
+
+    // Text reply (always unless voice-only succeeded above)
     for (const chunk of chunks) {
       try {
         await ctx.reply(chunk, { parse_mode: 'Markdown' });
@@ -267,8 +309,8 @@ bot.on('photo', async (ctx) => {
 
 // Voice handler — transcribe and process as text
 bot.on('voice', async (ctx) => {
-  if (!config.whisperModel) {
-    return ctx.reply('Voice messages require whisper.cpp.\nSet WHISPER_MODEL in .env to enable.');
+  if (!config.sttModel) {
+    return ctx.reply('Voice messages require whisper.cpp.\nSet STT_MODEL in .env to enable.');
   }
   try {
     // Download OGG from Telegram
@@ -290,8 +332,8 @@ bot.on('voice', async (ctx) => {
     try {
       text = await transcribe(buffer, {
         tempDir: config.audioTempDir,
-        whisperPath: config.whisperPath,
-        whisperModel: config.whisperModel,
+        sttPath: config.sttPath,
+        sttModel: config.sttModel,
       });
     } finally {
       clearInterval(typingInterval);
@@ -303,7 +345,7 @@ bot.on('voice', async (ctx) => {
     catch { await ctx.reply(text); }
 
     // Process as normal message with voice context prefix
-    await processOrQueue(ctx, `[Voice transcription] ${text}`);
+    await processOrQueue(ctx, `[Voice transcription] ${text}`, { voiceReply: true });
   } catch (err) {
     log.error('Voice failed:', err);
     await ctx.reply('Failed to process voice message: ' + err.message);
@@ -327,7 +369,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 // Check voice transcription dependencies
-if (config.whisperModel) {
+if (config.sttModel) {
   const { ok, errors } = checkTranscriptionDeps(config);
   if (ok) {
     log.info('Voice transcription enabled');
@@ -336,7 +378,20 @@ if (config.whisperModel) {
     for (const err of errors) log.warn(`  ${err}`);
   }
 } else {
-  log.info('Voice transcription disabled (WHISPER_MODEL not set)');
+  log.info('Voice transcription disabled (STT_MODEL not set)');
+}
+
+// Check TTS dependencies
+if (config.ttsModel) {
+  const { ok, errors } = checkTTSDeps(config);
+  if (ok) {
+    log.info('Text-to-speech enabled');
+  } else {
+    log.warn('TTS configured but has issues:');
+    for (const err of errors) log.warn(`  ${err}`);
+  }
+} else {
+  log.info('Text-to-speech disabled (TTS_MODEL not set)');
 }
 
 // Launch

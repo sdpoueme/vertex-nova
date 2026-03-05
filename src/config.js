@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 
 function loadEnv() {
   const envPath = resolve(import.meta.dirname, '..', '.env');
@@ -18,7 +18,7 @@ function loadEnv() {
     const key = trimmed.slice(0, eq).trim();
     const value = trimmed.slice(eq + 1).trim();
     if (!(key in process.env)) {
-      process.env[key] = value;
+      process.env[key] = value.startsWith('~/') ? homedir() + value.slice(1) : value;
     }
   }
 }
@@ -50,9 +50,12 @@ export const config = {
   projectDir: resolve(import.meta.dirname, '..'),
   vaultPath: process.env.VAULT_PATH || null,
   imageTempDir: process.env.IMAGE_TEMP_DIR || join(tmpdir(), 'telegram-second-brain'),
-  whisperPath: process.env.WHISPER_PATH || 'whisper-cli',
-  whisperModel: process.env.WHISPER_MODEL || '',
+  sttPath: process.env.STT_PATH || 'whisper-cli',
+  sttModel: process.env.STT_MODEL || '',
   audioTempDir: process.env.AUDIO_TEMP_DIR || join(tmpdir(), 'synapse-audio'),
+  ttsPath: process.env.TTS_PATH || 'piper',
+  ttsModel: process.env.TTS_MODEL || '',
+  ttsVoiceThreshold: Number(process.env.TTS_VOICE_THRESHOLD) || 400,
   progressMode,
   queueDepth: Number(process.env.QUEUE_DEPTH) || 3,
 };

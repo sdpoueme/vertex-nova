@@ -21,16 +21,16 @@ function run(cmd, args, timeout = 60_000) {
 /**
  * Whisper.cpp backend — transcribe a 16kHz mono WAV file to text.
  */
-async function whisperTranscribe(wavPath, { whisperPath, whisperModel }) {
+async function whisperTranscribe(wavPath, { sttPath, sttModel }) {
   const args = [
-    '--model', whisperModel,
+    '--model', sttModel,
     '--no-prints',
     '--no-timestamps',
     '--output-txt',
     '--file', wavPath,
   ];
 
-  await run(whisperPath, args, 120_000);
+  await run(sttPath, args, 120_000);
 
   // whisper.cpp --output-txt writes to <input>.txt
   const txtPath = wavPath + '.txt';
@@ -54,7 +54,7 @@ async function whisperTranscribe(wavPath, { whisperPath, whisperModel }) {
  * 4. Clean up temp files
  * 5. Return trimmed text
  */
-export async function transcribe(audioBuffer, { tempDir, whisperPath, whisperModel }) {
+export async function transcribe(audioBuffer, { tempDir, sttPath, sttModel }) {
   mkdirSync(tempDir, { recursive: true });
 
   const id = randomUUID().slice(0, 12);
@@ -75,7 +75,7 @@ export async function transcribe(audioBuffer, { tempDir, whisperPath, whisperMod
     ], 30_000);
 
     // Transcribe
-    const text = await whisperTranscribe(wavPath, { whisperPath, whisperModel });
+    const text = await whisperTranscribe(wavPath, { sttPath, sttModel });
 
     if (!text) {
       throw new Error('Audio may be too short or silent.');
@@ -93,7 +93,7 @@ export async function transcribe(audioBuffer, { tempDir, whisperPath, whisperMod
  * Check that transcription dependencies are available.
  * Returns { ok: boolean, errors: string[] } — warnings, not fatal.
  */
-export function checkTranscriptionDeps({ whisperPath, whisperModel }) {
+export function checkTranscriptionDeps({ sttPath, sttModel }) {
   const errors = [];
 
   // Check ffmpeg
@@ -105,19 +105,19 @@ export function checkTranscriptionDeps({ whisperPath, whisperModel }) {
 
   // Check whisper binary
   try {
-    execFileSync('which', [whisperPath], { stdio: 'pipe' });
+    execFileSync('which', [sttPath], { stdio: 'pipe' });
   } catch {
-    errors.push(`${whisperPath} not found. Install with: brew install whisper-cpp (binary is whisper-cli)`);
+    errors.push(`${sttPath} not found. Install with: brew install whisper-cpp (binary is whisper-cli)`);
   }
 
   // Check model file
-  if (!whisperModel) {
-    errors.push('WHISPER_MODEL not set. Set it to the path of a GGML model file.');
+  if (!sttModel) {
+    errors.push('STT_MODEL not set. Set it to the path of a GGML model file.');
   } else {
     try {
-      accessSync(whisperModel, constants.R_OK);
+      accessSync(sttModel, constants.R_OK);
     } catch {
-      errors.push(`Model file not found: ${whisperModel}. Download from huggingface.co/ggerganov/whisper.cpp`);
+      errors.push(`Model file not found: ${sttModel}. Download from huggingface.co/ggerganov/whisper.cpp`);
     }
   }
 

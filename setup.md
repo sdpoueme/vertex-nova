@@ -72,6 +72,9 @@ Run each of these and record the result:
 | ffmpeg             | `which ffmpeg`                                                      | Present                   |
 | whisper-cpp        | `which whisper-cpp`                                                 | Present                   |
 | Whisper model      | `ls /opt/homebrew/share/whisper-cpp/models/ggml-*.bin` (macOS)      | At least one model exists |
+| pipx               | `which pipx`                                                        | Present (when TTS opted in) |
+| Piper TTS          | `which piper`                                                       | Present                   |
+| Piper model        | `ls ~/.piper/models/*.onnx`                                         | At least one model exists |
 
 **Determining `<install_dir>`:** The install directory is where obsidian-mcp and
 synapse will be cloned. Determine it with this priority:
@@ -110,6 +113,10 @@ in one go rather than asking one at a time.
 - **Voice support** — "Would you like to enable voice message support? Requires
   ffmpeg + whisper.cpp + a model file (~150MB). You can always add this later."
   Default: yes if deps are already installed, no otherwise.
+- **Voice replies** — only ask if voice support is enabled. "Would you also like
+  voice memo replies? The bot will respond with voice when you send voice memos.
+  Requires Piper TTS + a model file (~70MB). You can always add this later."
+  Default: no.
 
 ### Status summary
 
@@ -126,6 +133,8 @@ Synapse                ✗ not found → will clone to ~/dev/synapse
 ffmpeg                 ✓ installed
 whisper-cpp            ✗ not found → will install via brew
 Whisper model          ✗ not found → will download ggml-base.en.bin (~150MB)
+piper-tts              ✗ not found → will install via pipx
+Piper model            ✗ not found → will download en_US-amy-medium (~70MB)
 .env                   — will create with your values
 
 Plan:
@@ -291,7 +300,7 @@ Skip entirely if the user declined voice support in the Gather phase.
     cd <install_dir>/whisper.cpp && cmake -B build && cmake --build build --config Release
     ```
     The binary will be at `<install_dir>/whisper.cpp/build/bin/whisper-cli`.
-    Set WHISPER_PATH to this path in .env.
+    Set STT_PATH to this path in .env.
 - Skip if present
 
 #### 9c: Whisper model
@@ -319,6 +328,36 @@ echo "test" | whisper-cpp --model <model_path> --no-prints /dev/null 2>&1
 If whisper-cpp runs without error, voice support is ready. If it fails,
 warn but continue — voice can be configured manually later.
 
+#### 9e: Voice replies (optional)
+
+- Ask: "Would you also like voice memo replies? The bot will respond with voice
+  when you send voice memos. Requires Piper TTS + a model file (~70MB). You can
+  always add this later."
+- Default: no (it's an additional dependency beyond STT)
+
+If yes:
+
+**Piper TTS:**
+- Check: `which piper`
+- If missing:
+  - First ensure pipx is installed:
+    - macOS: `brew install pipx`
+    - Linux: `sudo apt install pipx` / `sudo dnf install pipx`
+  - Then: `pipx install piper-tts`
+- Skip if present
+
+**Piper model:**
+- Check for existing models in `~/.piper/models/*.onnx`
+- If no models: download `en_US-amy-medium`:
+  ```bash
+  mkdir -p ~/.piper/models
+  curl -L -o ~/.piper/models/en_US-amy-medium.onnx \
+    'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx'
+  curl -L -o ~/.piper/models/en_US-amy-medium.onnx.json \
+    'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json'
+  ```
+- Record the absolute model path for .env
+
 ### Step 10: Create .env
 
 - Check: does `<install_dir>/synapse/.env` exist?
@@ -341,17 +380,24 @@ PROGRESS_MODE=<user preference, default: standard>
 If voice support was enabled in Step 9, also add:
 
 ```
-WHISPER_MODEL=<model_path from step 9c>
-# WHISPER_PATH=whisper-cpp
+STT_MODEL=<model_path from step 9c>
+# STT_PATH=whisper-cpp
 # AUDIO_TEMP_DIR=/tmp/synapse-audio
 ```
 
 If the user is on Linux and built whisper.cpp from source, also set:
 ```
-WHISPER_PATH=<install_dir>/whisper.cpp/build/bin/whisper-cli
+STT_PATH=<install_dir>/whisper.cpp/build/bin/whisper-cli
 ```
 
-On re-runs: if .env already has `WHISPER_MODEL` with a valid path, skip — don't
+If TTS was enabled in Step 9e, also add:
+
+```
+TTS_MODEL=<model_path from step 9e>
+# TTS_PATH=piper
+```
+
+On re-runs: if .env already has `STT_MODEL` with a valid path, skip — don't
 re-prompt.
 
 - Write the file using Claude's Write tool — do NOT use shell redirects or echo
@@ -415,8 +461,11 @@ Common failures and how to diagnose them:
 | Token format invalid             | User pasted wrong thing   | Guide back to BotFather, look for the token line   |
 | `whisper-cpp: command not found` | Not installed              | macOS: `brew install whisper-cpp`; Linux: build from source |
 | ffmpeg not found                 | Not installed              | `brew install ffmpeg` or `apt install ffmpeg`                |
-| Model file not found             | WHISPER_MODEL path wrong   | Re-run wizard or download manually from huggingface.co       |
-| Voice still not working          | WHISPER_MODEL not in .env  | Re-run wizard, say yes to voice support                      |
+| Model file not found             | STT_MODEL path wrong   | Re-run wizard or download manually from huggingface.co       |
+| Voice still not working          | STT_MODEL not in .env  | Re-run wizard, say yes to voice support                      |
+| `piper: command not found`       | Not installed              | `pipx install piper-tts`                                     |
+| Piper model not found            | TTS_MODEL path wrong       | Re-run wizard or download from huggingface                   |
+| Voice replies not working        | TTS_MODEL not in .env      | Add TTS_MODEL path to .env                                   |
 
 ## Idempotency
 
@@ -429,6 +478,9 @@ This wizard is safe to re-run. On subsequent runs:
 - Already-installed voice deps (ffmpeg, whisper-cpp) → "✓ already installed", skip
 - Already-downloaded model → detect and reuse, don't re-download
 - Voice already configured in .env → verify path still valid, skip if good
+- Already-installed piper → "✓ already installed", skip
+- Already-downloaded Piper model → detect and reuse, don't re-download
+- TTS already configured in .env → verify path still valid, skip if good
 - User declines voice on re-run → leave existing config untouched
 - Everything passing → "Your installation is up to date."
 

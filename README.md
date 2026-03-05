@@ -120,6 +120,8 @@ For manual setup, see [Prerequisites](#prerequisites) below.
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - Your Telegram user ID (from [@userinfobot](https://t.me/userinfobot))
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) + ffmpeg (optional, for voice messages) — `brew install whisper-cpp ffmpeg`
+- [pipx](https://pipx.pypa.io/) (optional, for Piper TTS) — `brew install pipx` (macOS) or `apt install pipx` (Linux)
+- [Piper TTS](https://github.com/rhasspy/piper) (optional, for voice replies) — `pipx install piper-tts`
 
 ## Telegram Setup
 
@@ -201,9 +203,12 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `PROGRESS_MODE` | No | `off` | Progress feedback during Claude processing: `off` (typing indicator only), `standard` (acknowledgment + generic activity labels), `detailed` (tool names, inputs, and cost summary) |
 | `QUEUE_DEPTH` | No | `3` | Maximum queued messages per user. Messages beyond this limit are rejected |
 | `LOG_LEVEL` | No | `info` | Logging verbosity: `error`, `warn`, `info`, or `debug` |
-| `WHISPER_PATH` | No | `whisper-cpp` | Path to whisper.cpp binary for voice transcription |
-| `WHISPER_MODEL` | For voice | — | Path to GGML model file. Required to enable voice message support |
+| `STT_PATH` | No | `whisper-cli` | Path to whisper.cpp binary for voice transcription |
+| `STT_MODEL` | For voice | — | Path to GGML model file. Required to enable voice message support |
 | `AUDIO_TEMP_DIR` | No | OS temp dir | Directory for temporary audio files during transcription |
+| `TTS_PATH` | No | `piper` | Path to Piper TTS binary |
+| `TTS_MODEL` | For voice replies | — | Path to Piper ONNX model. Enables voice memo replies |
+| `TTS_VOICE_THRESHOLD` | No | `400` | Max chars for voice-only reply (longer gets voice + text) |
 | `LOG_FILE` | No | — | Path to a log file. When set, all output is appended here in addition to the console |
 
 ## Session Management
@@ -256,8 +261,8 @@ Voice messages are transcribed locally, then the text feeds into the same messag
 
 ```mermaid
 flowchart TB
-  A["🎤 Telegram voice message"] --> B{WHISPER_MODEL set?}
-  B -->|No| X["Reply: set WHISPER_MODEL"]
+  A["🎤 Telegram voice message"] --> B{STT_MODEL set?}
+  B -->|No| X["Reply: set STT_MODEL"]
   B -->|Yes| C["Download OGG Opus from Telegram"]
   C --> S["Send 'Transcribing audio...' + typing indicator"]
   S --> D["transcribe.js"]
@@ -273,12 +278,27 @@ flowchart TB
   T --> I["Reply with transcription (italic)"]
   I --> J["processOrQueue(ctx, '[Voice transcription] text')"]
   J --> K["claude -p — same pipeline as typed text"]
-  K --> L["Reply to user"]
+  K --> M{TTS_MODEL set?}
+  M -->|No| L["Reply with text"]
+  M -->|Yes| N["stripForSpeech + truncate"]
+  N --> O["tts.js"]
+
+  subgraph O["synthesize(text, config)"]
+    direction TB
+    P["piper: text → WAV"] --> Q["ffmpeg: WAV → OGG Opus"]
+  end
+
+  O --> R["replyWithVoice (voice memo)"]
+  R --> S2{Response > 400 chars?}
+  S2 -->|No| Done["Done (voice only)"]
+  S2 -->|Yes| L
 ```
 
 The transcription pipeline in `src/transcribe.js` is backend-agnostic. The public interface is `transcribe(buffer, config) → string`. Internally, it handles format conversion (OGG Opus → WAV) and temp file lifecycle regardless of which STT engine runs. The whisper.cpp backend is one function — to add sherpa-onnx or another engine, add a new backend function and a config key to select it.
 
-Voice is opt-in: if `WHISPER_MODEL` is not set, the bot works normally for text and photos and replies with setup instructions on voice messages. At startup, `checkTranscriptionDeps()` logs whether voice is enabled and warns about missing dependencies (ffmpeg, whisper binary, model file) without blocking the bot from starting.
+Voice is opt-in: if `STT_MODEL` is not set, the bot works normally for text and photos and replies with setup instructions on voice messages. At startup, `checkTranscriptionDeps()` logs whether voice is enabled and warns about missing dependencies (ffmpeg, whisper binary, model file) without blocking the bot from starting.
+
+When TTS is enabled (`TTS_MODEL` set), the bot replies to voice messages with voice memos. Short responses (<=400 chars of stripped text) are sent as voice only — the audio is the full reply. Longer responses get a spoken summary of the first paragraph followed by the full text. This keeps the conversational feel of voice without losing detail on rich responses. If TTS fails for any reason, the bot falls back to text silently.
 
 ### Enabling Voice
 
@@ -299,11 +319,35 @@ curl -L --progress-bar -o /opt/homebrew/share/whisper-cpp/models/ggml-base.en.bi
 Add to `.env` and restart:
 
 ```
-WHISPER_MODEL=/opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin
-# WHISPER_PATH=whisper-cli  # default works for Homebrew
+STT_MODEL=/opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin
+# STT_PATH=whisper-cli  # default works for Homebrew
 ```
 
 The bot logs voice status at startup. Send a voice message to test — you'll see the transcription in italics before Claude responds.
+
+### Enabling Voice Replies
+
+Voice replies use [Piper TTS](https://github.com/rhasspy/piper) for neural text-to-speech. Install Piper:
+
+```bash
+pipx install piper-tts
+```
+
+Download a voice model — preview voices at [piper.ttstool.com](https://piper.ttstool.com):
+
+```bash
+mkdir -p ~/.piper/models
+curl -L -o ~/.piper/models/en_US-amy-medium.onnx \
+  'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx'
+curl -L -o ~/.piper/models/en_US-amy-medium.onnx.json \
+  'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json'
+```
+
+Add to `.env` and restart:
+
+```
+TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
+```
 
 ## Project Structure
 
@@ -316,6 +360,7 @@ The bot logs voice status at startup. Send a voice message to test — you'll se
 │   ├── claude.js      # Spawns claude -p with session management flags
 │   ├── session.js     # Session lifecycle: create, resume, expire, flush
 │   ├── transcribe.js  # Speech-to-text pipeline (pluggable, default: whisper.cpp)
+│   ├── tts.js         # Text-to-speech pipeline (Piper TTS → OGG Opus)
 │   ├── config.js      # Env loading and validation
 │   ├── format.js      # Obsidian markdown → Telegram formatting, message splitting
 │   ├── progress.js    # Progress reporting: status messages, throttled edits, mode-aware formatting
@@ -350,6 +395,7 @@ This is a deliberate choice:
 - **Configurable progress updates** — three modes (`off`/`standard`/`detailed`) control how much feedback the user sees during Claude processing. `off` preserves silent behavior for derived bots targeting non-technical users. `detailed` streams tool call names and inputs for power users. Progress uses a single editable Telegram message (send once, edit in place) to avoid chat clutter, with throttled edits (~1/second) to respect Telegram rate limits
 - **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
 - **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the bot layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
+- **Voice replies are length-aware** — when the user sends a voice memo and TTS is enabled, short responses (<=400 chars) are returned as voice only. Longer responses get a spoken summary of the first paragraph plus the full text. The bot decides based on response length, not Claude — no extra API call needed
 - **Images bypass Claude's context** — photos are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see and analyze the image without base64 bloating the prompt
 - **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
 
