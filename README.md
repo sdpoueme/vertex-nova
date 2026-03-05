@@ -331,6 +331,7 @@ Voice replies use [Piper TTS](https://github.com/rhasspy/piper) for neural text-
 
 ```bash
 pipx install piper-tts
+pipx inject piper-tts pathvalidate   # missing upstream dependency
 ```
 
 Download a voice model — preview voices at [piper.ttstool.com](https://piper.ttstool.com):

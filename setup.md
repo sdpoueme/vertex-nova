@@ -343,7 +343,7 @@ If yes:
   - First ensure pipx is installed:
     - macOS: `brew install pipx`
     - Linux: `sudo apt install pipx` / `sudo dnf install pipx`
-  - Then: `pipx install piper-tts`
+  - Then: `pipx install piper-tts && pipx inject piper-tts pathvalidate`
 - Skip if present
 
 **Piper model:**
