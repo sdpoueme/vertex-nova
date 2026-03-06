@@ -1,6 +1,6 @@
 # Synapse Setup Wizard
 
-You are an interactive setup wizard for Synapse — a Telegram bot that connects
+You are an interactive setup wizard for Synapse — a Telegram agent that connects
 an Obsidian vault to Claude. Walk the user through installing and configuring
 everything needed.
 
@@ -114,7 +114,7 @@ in one go rather than asking one at a time.
   ffmpeg + whisper.cpp + a model file (~150MB). You can always add this later."
   Default: yes if deps are already installed, no otherwise.
 - **Voice replies** — only ask if voice support is enabled. "Would you also like
-  voice memo replies? The bot will respond with voice when you send voice memos.
+  voice memo replies? The agent will respond with voice when you send voice memos.
   Requires Piper TTS + a model file (~70MB). You can always add this later."
   Default: no.
 
@@ -143,7 +143,7 @@ Plan:
 3. Clone Synapse + npm install
 4. Create .env
 5. Verify vault connectivity
-6. Start the bot
+6. Start the agent
 
 Ready to proceed?
 ```
@@ -215,7 +215,7 @@ Each step follows the pattern: **check → skip if done → act → verify**.
 
 The MCP server must be registered at **project scope** (`-s project`) so the
 `OBSIDIAN_VAULT` env var is scoped to this Synapse installation. This allows
-different bots or projects to target different vaults.
+different agents or projects to target different vaults.
 
 - Check: `claude mcp list` for an entry named "obsidian"
   - If it exists at global/user scope but not project scope, note it but still
@@ -330,7 +330,7 @@ warn but continue — voice can be configured manually later.
 
 #### 9e: Voice replies (optional)
 
-- Ask: "Would you also like voice memo replies? The bot will respond with voice
+- Ask: "Would you also like voice memo replies? The agent will respond with voice
   when you send voice memos. Requires Piper TTS + a model file (~70MB). You can
   always add this later."
 - Default: no (it's an additional dependency beyond STT)
@@ -437,12 +437,12 @@ If MCP list doesn't show obsidian: re-run Step 6.
 
 ### Step 12: Launch
 
-- Ask: "Everything is configured. Start the bot now?"
+- Ask: "Everything is configured. Start the agent now?"
 - If yes:
   ```bash
   cd <install_dir>/synapse && npm start
   ```
-- Tell the user: "Send a message to your bot in Telegram to test it."
+- Tell the user: "Send a message to your agent in Telegram to test it."
 - Mention: for development with auto-reload, use `npm run dev` instead.
 
 ## Error Recovery

@@ -43,7 +43,7 @@ if (!['off', 'standard', 'detailed'].includes(progressMode)) {
 }
 
 export const config = {
-  botToken: process.env.BOT_TOKEN,
+  agentToken: process.env.BOT_TOKEN,
   allowedUserIds: process.env.ALLOWED_USER_IDS.split(',').map(id => Number(id.trim())),
   sessionExpiry,
   claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 300_000,

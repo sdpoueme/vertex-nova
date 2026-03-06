@@ -12,15 +12,15 @@ import { transcribe, checkTranscriptionDeps } from './transcribe.js';
 import { synthesize, checkTTSDeps } from './tts.js';
 import { logger } from './log.js';
 
-const log = logger('bot');
+const log = logger('agent');
 
-const bot = new Telegraf(config.botToken, {
+const agent = new Telegraf(config.agentToken, {
   // Disable Telegraf's internal handler timeout — we manage our own via CLAUDE_TIMEOUT
   handlerTimeout: Infinity,
 });
 
 // Auth middleware — silently ignore non-allowed users
-bot.use((ctx, next) => {
+agent.use((ctx, next) => {
   if (!config.allowedUserIds.includes(ctx.from?.id)) {
     log.debug(`Ignored message from unauthorized user ${ctx.from?.id}`);
     return;
@@ -52,12 +52,12 @@ const toolLabels = {
 const ackMessages = ['On it...', 'Working on that...', 'Let me check...', 'One moment...'];
 
 // /start command
-bot.start((ctx) => {
+agent.start((ctx) => {
   ctx.reply('Second brain connected. Send me anything.');
 });
 
 // /reset command — flush current session and start fresh
-bot.command('reset', async (ctx) => {
+agent.command('reset', async (ctx) => {
   const userId = ctx.from.id;
   if (isProcessing(userId)) {
     return ctx.reply('Still processing your last message. Try again in a moment.');
@@ -77,7 +77,7 @@ bot.command('reset', async (ctx) => {
 });
 
 // /status command — show session info
-bot.command('status', async (ctx) => {
+agent.command('status', async (ctx) => {
   const session = readSession();
   if (!session || !session.sessionId) {
     return ctx.reply('No active session.');
@@ -234,10 +234,10 @@ async function drainQueue(userId) {
 }
 
 // Main text handler
-bot.on('text', (ctx) => processOrQueue(ctx, ctx.message.text));
+agent.on('text', (ctx) => processOrQueue(ctx, ctx.message.text));
 
 // Photo handler — save image to vault + temp dir, let Claude see it via --add-dir
-bot.on('photo', async (ctx) => {
+agent.on('photo', async (ctx) => {
   if (!config.vaultPath) {
     return ctx.reply('Image support requires VAULT_PATH in .env');
   }
@@ -248,7 +248,7 @@ bot.on('photo', async (ctx) => {
     // Get highest resolution photo (last in array)
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
     const file = await ctx.telegram.getFile(photo.file_id);
-    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
+    const url = `https://api.telegram.org/file/bot${config.agentToken}/${file.file_path}`;
 
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to download photo: ${res.status}`);
@@ -308,7 +308,7 @@ bot.on('photo', async (ctx) => {
 });
 
 // Document handler — save file to vault + temp dir, let Claude see it via --add-dir
-bot.on('document', async (ctx) => {
+agent.on('document', async (ctx) => {
   if (!config.vaultPath) {
     return ctx.reply('File support requires VAULT_PATH in .env');
   }
@@ -323,7 +323,7 @@ bot.on('document', async (ctx) => {
 
   try {
     const file = await ctx.telegram.getFile(doc.file_id);
-    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
+    const url = `https://api.telegram.org/file/bot${config.agentToken}/${file.file_path}`;
 
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
@@ -380,14 +380,14 @@ bot.on('document', async (ctx) => {
 });
 
 // Voice handler — transcribe and process as text
-bot.on('voice', async (ctx) => {
+agent.on('voice', async (ctx) => {
   if (!config.sttModel) {
     return ctx.reply('Voice messages require whisper.cpp.\nSet STT_MODEL in .env to enable.');
   }
   try {
     // Download OGG from Telegram
     const file = await ctx.telegram.getFile(ctx.message.voice.file_id);
-    const url = `https://api.telegram.org/file/bot${config.botToken}/${file.file_path}`;
+    const url = `https://api.telegram.org/file/bot${config.agentToken}/${file.file_path}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Download failed: ${res.status}`);
     const buffer = Buffer.from(await res.arrayBuffer());
@@ -424,8 +424,8 @@ bot.on('voice', async (ctx) => {
   }
 });
 
-// Catch unhandled errors so the bot doesn't crash
-bot.catch((err, ctx) => {
+// Catch unhandled errors so the agent doesn't crash
+agent.catch((err, ctx) => {
   log.error('Unhandled error:', err.message);
   ctx.reply('Something went wrong. Try again.').catch(() => {});
 });
@@ -433,7 +433,7 @@ bot.catch((err, ctx) => {
 // Graceful shutdown
 function shutdown(signal) {
   log.info(`${signal} received, shutting down...`);
-  bot.stop(signal);
+  agent.stop(signal);
   process.exit(0);
 }
 
@@ -467,5 +467,5 @@ if (config.ttsModel) {
 }
 
 // Launch
-bot.launch();
+agent.launch();
 log.info('Synapse is running (long polling)');

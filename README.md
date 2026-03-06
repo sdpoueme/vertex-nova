@@ -76,9 +76,9 @@ Fork the repo, replace CLAUDE.md and the skills directory, optionally register a
 
 The bundled CLAUDE.md and skills turn Synapse into a conversational interface to your Obsidian vault. Claude doesn't just search your notes — it **writes to them**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
 
-And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your bot, your Claude account.
+And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your agent, your Claude account.
 
-Send messages to your bot on Telegram:
+Send messages to your agent on Telegram:
 
 - **"what's on my plate today?"** — reads your daily note and outstanding tasks
 - **"capture: interesting idea about X"** — appends a timestamped entry to today's daily note
@@ -90,7 +90,7 @@ Send messages to your bot on Telegram:
 - **Send a voice message** — transcribed locally via whisper.cpp, then processed as text
 - **Free-form text** — Claude uses judgment to search, capture, or act
 
-### Bot Commands
+### Agent Commands
 
 - `/reset` — flush the current session (reconcile + capture missed items) and start fresh
 - `/status` — show current session info (ID, message count, last activity)
@@ -126,7 +126,7 @@ For manual setup, see [Prerequisites](#prerequisites) below.
 
 ## Telegram Setup
 
-Before you can run the bot, you need a Telegram bot token and your user ID.
+Before you can run the agent, you need a Telegram bot token and your user ID.
 
 ### Creating a Bot
 
@@ -140,7 +140,7 @@ For more details, see the [Telegram Bot API documentation](https://core.telegram
 
 ### Getting Your User ID
 
-The bot is locked to specific Telegram user IDs so only you can use it. To find yours:
+The agent is locked to specific Telegram user IDs so only you can use it. To find yours:
 
 1. Open Telegram and search for [@userinfobot](https://t.me/userinfobot)
 2. Send it any message
@@ -171,7 +171,7 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
    claude -p "read today's daily note" --output-format json --dangerously-skip-permissions
    ```
 
-5. Start the bot:
+5. Start the agent:
    ```bash
    npm start
    ```
@@ -196,7 +196,7 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `BOT_TOKEN` | Yes | — | Telegram bot token from BotFather |
-| `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the bot |
+| `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the agent |
 | `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
 | `CLAUDE_TIMEOUT` | No | `300000` | Max milliseconds to wait for Claude to respond |
 | `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo and file attachment support |
@@ -253,11 +253,11 @@ flowchart TB
   H -.->|"onComplete callback"| K["Delete temp file"]
 ```
 
-**Photos** are compressed by Telegram before delivery. The bot generates a random filename (`telegram-YYYY-MM-DD-abcd1234.jpg`) since Telegram doesn't provide the original name. Claude can see and analyze the image content.
+**Photos** are compressed by Telegram before delivery. The agent generates a random filename (`telegram-YYYY-MM-DD-abcd1234.jpg`) since Telegram doesn't provide the original name. Claude can see and analyze the image content.
 
 **Documents** (PDFs, spreadsheets, etc.) preserve the original filename with a date prefix (`2026-03-06-report.pdf`). A 20MB size check enforces the Telegram Bot API download limit — oversized files get a reply suggesting a cloud link instead. Claude can't see document contents visually but can reference the embed in notes.
 
-Why not use the MCP server's `vault_attachment` tool and let Claude handle everything? Because that would require base64-encoding the file into Claude's prompt, bloating context with kilobytes of encoded data on every attachment. Instead, the bot saves the file directly to the vault and passes a temp copy via `--add-dir` so Claude can see it without the base64 overhead. Claude gets the content, the vault gets the file, and the context window stays clean.
+Why not use the MCP server's `vault_attachment` tool and let Claude handle everything? Because that would require base64-encoding the file into Claude's prompt, bloating context with kilobytes of encoded data on every attachment. Instead, the agent saves the file directly to the vault and passes a temp copy via `--add-dir` so Claude can see it without the base64 overhead. Claude gets the content, the vault gets the file, and the context window stays clean.
 
 The temp copy exists only for the duration of Claude's processing. The `onComplete` callback in `processOrQueue` deletes it after Claude responds, so `IMAGE_TEMP_DIR` stays clean. The vault copy is permanent.
 
@@ -302,9 +302,9 @@ flowchart TB
 
 The transcription pipeline in `src/transcribe.js` is backend-agnostic. The public interface is `transcribe(buffer, config) → string`. Internally, it handles format conversion (OGG Opus → WAV) and temp file lifecycle regardless of which STT engine runs. The whisper.cpp backend is one function — to add sherpa-onnx or another engine, add a new backend function and a config key to select it.
 
-Voice is opt-in: if `STT_MODEL` is not set, the bot works normally for text and photos and replies with setup instructions on voice messages. At startup, `checkTranscriptionDeps()` logs whether voice is enabled and warns about missing dependencies (ffmpeg, whisper binary, model file) without blocking the bot from starting.
+Voice is opt-in: if `STT_MODEL` is not set, the agent works normally for text and photos and replies with setup instructions on voice messages. At startup, `checkTranscriptionDeps()` logs whether voice is enabled and warns about missing dependencies (ffmpeg, whisper binary, model file) without blocking the agent from starting.
 
-When TTS is enabled (`TTS_MODEL` set), the bot replies to voice messages with voice memos. Short responses (<=400 chars of stripped text) are sent as voice only — the audio is the full reply. Longer responses get a spoken summary of the first paragraph followed by the full text. This keeps the conversational feel of voice without losing detail on rich responses. If TTS fails for any reason, the bot falls back to text silently.
+When TTS is enabled (`TTS_MODEL` set), the agent replies to voice messages with voice memos. Short responses (<=400 chars of stripped text) are sent as voice only — the audio is the full reply. Longer responses get a spoken summary of the first paragraph followed by the full text. This keeps the conversational feel of voice without losing detail on rich responses. If TTS fails for any reason, the agent falls back to text silently.
 
 ### Enabling Voice
 
@@ -329,7 +329,7 @@ STT_MODEL=/opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin
 # STT_PATH=whisper-cli  # default works for Homebrew
 ```
 
-The bot logs voice status at startup. Send a voice message to test — you'll see the transcription in italics before Claude responds.
+The agent logs voice status at startup. Send a voice message to test — you'll see the transcription in italics before Claude responds.
 
 ### Enabling Voice Replies
 
@@ -363,7 +363,7 @@ TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
 ├── .env.example       # Environment variable template
 ├── package.json       # ESM, single dependency (telegraf)
 ├── src/
-│   ├── bot.js         # Entry point: Telegraf, auth, commands, message handler
+│   ├── agent.js       # Entry point: Telegraf, auth, commands, message handler
 │   ├── claude.js      # Spawns claude -p with session management flags
 │   ├── session.js     # Session lifecycle: create, resume, expire, flush
 │   ├── transcribe.js  # Speech-to-text pipeline (pluggable, default: whisper.cpp)
@@ -386,7 +386,7 @@ This is a deliberate choice:
 - **Fixed cost** — runs on Anthropic's Max plan (flat monthly fee), no per-token API charges. For personal use, this is significantly cheaper than the API
 - **No API key required** — Claude Code authenticates via your subscription, not an API key
 - **Terms-compliant** — stays on the right side of Anthropic's acceptable use for personal, non-commercial automation via Claude Code
-- **Good enough for async chat** — response latency is acceptable for a Telegram bot where you're not expecting sub-second replies
+- **Good enough for async chat** — response latency is acceptable for a Telegram agent where you're not expecting sub-second replies
 
 **Roadmap: Agent SDK support.** For business and commercial use cases, a future version will support the Anthropic Agent SDK as an alternative invocation backend. This would provide faster responses through long-running sessions and streaming, but at higher cost (per-token API pricing). The invocation layer is largely isolated in `claude.js`, though session management (`session.js`) is currently coupled to `claude -p`'s CLI session model and would also need adapting.
 
@@ -394,15 +394,15 @@ This is a deliberate choice:
 
 - **Plain JavaScript, ESM, no build step** — simple wrapper, fast iteration
 - **Single dependency** (Telegraf) — .env is parsed manually in config.js, no dotenv package, no TypeScript, no framework
-- **Long polling** — personal bot running locally, no public URL needed for webhooks
+- **Long polling** — personal agent running locally, no public URL needed for webhooks
 - **`claude -p` over Agent SDK** — fixed-cost Max plan for personal use; Agent SDK on the roadmap for commercial deployments (see above)
 - **`--dangerously-skip-permissions`** — required for non-interactive MCP tool use in `claude -p` mode
 - **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
-- **Configurable progress updates** — three modes (`off`/`standard`/`detailed`) control how much feedback the user sees during Claude processing. `off` preserves silent behavior for derived bots targeting non-technical users. `detailed` streams tool call names and inputs for power users. Progress uses a single editable Telegram message (send once, edit in place) to avoid chat clutter, with throttled edits (~1/second) to respect Telegram rate limits
+- **Configurable progress updates** — three modes (`off`/`standard`/`detailed`) control how much feedback the user sees during Claude processing. `off` preserves silent behavior for derived agents targeting non-technical users. `detailed` streams tool call names and inputs for power users. Progress uses a single editable Telegram message (send once, edit in place) to avoid chat clutter, with throttled edits (~1/second) to respect Telegram rate limits
 - **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
-- **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the bot layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
-- **Voice replies are length-aware** — when the user sends a voice memo and TTS is enabled, short responses (<=400 chars) are returned as voice only. Longer responses get a spoken summary of the first paragraph plus the full text. The bot decides based on response length, not Claude — no extra API call needed
+- **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the agent layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
+- **Voice replies are length-aware** — when the user sends a voice memo and TTS is enabled, short responses (<=400 chars) are returned as voice only. Longer responses get a spoken summary of the first paragraph plus the full text. The agent decides based on response length, not Claude — no extra API call needed
 - **Attachments bypass Claude's context** — photos and documents are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see the file without base64 bloating the prompt
 - **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
 
