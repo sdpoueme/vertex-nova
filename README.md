@@ -86,6 +86,7 @@ Send messages to your bot on Telegram:
 - **"log: finished the review"** — quick timestamped log entry
 - **"note: Meeting Notes — discussed project timeline"** — creates a new structured note
 - **Send a photo** with a caption — Claude sees the image, saves it to your vault, and files it into the right note
+- **Send a file** (PDF, document, etc.) with a caption — saved to your vault and filed into the right note
 - **Send a voice message** — transcribed locally via whisper.cpp, then processed as text
 - **Free-form text** — Claude uses judgment to search, capture, or act
 
@@ -198,7 +199,7 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the bot |
 | `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
 | `CLAUDE_TIMEOUT` | No | `300000` | Max milliseconds to wait for Claude to respond |
-| `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo support |
+| `VAULT_PATH` | For images | — | Absolute path to your Obsidian vault. Required for photo and file attachment support |
 | `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
 | `PROGRESS_MODE` | No | `off` | Progress feedback during Claude processing: `off` (typing indicator only), `standard` (acknowledgment + generic activity labels), `detailed` (tool names, inputs, and cost summary) |
 | `QUEUE_DEPTH` | No | `3` | Maximum queued messages per user. Messages beyond this limit are rejected |
@@ -230,28 +231,33 @@ stateDiagram-v2
   note right of Flush: Claude reviews conversation, captures missed items, writes daily summary
 ```
 
-## Image Handling
+## Attachments
 
-Photos follow a dual-write pattern: the image is saved to the vault for permanent storage, and a temp copy is passed to Claude via `--add-dir` so it can actually see the image. Claude processes the caption as a normal message but with the image available for analysis.
+Photos and documents follow the same dual-write pattern: the file is saved to the vault for permanent storage, and a temp copy is passed to Claude via `--add-dir` so it can see the file during processing. Claude handles the caption as a normal message with the attachment available for analysis.
 
 ```mermaid
 flowchart TB
-  A["📱 Telegram photo + caption"] -->|"getFile API"| B[Download buffer]
-  B --> C{VAULT_PATH set?}
+  A["📱 Telegram photo or file + caption"] -->|"getFile API"| B{Document?}
+  B -->|Yes| SC{Size <= 20MB?}
+  SC -->|No| X2["Reply: use cloud link"]
+  SC -->|Yes| C
+  B -->|No| C{VAULT_PATH set?}
   C -->|No| X["Reply: set VAULT_PATH"]
   C -->|Yes| D["Save to vault/attachments/"]
   D --> E["Save temp copy to IMAGE_TEMP_DIR"]
   E --> F["Build prompt with ![[filename]]"]
   F --> G["processOrQueue(ctx, prompt, {addDirs})"]
   G --> H["claude -p --add-dir IMAGE_TEMP_DIR"]
-  H -->|"Claude sees image + prompt"| I["MCP: vault_append / vault_create"]
+  H -->|"Claude sees file + prompt"| I["MCP: vault_append / vault_create"]
   I --> J["Reply to user"]
   H -.->|"onComplete callback"| K["Delete temp file"]
 ```
 
-The bot generates a descriptive filename (`telegram-YYYY-MM-DD-abcd1234.jpg`) and constructs a prompt telling Claude the image is saved as `![[filename]]` and available at the temp path for visual analysis. Claude then decides what to do based on the caption — append to daily note, create a new note, add to an existing note, etc.
+**Photos** are compressed by Telegram before delivery. The bot generates a random filename (`telegram-YYYY-MM-DD-abcd1234.jpg`) since Telegram doesn't provide the original name. Claude can see and analyze the image content.
 
-Why not use the MCP server's `vault_attachment` tool and let Claude handle everything? Because that would require base64-encoding the image into Claude's prompt, bloating context with kilobytes of encoded data on every photo. Instead, the bot saves the file directly to the vault and passes a temp copy via `--add-dir` so Claude can see the image without the base64 overhead. Claude gets the visual content, the vault gets the file, and the context window stays clean.
+**Documents** (PDFs, spreadsheets, etc.) preserve the original filename with a date prefix (`2026-03-06-report.pdf`). A 20MB size check enforces the Telegram Bot API download limit — oversized files get a reply suggesting a cloud link instead. Claude can't see document contents visually but can reference the embed in notes.
+
+Why not use the MCP server's `vault_attachment` tool and let Claude handle everything? Because that would require base64-encoding the file into Claude's prompt, bloating context with kilobytes of encoded data on every attachment. Instead, the bot saves the file directly to the vault and passes a temp copy via `--add-dir` so Claude can see it without the base64 overhead. Claude gets the content, the vault gets the file, and the context window stays clean.
 
 The temp copy exists only for the duration of Claude's processing. The `onComplete` callback in `processOrQueue` deletes it after Claude responds, so `IMAGE_TEMP_DIR` stays clean. The vault copy is permanent.
 
@@ -397,7 +403,7 @@ This is a deliberate choice:
 - **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
 - **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the bot layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
 - **Voice replies are length-aware** — when the user sends a voice memo and TTS is enabled, short responses (<=400 chars) are returned as voice only. Longer responses get a spoken summary of the first paragraph plus the full text. The bot decides based on response length, not Claude — no extra API call needed
-- **Images bypass Claude's context** — photos are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see and analyze the image without base64 bloating the prompt
+- **Attachments bypass Claude's context** — photos and documents are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see the file without base64 bloating the prompt
 - **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
 
 ## Related
