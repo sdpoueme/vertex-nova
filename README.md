@@ -100,7 +100,7 @@ Send messages to your agent on Telegram:
 Have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed? Run the setup wizard:
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/jason-c-dev/synapse/main/install.sh)
+bash -c "$(curl -sL https://raw.githubusercontent.com/jason-c-dev/synapse/main/install.sh)"
 ```
 
 The wizard detects your environment, installs dependencies, and walks you through configuration interactively. Safe to re-run for repairs and updates.

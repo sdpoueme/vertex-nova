@@ -70,7 +70,7 @@ Run each of these and record the result:
 | Synapse installed  | `ls <install_dir>/synapse/node_modules/telegraf`                    | Exists                    |
 | .env configured    | Read file, check for `your-` placeholder prefix                     | No placeholders           |
 | ffmpeg             | `which ffmpeg`                                                      | Present                   |
-| whisper-cpp        | `which whisper-cpp`                                                 | Present                   |
+| whisper-cpp        | `which whisper-cli`                                                 | Present                   |
 | Whisper model      | `ls /opt/homebrew/share/whisper-cpp/models/ggml-*.bin` (macOS)      | At least one model exists |
 | pipx               | `which pipx`                                                        | Present (when TTS opted in) |
 | Piper TTS          | `which piper`                                                       | Present                   |
@@ -291,7 +291,7 @@ Skip entirely if the user declined voice support in the Gather phase.
 
 #### 9b: whisper-cpp
 
-- Check: `which whisper-cpp`
+- Check: `which whisper-cli`
 - If missing:
   - macOS: `brew install whisper-cpp`
   - Linux: build from source:
@@ -322,7 +322,7 @@ Skip entirely if the user declined voice support in the Gather phase.
 #### 9d: Verify
 
 ```bash
-echo "test" | whisper-cpp --model <model_path> --no-prints /dev/null 2>&1
+whisper-cli --model <model_path> --no-prints /dev/null 2>&1
 ```
 
 If whisper-cpp runs without error, voice support is ready. If it fails,
