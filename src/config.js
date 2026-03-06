@@ -58,4 +58,6 @@ export const config = {
   ttsVoiceThreshold: Number(process.env.TTS_VOICE_THRESHOLD) || 400,
   progressMode,
   queueDepth: Number(process.env.QUEUE_DEPTH) || 3,
+  apiPort: process.env.API_PORT ? Number(process.env.API_PORT) : null,
+  apiSecret: process.env.API_SECRET || null,
 };

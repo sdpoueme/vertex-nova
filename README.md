@@ -23,8 +23,11 @@ Out of the box, Synapse ships as a **second brain** — a vault assistant you ta
 
 ```mermaid
 flowchart TB
-  A["📱 Telegram"] -->|message| B[Telegraf Bot]
-  B -->|auth + queue| C[Session Manager]
+  U["👤 User"] <-->|message| A["📱 Telegram"]
+  X["🤖 Other Agent"] <-->|"POST /message"| I["🔌 HTTP API"]
+  A --> B[Telegraf Bot]
+  B -->|auth + queue| C[Session Lock]
+  I <-->|auth| C
   C -->|"session ID"| D["claude -p"]
   D -->|MCP calls| E[obsidian-mcp]
   E -->|read/write| F["🗃️ Obsidian Vault"]
@@ -212,6 +215,8 @@ You can add multiple user IDs as a comma-separated list if you want to allow oth
 | `TTS_PATH` | No | `piper` | Path to Piper TTS binary |
 | `TTS_MODEL` | For voice replies | — | Path to Piper ONNX model. Enables voice memo replies |
 | `TTS_VOICE_THRESHOLD` | No | `400` | Max chars for voice-only reply (longer gets voice + text) |
+| `API_PORT` | No | — | HTTP API port. Enables the API when set (binds to 127.0.0.1 only) |
+| `API_SECRET` | If API_PORT set | — | Bearer token for API authentication. Required when API is enabled |
 | `LOG_FILE` | No | — | Path to a log file. When set, all output is appended here in addition to the console |
 
 ## Session Management
@@ -232,6 +237,55 @@ stateDiagram-v2
   Flush --> [*]: reconciliation complete
   note right of Flush: Claude reviews conversation, captures missed items, writes daily summary
 ```
+
+## HTTP API
+
+Synapse exposes an optional HTTP API for agent-to-agent messaging. API requests share the same Claude session as Telegram, so callers get full conversational context. A session-level lock serializes all Claude invocations regardless of source.
+
+### Configuration
+
+Add to `.env`:
+
+```
+API_PORT=3000
+API_SECRET=your-secret-token-here
+```
+
+The API binds to `127.0.0.1` only. Both variables are required — if `API_PORT` is set without `API_SECRET`, the API refuses to start (Telegram still works).
+
+### Endpoints
+
+**`GET /health`** — no auth required
+
+```bash
+curl http://localhost:3000/health
+# {"status":"ok"}
+```
+
+**`POST /message`** — send a message to Claude
+
+```bash
+curl -X POST http://localhost:3000/message \
+  -H "Authorization: Bearer your-secret-token-here" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "what tasks are outstanding?"}'
+# {"response":"Here are your outstanding tasks..."}
+```
+
+### Errors
+
+```
+401  Bad or missing Authorization header
+400  Invalid JSON, missing "message" field, or message too long (>50K chars)
+500  Claude invocation failed
+```
+
+### Notes
+
+- Responses are raw markdown (no Telegram formatting applied)
+- Requests block until Claude responds — the server timeout accommodates the configured `CLAUDE_TIMEOUT`
+- If a Telegram message is processing, the API request queues behind it (and vice versa) via the session lock
+- Body size limit: 100KB
 
 ## Attachments
 
@@ -367,8 +421,9 @@ TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
 ├── package.json       # ESM, single dependency (telegraf)
 ├── src/
 │   ├── agent.js       # Entry point: Telegraf, auth, commands, message handler
+│   ├── api.js         # HTTP API server for agent-to-agent messaging
 │   ├── claude.js      # Spawns claude -p with session management flags
-│   ├── session.js     # Session lifecycle: create, resume, expire, flush
+│   ├── session.js     # Session lifecycle: create, resume, expire, flush, lock
 │   ├── transcribe.js  # Speech-to-text pipeline (pluggable, default: whisper.cpp)
 │   ├── tts.js         # Text-to-speech pipeline (Piper TTS → OGG Opus)
 │   ├── config.js      # Env loading and validation
@@ -403,6 +458,7 @@ This is a deliberate choice:
 - **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
 - **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
 - **Configurable progress updates** — three modes (`off`/`standard`/`detailed`) control how much feedback the user sees during Claude processing. `off` preserves silent behavior for derived agents targeting non-technical users. `detailed` streams tool call names and inputs for power users. Progress uses a single editable Telegram message (send once, edit in place) to avoid chat clutter, with throttled edits (~1/second) to respect Telegram rate limits
+- **Session lock** — a promise-chain lock serializes all Claude invocations regardless of source (Telegram or API). The per-user Telegram queue remains for UX (acknowledgment messages) but the lock ensures only one `runClaude` process runs at a time
 - **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
 - **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the agent layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
 - **Voice replies are length-aware** — when the user sends a voice memo and TTS is enabled, short responses (<=400 chars) are returned as voice only. Longer responses get a spoken summary of the first paragraph plus the full text. The agent decides based on response length, not Claude — no extra API call needed

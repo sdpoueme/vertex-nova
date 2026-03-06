@@ -4,12 +4,13 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
 import { runClaude } from './claude.js';
-import { getSession, resetSession, readSession, touchSession } from './session.js';
+import { getSession, resetSession, readSession, touchSession, withSessionLock } from './session.js';
 import { formatForTelegram, splitMessage, stripForSpeech, truncateAtSentence } from './format.js';
 import { createProgressReporter } from './progress.js';
 import { startProcessing, doneProcessing, enqueue, isProcessing } from './queue.js';
 import { transcribe, checkTranscriptionDeps } from './transcribe.js';
 import { synthesize, checkTTSDeps } from './tts.js';
+import { startAPI } from './api.js';
 import { logger } from './log.js';
 
 const log = logger('agent');
@@ -66,7 +67,7 @@ agent.command('reset', async (ctx) => {
   startProcessing(userId);
   try {
     await ctx.reply('Flushing session...');
-    await resetSession();
+    await withSessionLock(() => resetSession());
     await ctx.reply('Session reset. Starting fresh.');
   } catch (err) {
     log.error('Reset failed:', err);
@@ -211,7 +212,7 @@ async function processOrQueue(ctx, message, opts = {}) {
   const userId = ctx.from.id;
 
   if (startProcessing(userId)) {
-    await processMessage(ctx, message, opts);
+    await withSessionLock(() => processMessage(ctx, message, opts));
     await drainQueue(userId);
   } else {
     const queued = enqueue(userId, { ctx, message, opts }, config.queueDepth);
@@ -228,7 +229,7 @@ async function drainQueue(userId) {
   let next = doneProcessing(userId);
   while (next) {
     startProcessing(userId);
-    await processMessage(next.ctx, next.message, next.opts);
+    await withSessionLock(() => processMessage(next.ctx, next.message, next.opts));
     next = doneProcessing(userId);
   }
 }
@@ -431,8 +432,10 @@ agent.catch((err, ctx) => {
 });
 
 // Graceful shutdown
+let apiServer = null;
 function shutdown(signal) {
   log.info(`${signal} received, shutting down...`);
+  if (apiServer) apiServer.close();
   agent.stop(signal);
   process.exit(0);
 }
@@ -469,3 +472,8 @@ if (config.ttsModel) {
 // Launch
 agent.launch();
 log.info('Synapse is running (long polling)');
+
+// Start HTTP API if configured
+if (config.apiPort) {
+  apiServer = startAPI();
+}

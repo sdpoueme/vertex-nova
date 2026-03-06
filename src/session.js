@@ -7,6 +7,13 @@ import { logger } from './log.js';
 
 const log = logger('session');
 
+let tail = Promise.resolve();
+export function withSessionLock(fn) {
+  const result = tail.then(() => fn());
+  tail = result.catch(() => {});
+  return result;
+}
+
 const SESSION_DIR = resolve(config.projectDir, '.sessions');
 const SESSION_FILE = resolve(SESSION_DIR, 'current.json');
 
@@ -89,7 +96,7 @@ export async function getSession() {
 
   // Flush the old session if it exists (don't await — fire-and-forget)
   if (session && session.sessionId) {
-    flushSession(session.sessionId);
+    withSessionLock(() => flushSession(session.sessionId));
   }
 
   // Create new session
