@@ -12,7 +12,7 @@ An extensible base agent you can build on.
 
 Synapse is an extensible agent platform that combines four things into a simple but powerful base: **Claude Code** for AI reasoning, **Obsidian** as a persistent memory layer (via 16 MCP tools), **Telegram** as a conversational interface, and **session management** that gives the agent continuity across messages. Together, these form a foundation that handles the hard parts — streaming, auth, message queuing, progress feedback, reconciliation — so you can focus on what your agent actually does.
 
-What makes each agent distinct is its **behavior layer**: a `CLAUDE.md` system prompt that defines how the agent thinks, a set of skills that define what it can do, and optionally additional MCPs that extend its capabilities. Swap these out and you have a different agent backed by the same platform.
+What makes each agent distinct is its **behavior layer**: an `agent.md` file that defines how the agent thinks, a set of skills that define what it can do, and optionally additional MCPs that extend its capabilities. Swap these out and you have a different agent backed by the same platform.
 
 Out of the box, Synapse ships as a **second brain** — a vault assistant you talk to from your phone that captures thoughts, searches your notes, manages tasks, files photos, and maintains your knowledge graph. But the architecture is designed for much more.
 
@@ -40,41 +40,43 @@ Sessions persist throughout the day (or a configurable window), so Claude rememb
 
 Synapse provides the runtime. Your agent provides the brain.
 
-Three customization points:
+The behavior layer is split into two files:
 
-- **CLAUDE.md** — the system prompt. Defines how the agent interprets messages, what conventions it follows, what domain knowledge it brings
-- **Skills** (`.claude/skills/`) — the command set. Domain-specific actions the agent can perform
+- **`CLAUDE.md`** — the platform (don't modify). MCP tool definitions, vault conventions, response formatting rules, and tool patterns. Updated by upstream.
+- **`agent.md`** — your agent's identity (replace this). How the agent interprets messages, what domain knowledge it brings, what personality it has. Loaded at runtime via `--append-system-prompt`.
+- **`.claude/skills/`** — the command set. Domain-specific actions the agent can perform. Add new skills alongside platform skills.
 - **Additional MCPs** — extend the agent's capabilities beyond the vault (a fitness API, a calendar service, GitHub integration — whatever it needs)
 
 ```mermaid
 flowchart TB
   subgraph Behavior["Behavior layer (customize this)"]
-    A[CLAUDE.md — system prompt + conventions]
+    A[agent.md — agent identity + domain logic]
     B[.claude/skills/ — domain commands]
     C[Additional MCPs — extend capabilities]
   end
   subgraph Synapse["Synapse platform (keep this)"]
-    D[Telegram — auth, commands, queue]
-    E[Claude Code — AI reasoning + streaming]
-    F[Obsidian — persistent memory via MCP]
-    G[Sessions — daily lifecycle + reconciliation]
-    H[Progress — real-time feedback]
+    D[CLAUDE.md — MCP tools, conventions, formatting]
+    E[Telegram — auth, commands, queue]
+    F[Claude Code — AI reasoning + streaming]
+    G[Obsidian — persistent memory via MCP]
+    H[Sessions — daily lifecycle + reconciliation]
+    I[Progress — real-time feedback]
   end
   Behavior --> Synapse
 ```
 
 Examples of what you could build:
 
-- A **fitness tracker** — CLAUDE.md for workout logging conventions, skills for `/workout` and `/progress`, a fitness API MCP
-- A **recipe assistant** — CLAUDE.md for recipe formatting, skills for `/recipe` and `/meal-plan`
-- A **project manager** — CLAUDE.md for project tracking, skills for `/sprint` and `/standup`, GitHub MCP for issue integration
-- A **reading log** — CLAUDE.md for book note conventions, skills for `/reading` and `/review`
+- A **fitness tracker** — agent.md for workout logging conventions, skills for `/workout` and `/progress`, a fitness API MCP
+- A **recipe assistant** — agent.md for recipe formatting, skills for `/recipe` and `/meal-plan`
+- A **project manager** — agent.md for project tracking, skills for `/sprint` and `/standup`, GitHub MCP for issue integration
+- A **reading log** — agent.md for book note conventions, skills for `/reading` and `/review`
 
-Fork the repo, replace CLAUDE.md and the skills directory, optionally register additional MCPs, and you have a new agent with different expertise backed by the same platform.
+Fork the repo, replace `agent.md` and add your skills, optionally register additional MCPs, and you have a new agent with different expertise backed by the same platform. Pull from upstream to get platform updates without conflicts.
 
 ## The Default Agent: Second Brain
 
-The bundled CLAUDE.md and skills turn Synapse into a conversational interface to your Obsidian vault. Claude doesn't just search your notes — it **writes to them**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
+The bundled agent.md and skills turn Synapse into a conversational interface to your Obsidian vault. Claude doesn't just search your notes — it **writes to them**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
 
 And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your agent, your Claude account.
 
@@ -359,7 +361,8 @@ TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
 ## Project Structure
 
 ```
-├── CLAUDE.md          # System prompt, vault behavior, and MCP tool patterns
+├── CLAUDE.md          # Platform: MCP tools, vault conventions, formatting rules
+├── agent.md           # Agent: identity, message handling, domain logic
 ├── .env.example       # Environment variable template
 ├── package.json       # ESM, single dependency (telegraf)
 ├── src/

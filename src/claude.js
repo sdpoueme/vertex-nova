@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { config } from './config.js';
 import { logger } from './log.js';
 
@@ -91,6 +93,14 @@ export async function runClaude(message, { sessionId, resume, addDirs, onEvent }
 
   if (addDirs && addDirs.length > 0) {
     args.push('--add-dir', ...addDirs);
+  }
+
+  const agentMdPath = join(config.projectDir, 'agent.md');
+  if (existsSync(agentMdPath)) {
+    const agentPrompt = readFileSync(agentMdPath, 'utf8');
+    if (agentPrompt.trim()) {
+      args.push('--append-system-prompt', agentPrompt);
+    }
   }
 
   const env = { ...process.env };
