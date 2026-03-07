@@ -420,28 +420,31 @@ TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
 
 Synapse includes a filesystem-native vault engine ([obsidian-mcp](https://github.com/jason-c-dev/obsidian-mcp)) that implements Obsidian's conventions — wikilinks, daily notes, YAML frontmatter, tags, tasks, backlinks — directly on standard markdown files. It requires no Obsidian installation and runs anywhere Node.js runs: macOS, Linux, Docker, headless servers.
 
-The vault folder is **fully compatible with Obsidian.app**. On a desktop environment, open the same folder in Obsidian and all notes, links, and metadata work as expected. The engine reads Obsidian's configuration (daily note folder, etc.) when present but operates independently.
+**Why not use Obsidian's own CLI or REST API?** A core design goal of Synapse is cloud deployability — running as a container on AWS, a VPS, or any headless server. Obsidian's CLI requires the desktop app to be running, and community MCP servers use the Local REST API plugin, which has the same dependency. Neither works in a headless environment. Since an Obsidian vault is just a folder of markdown files with well-defined conventions, the vault engine operates on them directly via Node.js `fs` — no GUI app, no IPC, no plugins.
+
+The vault folder is **fully Obsidian-compatible**. On a desktop environment, open the same folder in Obsidian and all notes, links, and metadata work as expected. The engine reads Obsidian's configuration (daily note folder, etc.) when present but operates independently. You get the best of both worlds: a rich desktop editor when you want it, and a headless agent that works without it.
 
 `OBSIDIAN_VAULT` is set to the **filesystem path** of your vault directory (e.g., `/Users/you/my-vault` or `/vault` in Docker).
 
 ## Docker Deployment
 
-Synapse can run as a self-contained Docker container — no Obsidian desktop app required.
+Synapse can run as a self-contained Docker container — no Obsidian desktop app, no Claude Code login, no GUI of any kind. Just an API key, a vault directory, and a Telegram bot token.
 
+```mermaid
+flowchart TB
+  subgraph Docker["Docker container"]
+    A[Synapse bot\nNode.js + Telegraf] -->|spawns| B["claude -p\n(Claude Code CLI)"]
+    B -->|MCP stdio| C[vault-mcp\nfilesystem engine]
+    C -->|read/write| D["/vault/*.md"]
+  end
+  U["👤 User"] <-->|Telegram| A
+  B <-->|API| CL["☁️ Anthropic API"]
+  V["📁 Host vault folder\nor cloud volume"] -.-|bind mount| D
+
+  style Docker fill:#f8f9fa,stroke:#333
 ```
-+---- Docker container ----------------+
-|                                       |
-|  Synapse bot (Node.js + Telegraf)     |
-|    → spawns claude -p                 |
-|        → spawns vault-mcp (stdio)     |
-|            → reads/writes /vault/*.md |
-|                                       |
-+---------------------------------------+
-         |
-    /vault (bind mount)
-    - macOS: ~/my-vault or Obsidian folder
-    - AWS: EBS volume or EFS
-```
+
+The vault is bind-mounted from the host — on macOS it can be your existing Obsidian folder (synced via iCloud), on AWS it can be an EBS or EFS volume. The container itself is stateless beyond session data.
 
 ### Quick start
 
