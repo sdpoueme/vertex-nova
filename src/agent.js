@@ -15,6 +15,14 @@ import { logger } from './log.js';
 
 const log = logger('agent');
 
+function localTimestamp() {
+  const now = new Date();
+  const date = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const tz = now.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
+  return `${date} ${time} ${tz}`;
+}
+
 const agent = new Telegraf(config.agentToken, {
   // Disable Telegraf's internal handler timeout — we manage our own via CLAUDE_TIMEOUT
   handlerTimeout: Infinity,
@@ -134,8 +142,9 @@ async function processMessage(ctx, message, { addDirs, onComplete, voiceReply } 
     };
 
     // Run Claude
+    const stamped = `[Current time: ${localTimestamp()}]\n${message}`;
     const start = Date.now();
-    const response = await runClaude(message, claudeOpts);
+    const response = await runClaude(stamped, claudeOpts);
     log.debug(`Claude responded in ${((Date.now() - start) / 1000).toFixed(1)}s (${response.length} chars)`);
 
     // Clean up progress message before sending response

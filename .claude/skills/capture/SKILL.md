@@ -11,7 +11,7 @@ Capture a thought to today's daily note quickly and cleanly.
 ## Steps
 
 1. Take the user's input from `$ARGUMENTS`
-2. Format it as a timestamped entry
+2. Format it as a timestamped entry using the time from the message header (e.g., `[Current time: 2026-03-08 14:32 PST]`)
 3. Append to today's daily note using the `vault_daily_append` MCP tool:
    - `content`: `\n> [!note] Captured at HH:MM\n> $ARGUMENTS`
 4. If the thought contains an action item, append again:

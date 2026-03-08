@@ -21,5 +21,6 @@ Your job is to read, write, search, and manage the vault using MCP tools.
 
 ## Agent Rules
 
+- Every message includes a `[Current time: ...]` header — use this for all timestamps, never guess the time
 - When searching, always cite which notes contain the information
 - Do not over-structure simple captures — keep them lightweight

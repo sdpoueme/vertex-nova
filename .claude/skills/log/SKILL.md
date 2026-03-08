@@ -10,7 +10,7 @@ Append a brief timestamped log entry to today's daily note.
 
 ## Steps
 
-1. Get the current time
+1. Use the current time from the message header (e.g., `[Current time: 2026-03-08 14:32 PST]`)
 2. Append to daily note using the `vault_daily_append` MCP tool:
    - `content`: `\n- **HH:MM** — $ARGUMENTS`
 

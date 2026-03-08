@@ -6,6 +6,14 @@ import { logger } from './log.js';
 
 const log = logger('api');
 
+function localTimestamp() {
+  const now = new Date();
+  const date = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  const tz = now.toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
+  return `${date} ${time} ${tz}`;
+}
+
 const MAX_BODY = 100 * 1024; // 100KB
 const MAX_MESSAGE = 50_000; // 50K chars
 
@@ -61,7 +69,8 @@ async function handleMessage(req, res) {
 
       const claudeOpts = isNew ? { sessionId } : { resume: sessionId };
       const start = Date.now();
-      const result = await runClaude(message, claudeOpts);
+      const stamped = `[Current time: ${localTimestamp()}]\n${message}`;
+      const result = await runClaude(stamped, claudeOpts);
       log.debug(`Claude responded in ${((Date.now() - start) / 1000).toFixed(1)}s (${result.length} chars)`);
 
       touchSession();
