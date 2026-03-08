@@ -36,6 +36,7 @@ You have 16 Obsidian vault tools via the MCP server:
 - Tasks: `- [ ]` for todo, `- [x]` for done
 - Callouts: `> [!note]`, `> [!tip]`, `> [!warning]`
 - Timestamps: `HH:MM` format (24h)
+- **Outstanding items are tasks only.** Only `- [ ]` checkboxes are actionable/outstanding. Timestamped log entries (`- **HH:MM** — ...`) are captured thoughts — do not surface them as outstanding unless they contain a checkbox. If an open question needs tracking, it should be written as a task.
 
 ## Response Formatting
 
