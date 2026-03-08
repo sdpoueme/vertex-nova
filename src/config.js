@@ -65,4 +65,8 @@ export const config = {
   queueDepth: Number(process.env.QUEUE_DEPTH) || 3,
   apiPort: process.env.API_PORT ? Number(process.env.API_PORT) : null,
   apiSecret: process.env.API_SECRET || null,
+  housekeepingEnabled: (process.env.HOUSEKEEPING_ENABLED || 'true').toLowerCase() === 'true',
+  housekeepingWeekly: process.env.HOUSEKEEPING_WEEKLY || 'sun:20:00',
+  housekeepingMonthly: process.env.HOUSEKEEPING_MONTHLY || '1:09:00',
+  housekeepingYearly: process.env.HOUSEKEEPING_YEARLY || '1-1:10:00',
 };

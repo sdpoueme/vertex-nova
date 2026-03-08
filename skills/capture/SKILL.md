@@ -13,16 +13,18 @@ Capture a thought to today's daily note quickly and cleanly.
 1. Take the user's input from `$ARGUMENTS`
 2. Format it as a timestamped entry using the time from the message header (e.g., `[Current time: 2026-03-08 14:32 PST]`)
 3. Append to today's daily note using the `vault_daily_append` MCP tool:
-   - `content`: `\n> [!note] Captured at HH:MM\n> $ARGUMENTS`
+   - `content`: `\n- **HH:MM** — $ARGUMENTS`
 4. If the thought contains an action item, append again:
    - `content`: `\n- [ ] action item extracted from the thought`
 5. If the thought relates to an existing note, include a wikilink: `[[Related Note]]`
+6. If the thought mentions a person, project, or topic that has its own note in `people/`, `projects/`, or `notes/`, link to it
 
 ## Vault Conventions
-- Daily notes use format `YYYY-MM-DD.md`
+- Daily notes live in `daily/` as `YYYY-MM-DD.md`
 - Use `[[wikilinks]]` to connect related notes
 - Use `- [ ]` for actionable items
-- Use Obsidian callouts: `> [!note]`, `> [!tip]`, `> [!warning]`
+- Timestamped log entries: `- **HH:MM** — content`
+- Tags: `type/*` (mandatory), `topic/*` (optional)
 
 ## Guidelines
 - Keep the capture lightweight — don't over-structure

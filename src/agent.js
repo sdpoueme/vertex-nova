@@ -12,6 +12,7 @@ import { transcribe, checkTranscriptionDeps } from './transcribe.js';
 import { synthesize, checkTTSDeps } from './tts.js';
 import { startAPI } from './api.js';
 import { ensurePlatformSkills } from './setup-skills.js';
+import { startScheduler, stopScheduler } from './scheduler.js';
 import { logger } from './log.js';
 
 const log = logger('agent');
@@ -455,6 +456,7 @@ agent.catch((err, ctx) => {
 let apiServer = null;
 function shutdown(signal) {
   log.info(`${signal} received, shutting down...`);
+  stopScheduler();
   if (apiServer) apiServer.close();
   agent.stop(signal);
   process.exit(0);
@@ -495,6 +497,9 @@ ensurePlatformSkills();
 // Launch
 agent.launch();
 log.info('Synapse is running (long polling)');
+
+// Start housekeeping scheduler
+startScheduler();
 
 // Start HTTP API if configured
 if (config.apiPort) {
