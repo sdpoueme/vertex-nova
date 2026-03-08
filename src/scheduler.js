@@ -11,28 +11,28 @@ const STATE_FILE = resolve(STATE_DIR, 'scheduler.json');
 
 const WEEKLY_PROMPT = `[HOUSEKEEPING — Weekly Review]
 Create the weekly review:
-1. List daily notes in daily/ for this week (Monday through today)
-2. Read each daily note
-3. Create a weekly summary in weekly/YYYY-Www.md following the weekly note format
-4. Move this week's daily notes to daily/archive/
-5. Carry forward any open tasks (- [ ]) into next week's daily notes
+1. Use vault_files with folder "daily" to list this week's daily notes (Monday through today)
+2. Use vault_read with path "daily/YYYY-MM-DD.md" for each daily note
+3. Use vault_create with name "weekly/YYYY-Www" to create the weekly summary following the weekly note format
+4. Use vault_move to move each daily note to daily/archive/
+5. Carry forward any open tasks (- [ ]) — use vault_append with file "daily/YYYY-MM-DD" to add them to today's daily note (create it first with vault_create if needed)
 6. Link the weekly note from any active project notes that were referenced`;
 
 const MONTHLY_PROMPT = `[HOUSEKEEPING — Monthly Review]
 Create the monthly review:
-1. List weekly notes in weekly/ for last month
-2. Read each weekly summary
-3. Create a monthly summary in monthly/YYYY-MM.md following the monthly note format
-4. Move last month's weekly notes to weekly/archive/
+1. Use vault_files with folder "weekly" to list last month's weekly notes
+2. Use vault_read with path "weekly/YYYY-Www.md" for each weekly summary
+3. Use vault_create with name "monthly/YYYY-MM" to create the monthly summary following the monthly note format
+4. Use vault_move to move last month's weekly notes to weekly/archive/
 5. Carry forward any open tasks
 6. Note accomplishments, themes, and patterns`;
 
 const YEARLY_PROMPT = `[HOUSEKEEPING — Yearly Review]
 Create the yearly review:
-1. List monthly notes in monthly/ for last year
-2. Read each monthly summary
-3. Create a yearly summary in yearly/YYYY.md following the yearly note format
-4. Move last year's monthly notes to monthly/archive/
+1. Use vault_files with folder "monthly" to list last year's monthly notes
+2. Use vault_read with path "monthly/YYYY-MM.md" for each monthly summary
+3. Use vault_create with name "yearly/YYYY" to create the yearly summary following the yearly note format
+4. Use vault_move to move last year's monthly notes to monthly/archive/
 5. Carry forward any open tasks
 6. Note major accomplishments, themes, and how focus areas evolved`;
 

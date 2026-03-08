@@ -10,9 +10,9 @@ Generate a standup update based on what's actually in the vault.
 
 ## Steps
 
-1. **Yesterday's note** — call `vault_read` with `path` set to yesterday's date (e.g., `path: "2026-03-01.md"`). Calculate yesterday's date.
+1. **Yesterday's note** — calculate yesterday's date from the `[Current time: ...]` header, then call `vault_read` with `path: "daily/YYYY-MM-DD.md"` (yesterday's date)
 
-2. **Today's note** — call `vault_daily_read`
+2. **Today's note** — call `vault_read` with `path: "daily/YYYY-MM-DD.md"` (today's date)
 
 3. **Outstanding tasks** — call `vault_tasks` with `status: "todo"`
 

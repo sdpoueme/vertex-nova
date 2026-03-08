@@ -10,7 +10,7 @@ Create or append to today's journal entry with polished, wikilinked content.
 
 ## Steps
 
-1. **Get today's date** — format as `YYYY-MM-DD`
+1. **Get today's date** from the `[Current time: ...]` message header — format as `YYYY-MM-DD`
 
 2. **Clean up the input** from `$ARGUMENTS`:
    - Fix speech-to-text errors (spelling, grammar, punctuation)
@@ -25,7 +25,7 @@ Create or append to today's journal entry with polished, wikilinked content.
 5. **Check if today's journal exists** — call `vault_read` with `path: "notes/YYYY-MM-DD Journal.md"`
    - **If it exists:** append the new content below the existing text using `vault_create` with `overwrite: true`, preserving everything already there
    - **If it doesn't exist:** create a new note with `vault_create`:
-     - `name`: `YYYY-MM-DD Journal` (placed in `notes/`)
+     - `name`: `notes/YYYY-MM-DD Journal`
      - `content`:
      ```
      ---
@@ -38,9 +38,10 @@ Create or append to today's journal entry with polished, wikilinked content.
      [cleaned and wikilinked content]
      ```
 
-6. **Link from daily note** — call `vault_daily_append`:
+6. **Link from daily note** — call `vault_append` with `file: "daily/YYYY-MM-DD"`:
    - If this is a new journal: `\n- **HH:MM** — Created [[YYYY-MM-DD Journal]] — journal entry`
    - If appending: `\n- **HH:MM** — Updated [[YYYY-MM-DD Journal]] — added to journal`
+   - If the daily note doesn't exist yet, create it first with `vault_create`
 
 ## Guidelines
 - Preserve the user's voice — tidy, don't rewrite

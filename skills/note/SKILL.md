@@ -16,11 +16,12 @@ Create a well-structured note in the vault, placed in the appropriate folder.
    - If it's a project or workstream → `projects/` with `type/project` tag and `status: active`
    - Otherwise → `notes/` with `type/note` tag
 3. Determine appropriate `topic/*` tags based on content
-4. Create the note using the `vault_create` MCP tool:
-   - `name`: the title (the MCP server handles folder paths)
+4. Create the note using `vault_create`:
+   - `name`: `folder/title` (e.g., `notes/Meeting Notes`, `people/Sam`, `projects/Website Redesign`)
    - `content`: full note content with YAML frontmatter matching the note type format
-5. Add a timestamped wikilink in today's daily note using `vault_daily_append`:
+5. Add a timestamped wikilink in today's daily note using `vault_append` with `file: "daily/YYYY-MM-DD"`:
    - `content`: `\n- **HH:MM** — Created [[Title]] — brief context`
+   - If the daily note doesn't exist yet, create it first with `vault_create`
 6. If the note references other people, projects, or topics with existing notes, add `[[wikilinks]]`
 
 ## Note Formats

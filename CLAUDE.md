@@ -6,27 +6,27 @@ Synapse is an extensible agent platform. This file defines the platform layer �
 
 ## MCP Tools Available
 
-You have 16 Obsidian vault tools via the MCP server:
+You have Obsidian vault tools via the MCP server:
 
 **Reading:**
 - `vault_read` — Read a note by name or path
-- `vault_daily_read` — Read today's daily note
 - `vault_search` — Full-text search across the vault
 - `vault_files` — List files, optionally filtered by folder
 - `vault_tags` — List tags or look up a specific tag
-- `vault_tasks` — List tasks (filter by todo/done, daily)
+- `vault_tasks` — List tasks (filter by todo/done)
 - `vault_links` — Outgoing links from a note
 - `vault_backlinks` — Notes that link to a given note
 - `vault_properties` — Read YAML frontmatter properties
 - `vault_list` — List available vaults
 
 **Writing:**
-- `vault_create` — Create a new note
+- `vault_create` — Create a new note (use with folder path for placement)
 - `vault_append` — Append content to an existing note
-- `vault_daily_append` — Append to today's daily note
 - `vault_property_set` — Set a frontmatter property
 - `vault_move` — Move or rename a note
 - `vault_attachment` — Write a binary file (image, PDF, etc.) into the vault. Accepts base64-encoded data, returns `![[filename]]` for embedding in notes
+
+**Do NOT use** `vault_daily_read` or `vault_daily_append` — these rely on Obsidian app configuration which may not exist. Always use explicit paths instead (see Daily Note Pattern below).
 
 ## Vault Structure
 
@@ -268,6 +268,12 @@ When you receive a `[HOUSEKEEPING]` message:
 
 ## MCP Tool Patterns
 
+**Daily note pattern:** Always use explicit paths for daily notes — never use `vault_daily_read` or `vault_daily_append`. Derive today's date from the `[Current time: ...]` header on every message.
+
+- **Read today's daily:** `vault_read` with `path: "daily/YYYY-MM-DD.md"`
+- **Append to today's daily:** `vault_append` with `file: "daily/YYYY-MM-DD"` (the MCP server adds `.md`)
+- **Create today's daily (if it doesn't exist yet):** `vault_create` with `name: "daily/YYYY-MM-DD"` and the daily note frontmatter template. If append fails because the note doesn't exist, create it first with the frontmatter, then append.
+
 There is no `vault_edit` tool — to modify existing note content, use the read-overwrite pattern:
 
 **Editing a note:** `vault_read` the note, then `vault_create` with `overwrite: true` and the modified content. Always read first to preserve everything unchanged.
@@ -290,7 +296,7 @@ There is no `vault_edit` tool — to modify existing note content, use the read-
 
 ## Session Continuity
 
-When a session starts, check today's daily note for recent context. A previous session may have been flushed mid-conversation, and the daily note will contain session summaries and recent activity that help you pick up where things left off.
+When a session starts, read today's daily note (`vault_read` with `path: "daily/YYYY-MM-DD.md"`) for recent context. A previous session may have been flushed mid-conversation, and the daily note will contain session summaries and recent activity that help you pick up where things left off.
 
 ## Platform Rules
 

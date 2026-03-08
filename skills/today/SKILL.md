@@ -10,13 +10,11 @@ Give the user a clear picture of their day by calling these MCP tools and synthe
 
 ## Steps
 
-1. **Read today's daily note** — call `vault_daily_read`
+1. **Read today's daily note** — get today's date from the `[Current time: ...]` header, then call `vault_read` with `path: "daily/YYYY-MM-DD.md"`
 
 2. **Get outstanding tasks across the vault** — call `vault_tasks` with `status: "todo"`
 
-3. **Check today's daily note tasks specifically** — call `vault_tasks` with `status: "todo"` and `daily: true`
-
-4. **Check recent files for context** — call `vault_files`
+3. **Check recent files for context** — call `vault_files`
 
 ## Output Format
 
