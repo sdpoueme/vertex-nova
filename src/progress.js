@@ -45,7 +45,7 @@ export function createProgressReporter(telegram, chatId, { mode, toolLabels, ack
   function summarizeInput(input) {
     if (!input || typeof input !== 'object') return '';
     // Pick the most useful field for a short summary
-    for (const key of ['query', 'file', 'name', 'path', 'content']) {
+    for (const key of ['query', 'file', 'name', 'path', 'file_path', 'command', 'description', 'pattern', 'glob', 'content']) {
       if (input[key] && typeof input[key] === 'string') {
         const val = input[key];
         return val.length > 60 ? `"${val.slice(0, 57)}..."` : `"${val}"`;

@@ -56,6 +56,16 @@ const toolLabels = {
   mcp__obsidian__vault_property_set: 'Setting property...',
   mcp__obsidian__vault_move: 'Moving note...',
   mcp__obsidian__vault_attachment: 'Saving attachment...',
+  // Claude Code built-in tools
+  Read: 'Reading...',
+  Edit: 'Editing...',
+  Write: 'Writing file...',
+  Bash: 'Running...',
+  Glob: 'Finding files...',
+  Grep: 'Searching code...',
+  Task: 'Delegating...',
+  WebFetch: 'Fetching...',
+  WebSearch: 'Searching web...',
 };
 
 const ackMessages = ['On it...', 'Working on that...', 'Let me check...', 'One moment...'];
