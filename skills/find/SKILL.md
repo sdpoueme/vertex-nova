@@ -1,6 +1,6 @@
 ---
 name: find
-description: Deep search across the vault for information. Searches content, tags, properties, and follows links to synthesize results.
+description: "Search the vault for information. Triggers: \"what do I have about\", \"look up\", \"search\", \"find notes about\", \"do I have anything on\". Read-only — searches and synthesizes, does not modify notes."
 argument-hint: "<search query>"
 ---
 
@@ -8,21 +8,32 @@ argument-hint: "<search query>"
 
 Search the vault deeply for information matching `$ARGUMENTS`.
 
-## Steps
+## Search Strategy
 
-1. **Text search** — call `vault_search` with `query: "$ARGUMENTS"` and optionally `context: true` for matching lines
+1. **Text search** — call `vault_search` with `query: "$ARGUMENTS"` and `context: true`
 
-2. **Tag search** (if the query relates to a topic) — call `vault_tags` to list all tags, then `vault_tags` with `name` for a specific tag
+2. **Broaden if needed** — if few results, try alternate terms:
+   - Synonyms or related phrases
+   - Partial words or name variations
+   - If the query has multiple terms, search each separately
 
-3. **Read matching notes** — call `vault_read` with `file` for each relevant match
+3. **Tag search** (if the query relates to a topic) — call `vault_tags` to check for a matching `topic/*` tag
 
-4. **Follow links** from matching notes to find related context:
+4. **Folder filtering** — use `vault_files` with `folder` to narrow by note type (e.g., `people/` for person queries, `projects/` for project queries)
+
+5. **Read the top matches** — call `vault_read` for the 3-5 most relevant results. Do not read every match — prioritize by relevance.
+
+6. **Follow links** from the most relevant notes if deeper context is needed:
    - Call `vault_links` with `file` to get outgoing links
    - Call `vault_backlinks` with `file` to get incoming links
 
-5. **Synthesize** — present the findings clearly, citing which notes contain what.
+7. **Synthesize** — present the findings clearly.
 
 ## Output Format
-- Quote relevant passages from notes
-- Cite note names as `[[Note Name]]` so the user can navigate to them in Obsidian
-- If nothing found, say so and suggest alternative search terms
+- Quote 1-2 relevant sentences per note — do not dump entire note contents
+- Cite note names in **bold** (e.g., **Meeting Notes**) so the user knows where info lives
+- If nothing found, say so and suggest alternative search terms or a different folder to check
+
+## Disambiguation
+- If the query is vague (e.g., "that thing from last week"), ask the user to clarify before searching broadly
+- If multiple unrelated notes match, group results by topic or note type

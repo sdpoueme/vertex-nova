@@ -1,6 +1,6 @@
 ---
 name: complete-tasks
-description: Mark tasks as completed in a vault note. Specify a note name and optionally which tasks.
+description: "Mark tasks as done in a vault note. Triggers: \"mark done\", \"complete the task\", \"check off\", \"I finished\". Specify a note and optionally which tasks."
 argument-hint: "<note name> [all | task description]"
 ---
 
@@ -16,14 +16,18 @@ Mark tasks as completed in an existing vault note using the read-overwrite patte
 
 3. **Identify tasks** — find all `- [ ]` lines in the note. If the user specified particular tasks, match only those. If "all", select every incomplete task.
 
-4. **Confirm with user** — list the tasks that will be marked complete and ask for confirmation, unless the user already specified clearly
+4. **Handle edge cases:**
+   - If the note is not found, tell the user and suggest using `vault_search` to locate it
+   - If the note has zero open tasks, tell the user — don't overwrite the note unnecessarily
+   - If the user described a specific task but no `- [ ]` line matches, list the open tasks and ask the user to clarify which one
 
-5. **Rewrite the note** — call `vault_create` with `overwrite: true`, replacing matched `- [ ]` with `- [x]` while preserving all other content exactly
+5. **Confirm with user** — list the tasks that will be marked complete and ask for confirmation, unless the user already specified clearly
 
-6. **Confirm** — report how many tasks were marked complete in which note
+6. **Rewrite the note** — call `vault_create` with `overwrite: true`, replacing matched `- [ ]` with `- [x]` while preserving all other content exactly
+
+7. **Confirm** — report how many tasks were marked complete in which note
 
 ## Important
 
 - Always `vault_read` first — never guess at note contents
 - Preserve frontmatter, formatting, and all unchanged content exactly
-- If the note is not found, tell the user and suggest `vault_search` to find it

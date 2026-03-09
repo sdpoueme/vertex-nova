@@ -1,6 +1,6 @@
 ---
 name: note
-description: Create a new structured note in the vault. Prompts for content if only a title is given.
+description: "Create a new structured note in people/, projects/, or notes/. Triggers: \"create a note\", \"new note\", \"start a note about\", \"add a person\", \"new project\". For quick daily captures, use /capture instead."
 argument-hint: "<title> [content or topic]"
 ---
 
@@ -18,65 +18,11 @@ Create a well-structured note in the vault, placed in the appropriate folder.
 3. Determine appropriate `topic/*` tags based on content
 4. Create the note using `vault_create`:
    - `name`: `folder/title` (e.g., `notes/Meeting Notes`, `people/Sam`, `projects/Website Redesign`)
-   - `content`: full note content with YAML frontmatter matching the note type format
+   - `content`: full note content with YAML frontmatter — use the note type formats defined in CLAUDE.md for person, project, and topic notes
 5. Add a timestamped wikilink in today's daily note using `vault_append` with `file: "daily/YYYY-MM-DD"`:
    - `content`: `\n- **HH:MM** — Created [[Title]] — brief context`
    - If the daily note doesn't exist yet, create it first with `vault_create`
 6. If the note references other people, projects, or topics with existing notes, add `[[wikilinks]]`
-
-## Note Formats
-
-**Person (`people/`):**
-```
----
-date: YYYY-MM-DD
-tags:
-  - type/person
----
-
-## About
-
-Role, relationship, key context.
-
-## Notes
-
-- **YYYY-MM-DD** — Initial context.
-```
-
-**Project (`projects/`):**
-```
----
-date: YYYY-MM-DD
-tags:
-  - type/project
-  - topic/relevant-area
-status: active
----
-
-## Overview
-
-What this project is and why it matters.
-
-## Tasks
-
-- [ ] Outstanding items
-
-## Log
-
-- **YYYY-MM-DD** — Created.
-```
-
-**Topic (`notes/`):**
-```
----
-date: YYYY-MM-DD
-tags:
-  - type/note
-  - topic/relevant-area
----
-
-Content here. Link to related [[notes]], [[people]], and [[projects]].
-```
 
 ## Guidelines
 - Add `[[wikilinks]]` to related existing notes where relevant

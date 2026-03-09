@@ -1,6 +1,6 @@
 ---
 name: log
-description: Append a timestamped entry to today's daily note. Quick and minimal.
+description: "Append a minimal one-line timestamped entry to today's daily note. Triggers: \"log\", \"just note that\", \"quick note\". No task extraction, no wikilinks — just a timestamp and text. Use /capture instead if the message has action items or references other notes."
 argument-hint: "<text to log>"
 ---
 

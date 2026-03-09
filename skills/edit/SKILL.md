@@ -1,6 +1,6 @@
 ---
 name: edit
-description: Edit content in an existing vault note. Uses the read-overwrite pattern since no vault_edit MCP tool exists.
+description: "Edit content in an existing vault note using read-overwrite. Triggers: \"change\", \"update the note\", \"fix the note\", \"modify\". For task completion use /complete-tasks. For appending use /capture or /log."
 argument-hint: "<note name> <description of changes>"
 ---
 

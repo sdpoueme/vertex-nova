@@ -1,6 +1,6 @@
 ---
 name: capture
-description: Quick capture a thought, idea, or note. Appends to today's daily note with a timestamp.
+description: "Quick capture a thought, idea, or note to today's daily note. Triggers: \"remember this\", \"save this\", \"note to self\", \"jot down\", \"don't forget\". Richer than /log — extracts tasks, adds wikilinks. Use /log instead for minimal one-line entries."
 argument-hint: "<thought or note to capture>"
 ---
 
@@ -23,6 +23,6 @@ Capture a thought to today's daily note quickly and cleanly.
 
 ## Guidelines
 - Keep the capture lightweight — don't over-structure
-- Extract tasks if there's a clear action item
+- Extract tasks only when there's a clear, specific action item. Casual phrasing like "I should really..." or "it would be nice to..." is not a task — only extract when the user expresses concrete intent to do something
 - Add wikilinks if the thought clearly relates to an existing note
 - Confirm what was captured with a brief acknowledgment

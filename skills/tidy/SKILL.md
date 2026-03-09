@@ -1,6 +1,6 @@
 ---
 name: tidy
-description: Clean up a raw or voice-transcribed note into well-structured format. Extracts action items, adds tags and links.
+description: "Clean up a messy or voice-transcribed note. Triggers: \"tidy up\", \"clean up this note\", \"restructure\", \"format this note\". Rewrites the note in place using read-overwrite."
 argument-hint: "<note name>"
 ---
 
@@ -32,12 +32,6 @@ Take a raw/unstructured note (often from voice transcription) and restructure it
 5. **Overwrite the note** — call `vault_create` with `name: "$ARGUMENTS"`, `overwrite: true`, and the cleaned content
 
 6. **Report what changed** — summarize what was extracted and restructured.
-
-## Vault Conventions
-- Always include YAML frontmatter with at least `tags` and `date`
-- Use `[[wikilinks]]` to connect related notes
-- Use `- [ ]` for actionable items
-- Use Obsidian callouts: `> [!note]`, `> [!tip]`, `> [!warning]`
 
 ## Guidelines
 - Preserve all meaningful information — don't drop content, just restructure

@@ -1,6 +1,6 @@
 ---
 name: weekly-review
-description: Generate a weekly review summary. Summarizes daily notes, creates a weekly note, archives dailies, and carries forward open tasks.
+description: "Generate a weekly summary, archive dailies, carry forward tasks. Triggers: \"wrap up the week\", \"weekly review\", \"weekly summary\". Destructive — archives daily notes after creating the summary. Use /review week for a read-only overview instead."
 argument-hint: "[week identifier, e.g. 'last week' or 'this week']"
 ---
 
@@ -20,42 +20,22 @@ Create a weekly summary from daily notes — same output as the automated housek
    - Open tasks (`- [ ]`)
    - Completed tasks (`- [x]`)
 
-4. **Create the weekly summary** — call `vault_create` with:
-   - `name`: `weekly/YYYY-Www` (e.g., `weekly/2026-W10`)
-   - `content`: Weekly note format with frontmatter (`type/weekly` tag), highlights, notes created, outstanding tasks, and per-day summaries
+4. **Check for existing weekly note** — call `vault_read` with `path: "weekly/YYYY-Www.md"`. If it already exists, confirm with the user before overwriting.
 
-5. **Archive daily notes** — for each daily note in the week, call `vault_move`:
+5. **Confirm before archiving** — tell the user: "Archiving N dailies, carrying forward N open tasks. Proceed?" Wait for confirmation.
+
+6. **Create the weekly summary** — call `vault_create` with:
+   - `name`: `weekly/YYYY-Www` (e.g., `weekly/2026-W10`)
+   - `content`: use the weekly note format defined in CLAUDE.md
+   - If overwriting an existing note, set `overwrite: true`
+
+7. **Archive daily notes** — for each daily note in the week, call `vault_move`:
    - `file`: the daily note name
    - `to`: `daily/archive/`
 
-6. **Carry forward open tasks** — any `- [ ]` items from the archived dailies should be appended to today's daily note using `vault_append` with `file: "daily/YYYY-MM-DD"`. If today's daily doesn't exist yet, create it first with `vault_create`.
+8. **Carry forward open tasks** — any `- [ ]` items from the archived dailies should be appended to today's daily note using `vault_append` with `file: "daily/YYYY-MM-DD"`. If today's daily doesn't exist yet, create it first with `vault_create`.
 
-7. **Link to projects** — if any project notes were referenced in the dailies, append a log entry to those project notes linking to the new weekly summary
-
-## Output Format
-
-```
----
-date: YYYY-MM-DD
-tags:
-  - type/weekly
----
-
-## Week YYYY-Www (Mon DD — Sun DD)
-
-### Highlights
-- Key accomplishments and decisions
-
-### Notes Created
-- [[Note Name]] — context
-
-### Outstanding
-- [ ] Tasks carrying forward
-
-### Daily Notes
-- [[YYYY-MM-DD]] (Mon) — one-line summary
-- [[YYYY-MM-DD]] (Tue) — one-line summary
-```
+9. **Link to projects** — if any project notes were referenced in the dailies, append a log entry to those project notes linking to the new weekly summary
 
 ## Guidelines
 - Only include what's actually in the vault — don't fabricate

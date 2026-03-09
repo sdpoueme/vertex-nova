@@ -1,6 +1,6 @@
 ---
 name: journal
-description: Add an end-of-day journal entry. Tidies voice input, adds wikilinks to related notes, and links from the daily note.
+description: "Add a journal entry — cleans up voice input, adds wikilinks, links from daily note. Triggers: \"journal\", \"end of day reflection\", \"write in my journal\". Creates notes/YYYY-MM-DD Journal — richer than /capture, meant for longer reflections."
 argument-hint: "<journal entry text>"
 ---
 
