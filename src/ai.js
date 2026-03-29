@@ -132,14 +132,47 @@ var tools = [
   },
   {
     name: 'echo_speak',
-    description: 'Make an Alexa Echo device speak text. Available devices: vertexnovaspeaker (default). Use this when the user asks to speak or announce on Echo/Alexa devices.',
+    description: 'Make an Alexa Echo device speak text via Voice Monkey. Available devices: vertexnovaspeaker (Echo Show kitchen), bureau-serge (Bureau Serge), garage (Garage). Use this when the user asks to speak or announce on Echo/Alexa devices.',
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to speak' },
-        device: { type: 'string', description: 'Voice Monkey device ID. Default: vertexnovaspeaker' }
+        device: { type: 'string', description: 'Voice Monkey device ID. Default: vertexnovaspeaker. Options: vertexnovaspeaker, bureau-serge, garage' }
       },
       required: ['text']
+    }
+  },
+  {
+    name: 'echo_speak_all',
+    description: 'Make ALL Echo devices speak the same text simultaneously.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text to speak on all Echo devices' }
+      },
+      required: ['text']
+    }
+  },
+  {
+    name: 'web_search',
+    description: 'Search the internet for current information. Use this when you do not know the answer, need current data (weather, news, prices, events), or need to verify facts.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'web_fetch',
+    description: 'Fetch the content of a specific web page URL. Use after web_search to get details from a result.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Full URL to fetch (https://)' }
+      },
+      required: ['url']
     }
   }
 ];
@@ -256,6 +289,70 @@ async function executeTool(name, input) {
     var vm = new VoiceMonkey(config);
     var success = await vm.speak(input.text, input.device);
     return success ? 'Annonce envoyée sur Echo: ' + input.text.slice(0, 100) : 'Erreur: impossible de parler sur Echo';
+  }
+
+  if (name === 'echo_speak_all') {
+    var { VoiceMonkey: VM } = await import('./outputs/voicemonkey.js');
+    var vmAll = new VM(config);
+    var devices = ['vertexnovaspeaker', 'bureau-serge', 'garage'];
+    var results = await vmAll.speakAll(input.text, devices);
+    var successCount = results.filter(function(r) { return r; }).length;
+    return 'Annonce envoyée sur ' + successCount + '/' + devices.length + ' appareils Echo';
+  }
+
+  // Web search
+  if (name === 'web_search') {
+    try {
+      var searchUrl = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(input.query);
+      var searchRes = await fetch(searchUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' },
+      });
+      if (!searchRes.ok) return 'Search failed: ' + searchRes.status;
+      var html = await searchRes.text();
+
+      // Extract results from DuckDuckGo HTML
+      var resultRegex = /<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+      var searchResults = [];
+      var m;
+      var count = 0;
+      while ((m = resultRegex.exec(html)) !== null && count < 5) {
+        searchResults.push({
+          url: m[1],
+          title: m[2].replace(/<[^>]+>/g, '').trim(),
+          snippet: m[3].replace(/<[^>]+>/g, '').trim(),
+        });
+        count++;
+      }
+
+      if (searchResults.length === 0) return 'No results found for: ' + input.query;
+      return searchResults.map(function(r, i) {
+        return (i + 1) + '. ' + r.title + '\n   ' + r.snippet + '\n   ' + r.url;
+      }).join('\n\n');
+    } catch (err) {
+      return 'Search error: ' + err.message;
+    }
+  }
+
+  // Web fetch
+  if (name === 'web_fetch') {
+    try {
+      var fetchRes = await fetch(input.url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!fetchRes.ok) return 'Fetch failed: ' + fetchRes.status;
+      var text = await fetchRes.text();
+      // Strip HTML tags and limit size
+      var clean = text.replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 3000);
+      return clean || 'Empty page';
+    } catch (err) {
+      return 'Fetch error: ' + err.message;
+    }
   }
 
   return 'Unknown tool: ' + name;
