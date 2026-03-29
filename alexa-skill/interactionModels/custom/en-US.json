@@ -1,0 +1,133 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "vertex nova",
+      "intents": [
+        {
+          "name": "HomeAssistantIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "ask about {query}",
+            "tell me about {query}",
+            "what about {query}",
+            "check on {query}",
+            "help me with {query}",
+            "I need help with {query}",
+            "can you check {query}",
+            "please handle {query}",
+            "look into {query}"
+          ]
+        },
+        {
+          "name": "HomeStatusIntent",
+          "slots": [],
+          "samples": [
+            "what's the status",
+            "home status",
+            "what's going on",
+            "what's on my plate",
+            "any updates",
+            "give me an overview",
+            "what do I need to know",
+            "anything I should know about"
+          ]
+        },
+        {
+          "name": "HomeEventIntent",
+          "slots": [
+            {
+              "name": "eventType",
+              "type": "HomeEventType"
+            }
+          ],
+          "samples": [
+            "log a {eventType}",
+            "report a {eventType}",
+            "there was a {eventType}",
+            "we had a {eventType}",
+            "record a {eventType}"
+          ]
+        },
+        {
+          "name": "HomeRecommendIntent",
+          "slots": [],
+          "samples": [
+            "give me recommendations",
+            "any recommendations",
+            "what should I do about the house",
+            "maintenance recommendations",
+            "what needs attention",
+            "anything overdue"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "HomeEventType",
+          "values": [
+            { "name": { "value": "power outage", "synonyms": ["blackout", "power failure", "power cut"] } },
+            { "name": { "value": "battery replacement", "synonyms": ["battery change", "new battery", "battery swap"] } },
+            { "name": { "value": "maintenance", "synonyms": ["repair", "service", "fix"] } },
+            { "name": { "value": "appliance issue", "synonyms": ["appliance problem", "broken appliance", "appliance failure"] } },
+            { "name": { "value": "plumbing issue", "synonyms": ["leak", "plumbing problem", "water issue", "pipe issue"] } },
+            { "name": { "value": "hvac issue", "synonyms": ["heating issue", "cooling issue", "air conditioning problem", "furnace problem"] } },
+            { "name": { "value": "security event", "synonyms": ["alarm", "security issue", "break in attempt"] } }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "intents": [
+        {
+          "name": "HomeEventIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "eventType",
+              "type": "HomeEventType",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": {
+                "elicitation": "Elicit.Slot.eventType"
+              }
+            }
+          ]
+        }
+      ],
+      "delegationStrategy": "ALWAYS"
+    },
+    "prompts": [
+      {
+        "id": "Elicit.Slot.eventType",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "What type of event? For example, power outage, maintenance, or battery replacement."
+          }
+        ]
+      }
+    ]
+  }
+}

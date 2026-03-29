@@ -1,0 +1,47 @@
+{
+  "manifest": {
+    "publishingInformation": {
+      "locales": {
+        "en-US": {
+          "summary": "Personal home assistant for managing your household",
+          "examplePhrases": [
+            "Alexa, ask home assistant what's on my plate today",
+            "Alexa, tell home assistant there was a power outage",
+            "Alexa, ask home assistant for maintenance recommendations"
+          ],
+          "name": "Home Assistant",
+          "description": "A personal home assistant that manages tasks, tracks maintenance events, monitors devices, and provides proactive recommendations for your household. Connected to your knowledge base for persistent memory."
+        },
+        "fr-CA": {
+          "summary": "Assistant personnel pour la gestion de votre maison",
+          "examplePhrases": [
+            "Alexa, demande à l'assistant maison ce que j'ai à faire aujourd'hui",
+            "Alexa, dis à l'assistant maison qu'il y a eu une panne de courant",
+            "Alexa, demande à l'assistant maison des recommandations d'entretien"
+          ],
+          "name": "Assistant Maison",
+          "description": "Un assistant personnel qui gère les tâches, suit les événements d'entretien, surveille les appareils et fournit des recommandations proactives pour votre maison."
+        }
+      },
+      "isAvailableWorldwide": false,
+      "testingInstructions": "This is a private skill for personal use.",
+      "category": "SMART_HOME"
+    },
+    "apis": {
+      "custom": {
+        "endpoint": {
+          "uri": "YOUR_LAMBDA_ARN_OR_HTTPS_ENDPOINT"
+        },
+        "interfaces": []
+      }
+    },
+    "manifestVersion": "1.0",
+    "privacyAndCompliance": {
+      "allowsPurchases": false,
+      "isExportCompliant": true,
+      "containsAds": false,
+      "isChildDirected": false,
+      "usesPersonalInfo": false
+    }
+  }
+}

@@ -7,3 +7,4 @@ node_modules/
 .claude/settings.local.json
 .claude/skills/
 agent.md
+.sonos-tokens.json

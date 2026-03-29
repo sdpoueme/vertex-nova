@@ -1,16 +1,15 @@
 {
-  "name": "synapse",
+  "name": "vertex-nova",
   "version": "1.0.0",
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node src/agent.js",
-    "dev": "node --watch src/agent.js",
-    "dev:debug": "LOG_LEVEL=debug node --watch src/agent.js",
-    "dev:warn": "LOG_LEVEL=warn node --watch src/agent.js",
-    "dev:log": "LOG_LEVEL=debug LOG_FILE=synapse.log node --watch src/agent.js"
+    "start": "node src/home-agent.js",
+    "dev": "node --watch src/home-agent.js",
+    "dev:debug": "LOG_LEVEL=debug node --watch src/home-agent.js",
+    "sonos:auth": "node scripts/sonos-auth.js"
   },
   "dependencies": {
-    "telegraf": "^4.16"
+    "telegraf": "^4.16.3"
   }
 }

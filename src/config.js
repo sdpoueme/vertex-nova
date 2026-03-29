@@ -1,3 +1,8 @@
+/**
+ * Config module — detects whether we're running as the home assistant or legacy Synapse agent.
+ * When HOME_AGENT=true or the entry point is home-agent.js, uses home-config.
+ * Otherwise falls back to the original Synapse config for backward compatibility.
+ */
 import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
@@ -11,7 +16,7 @@ function loadEnv() {
   try {
     text = readFileSync(envPath, 'utf8');
   } catch {
-    return; // no .env file, rely on process.env
+    return;
   }
   for (const line of text.split('\n')) {
     const trimmed = line.trim();
@@ -28,45 +33,62 @@ function loadEnv() {
 
 loadEnv();
 
-const required = ['BOT_TOKEN', 'ALLOWED_USER_IDS'];
-for (const key of required) {
-  if (!process.env[key] || process.env[key].startsWith('your-')) {
-    console.error(`Missing required env var: ${key}`);
+// Detect if running as home assistant
+const isHomeAgent = process.env.HOME_AGENT === 'true'
+  || process.argv[1]?.includes('home-agent');
+
+let config;
+
+if (isHomeAgent) {
+  // Re-export from home-config (already loaded env above, so home-config won't double-load)
+  const mod = await import('./home-config.js');
+  config = mod.config;
+  // Alias agentToken for backward compat with modules that use config.agentToken
+  if (!config.agentToken) config.agentToken = config.telegramToken;
+} else {
+  // Legacy Synapse config
+  const required = ['BOT_TOKEN', 'ALLOWED_USER_IDS'];
+  for (const key of required) {
+    if (!process.env[key] || process.env[key].startsWith('your-')) {
+      console.error(`Missing required env var: ${key}`);
+      process.exit(1);
+    }
+  }
+
+  const expiryRaw = process.env.SESSION_EXPIRY || 'daily';
+  const sessionExpiry = expiryRaw === 'daily' ? 'daily' : Number(expiryRaw);
+
+  const progressMode = (process.env.PROGRESS_MODE || 'off').toLowerCase();
+  if (!['off', 'standard', 'detailed'].includes(progressMode)) {
+    console.error(`Invalid PROGRESS_MODE: ${process.env.PROGRESS_MODE} (must be off|standard|detailed)`);
     process.exit(1);
   }
+
+  config = {
+    agentToken: process.env.BOT_TOKEN,
+    allowedUserIds: process.env.ALLOWED_USER_IDS.split(',').map(id => Number(id.trim())),
+    sessionExpiry,
+    claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 300_000,
+    projectDir: process.env.SYNAPSE_PROJECT_DIR
+      ? resolve(process.env.SYNAPSE_PROJECT_DIR)
+      : resolve(import.meta.dirname, '..'),
+    vaultPath: process.env.VAULT_PATH || null,
+    imageTempDir: process.env.IMAGE_TEMP_DIR || join(tmpdir(), 'telegram-second-brain'),
+    sttPath: process.env.STT_PATH || 'whisper-cli',
+    sttModel: process.env.STT_MODEL || '',
+    audioTempDir: process.env.AUDIO_TEMP_DIR || join(tmpdir(), 'synapse-audio'),
+    ttsPath: process.env.TTS_PATH || 'piper',
+    ttsModel: process.env.TTS_MODEL || '',
+    ttsVoiceThreshold: Number(process.env.TTS_VOICE_THRESHOLD) || 400,
+    progressMode,
+    queueDepth: Number(process.env.QUEUE_DEPTH) || 3,
+    apiPort: process.env.API_PORT ? Number(process.env.API_PORT) : null,
+    apiSecret: process.env.API_SECRET || null,
+    housekeepingEnabled: (process.env.HOUSEKEEPING_ENABLED || 'true').toLowerCase() === 'true',
+    housekeepingWeekly: process.env.HOUSEKEEPING_WEEKLY || 'sun:20:00',
+    housekeepingMonthly: process.env.HOUSEKEEPING_MONTHLY || '1:09:00',
+    housekeepingYearly: process.env.HOUSEKEEPING_YEARLY || '1-1:10:00',
+  };
 }
 
-const expiryRaw = process.env.SESSION_EXPIRY || 'daily';
-const sessionExpiry = expiryRaw === 'daily' ? 'daily' : Number(expiryRaw);
-
-const progressMode = (process.env.PROGRESS_MODE || 'off').toLowerCase();
-if (!['off', 'standard', 'detailed'].includes(progressMode)) {
-  console.error(`Invalid PROGRESS_MODE: ${process.env.PROGRESS_MODE} (must be off|standard|detailed)`);
-  process.exit(1);
-}
-
-export const config = {
-  agentToken: process.env.BOT_TOKEN,
-  allowedUserIds: process.env.ALLOWED_USER_IDS.split(',').map(id => Number(id.trim())),
-  sessionExpiry,
-  claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 300_000,
-  projectDir: process.env.SYNAPSE_PROJECT_DIR
-    ? resolve(process.env.SYNAPSE_PROJECT_DIR)
-    : resolve(import.meta.dirname, '..'),
-  vaultPath: process.env.VAULT_PATH || null,
-  imageTempDir: process.env.IMAGE_TEMP_DIR || join(tmpdir(), 'telegram-second-brain'),
-  sttPath: process.env.STT_PATH || 'whisper-cli',
-  sttModel: process.env.STT_MODEL || '',
-  audioTempDir: process.env.AUDIO_TEMP_DIR || join(tmpdir(), 'synapse-audio'),
-  ttsPath: process.env.TTS_PATH || 'piper',
-  ttsModel: process.env.TTS_MODEL || '',
-  ttsVoiceThreshold: Number(process.env.TTS_VOICE_THRESHOLD) || 400,
-  progressMode,
-  queueDepth: Number(process.env.QUEUE_DEPTH) || 3,
-  apiPort: process.env.API_PORT ? Number(process.env.API_PORT) : null,
-  apiSecret: process.env.API_SECRET || null,
-  housekeepingEnabled: (process.env.HOUSEKEEPING_ENABLED || 'true').toLowerCase() === 'true',
-  housekeepingWeekly: process.env.HOUSEKEEPING_WEEKLY || 'sun:20:00',
-  housekeepingMonthly: process.env.HOUSEKEEPING_MONTHLY || '1:09:00',
-  housekeepingYearly: process.env.HOUSEKEEPING_YEARLY || '1-1:10:00',
-};
+export { config };

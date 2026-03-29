@@ -1,607 +1,188 @@
-# Synapse
+# Vertex Nova
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-
-An extensible base agent you can build on.
-
-<table><tr>
-<td width="300">
-  <img src="assets/telegram.png" alt="Telegram" width="300"><br>
-  <img src="assets/claude.jpg" alt="Claude Code" width="300"><br>
-  <img src="assets/synapse.gif" alt="Synapse vault graph growing as notes are created and linked" width="300">
-</td>
-<td valign="top">
-
-Synapse is an extensible agent platform that combines four things into a simple but powerful base: **Claude Code** for AI reasoning, **a markdown vault** as a persistent memory layer (via 16 MCP tools), **Telegram** as a conversational interface, and **session management** that gives the agent continuity across messages. Together, these form a foundation that handles the hard parts — streaming, auth, message queuing, progress feedback, reconciliation — so you can focus on what your agent actually does.
-
-What makes each agent distinct is its **behavior layer**: an `agent.md` file that defines how the agent thinks, a set of skills that define what it can do, and optionally additional MCPs that extend its capabilities. Swap these out and you have a different agent backed by the same platform.
-
-Out of the box, Synapse ships as a **second brain** — a vault assistant you talk to from your phone that captures thoughts, searches your notes, manages tasks, files photos, and maintains your knowledge graph. But the architecture is designed for much more.
-
-</td>
-</tr></table>
+A personal home assistant that connects Telegram, WhatsApp, Sonos speakers, and a markdown vault into a single AI-powered system. Talk to your house via text, voice, or images — get intelligent responses and hear announcements on your Sonos speakers.
 
 ## How It Works
 
-```mermaid
-flowchart TB
-  U["👤 User"] <-->|message| A["📱 Telegram"]
-  X["🤖 Other Agent"] <-->|"POST /message"| I["🔌 HTTP API"]
-  A --> B[Telegraf Bot]
-  B -->|auth + queue| C[Session Lock]
-  I <-->|auth| C
-  C -->|"session ID"| D["claude -p"]
-  D -->|MCP calls| E[vault-mcp]
-  E -->|read/write| F["🗃️ Vault (.md files)"]
-  D -.->|stream events| G[Progress Reporter]
-  G -.->|edit status msg| A
-  D -->|response| H[Formatter]
-  H -->|reply| A
+```
+Telegram / WhatsApp (text, voice, images)
+              │
+              ▼
+        Model Router ──── config/routing.yaml
+         ┌────┴────┐
+         │         │
+    Claude API   Ollama (local)
+    (reasoning,  (casual chat,
+     tools,       data analysis)
+     vision)
+         │
+    Tool calls
+    ┌────┴────┐
+    │         │
+ Sonos CLI   Vault
+ (speakers)  (knowledge base)
 ```
 
-Sessions persist throughout the day (or a configurable window), so Claude remembers earlier messages. When a session expires, Claude does a final reconciliation pass — reviewing the conversation, capturing anything missed, and appending a summary to your daily note.
+Messages arrive via Telegram or WhatsApp. Voice messages are transcribed locally with whisper.cpp. Images are analyzed by Claude's vision. The model router decides whether to use Claude (deep reasoning, tool use, vision) or Ollama/Mistral (casual chat, simple queries) based on configurable YAML rules. Responses go back to the originating channel, and Sonos speakers can announce throughout the house.
 
-## Building on Synapse
+## Features
 
-Synapse provides the runtime. Your agent provides the brain.
+- **Telegram** — text, voice messages, and image analysis
+- **WhatsApp** — text and voice messages (configurable)
+- **Sonos TTS** — speak on any speaker via official Sonos Cloud API + local Piper TTS
+- **Voice transcription** — whisper.cpp, auto-detects French/English
+- **Image analysis** — Claude vision for photos sent via Telegram
+- **Smart model routing** — Claude for reasoning/tools, Ollama for casual/data tasks
+- **Ollama fallback** — automatic switch to local model if Claude API is unavailable
+- **Knowledge base** — markdown vault for home topology, devices, events, tasks
+- **User identity** — knows who's talking, remembers language preference
+- **Night mode** — Sonos guardrail redirects ground floor to basement after 10 PM
+- **Session memory** — conversations persist throughout the day
+- **Bilingual** — French and English, auto-detects from user input
 
-The behavior layer is:
-
-- **`agent.md`** — your agent's identity. How the agent interprets messages, what domain knowledge it brings, what personality it has. Loaded at runtime via `--append-system-prompt`.
-- **`.claude/skills/`** — the command set. Platform skills are symlinked in automatically; add your own domain-specific skills alongside them.
-- **Additional MCPs** — extend the agent's capabilities beyond the vault (a fitness API, a calendar service, GitHub integration — whatever it needs).
-
-The platform layer (don't modify) is:
-
-- **`CLAUDE.md`** — MCP tool definitions, vault conventions, response formatting rules, and tool patterns. Updated by upstream.
-- **`skills/`** — platform skills (capture, find, log, etc.). Symlinked into `.claude/skills/` at startup.
-- **`src/`** — the runtime (Telegram, sessions, Claude invocation, progress, etc.).
-
-```mermaid
-flowchart TB
-  subgraph Behavior["Behavior layer (customize this)"]
-    A[agent.md — agent identity + domain logic]
-    B[.claude/skills/ — domain commands]
-    C[Additional MCPs — extend capabilities]
-  end
-  subgraph Synapse["Synapse platform (keep this)"]
-    D[CLAUDE.md — MCP tools, conventions, formatting]
-    E[Telegram — auth, commands, queue]
-    F[Claude Code — AI reasoning + streaming]
-    G[Obsidian — persistent memory via MCP]
-    H[Sessions — daily lifecycle + reconciliation]
-    I[Progress — real-time feedback]
-  end
-  Behavior --> Synapse
-```
-
-### Creating Your Own Agent
-
-The recommended way to build on Synapse is as a **separate project** that consumes Synapse as a git submodule. Your agent is its own repo — Synapse is infrastructure. No need to clone Synapse first — the script adds it as a submodule automatically.
-
-```bash
-bash <(curl -sL https://raw.githubusercontent.com/jason-c-dev/synapse/main/scripts/create-agent.sh) my-agent
-```
-
-Or if you already have Synapse cloned locally:
-
-```bash
-bash synapse/scripts/create-agent.sh my-agent
-```
-
-This creates a project like:
+## Architecture
 
 ```
-my-agent/                           # Your git repo
-├── agent.md                        # Your agent's identity (edit this)
-├── CLAUDE.md -> synapse/CLAUDE.md  # Platform instructions (symlink)
-├── .claude/skills/
-│   ├── capture -> ../../synapse/skills/capture   # Platform skill (symlink)
-│   ├── find -> ../../synapse/skills/find
-│   ├── ...
-│   └── workout/                    # Your custom skill (real dir)
-│       └── SKILL.md
-├── .env                            # Config + secrets (gitignored)
-├── .env.example
-├── package.json                    # Start scripts
-└── synapse/                        # Git submodule (platform)
-    ├── src/
-    ├── skills/
-    ├── CLAUDE.md
-    └── ...
+src/
+├── home-agent.js          # Main entry point
+├── ai.js                  # Claude API + Ollama + tool execution
+├── model-router.js        # YAML-based model routing
+├── home-config.js         # Configuration from .env
+├── tts-server.js          # Local HTTP server for Sonos TTS audio
+├── channels/
+│   ├── telegram.js        # Telegram bot (text, voice, images)
+│   └── whatsapp.js        # WhatsApp Business Cloud API
+├── outputs/
+│   ├── router.js          # Output routing
+│   ├── sonos.js           # Sonos Cloud API client
+│   └── alexa-devices.js   # Alexa device output (future)
+└── log.js                 # Leveled logger
+
+config/
+└── routing.yaml           # AI model routing rules
+
+scripts/
+├── sonos-auth.js          # Sonos OAuth flow
+├── sonos-cli.js           # Sonos CLI (used by AI tool calls)
+└── test-whatsapp.js       # WhatsApp webhook test
+
+skills/                    # AI skill definitions
+├── home-event/            # Log home events
+├── home-status/           # Home overview
+├── home-recommend/        # Proactive recommendations
+└── home-device/           # Device inventory
+
+vault/                     # Knowledge base
+├── home/
+│   ├── topology/          # Rooms, floors, layout
+│   ├── devices/           # Device inventory
+│   ├── events/            # Home event log
+│   ├── tasks/             # Scheduled tasks
+│   └── recommendations/   # AI-generated insights
+├── daily/                 # Daily notes
+├── people/                # User profiles + contacts
+└── notes/                 # General notes
+
+alexa-skill/               # Alexa integration (pending Alexa+ SDK)
 ```
-
-Then:
-
-1. Edit `agent.md` — define your agent's identity and domain logic
-2. `cp .env.example .env` — add your bot token, vault path, etc.
-3. Add custom skills in `.claude/skills/` (real directories, not symlinks)
-4. `npm start`
-
-To update the platform: `cd synapse && git pull && npm install`. Your agent files are untouched.
-
-### What Goes Where
-
-- **Your agent repo** owns: `agent.md`, custom skills, custom MCPs, `.env`, `.sessions/`, `package.json`
-- **Synapse submodule** owns: `src/`, `skills/`, `CLAUDE.md`, `obsidian-mcp/`
-- Platform skills are symlinked from `synapse/skills/` into your `.claude/skills/` — the scaffold script sets this up, and Synapse auto-links any missing ones at startup
-
-### Examples
-
-- A **fitness tracker** — agent.md for workout logging conventions, skills for `/workout` and `/progress`, a fitness API MCP
-- A **recipe assistant** — agent.md for recipe formatting, skills for `/recipe` and `/meal-plan`
-- A **project manager** — agent.md for project tracking, skills for `/sprint` and `/standup`, GitHub MCP for issue integration
-- A **reading log** — agent.md for book note conventions, skills for `/reading` and `/review`
-
-## The Default Agent: Second Brain
-
-The bundled `agent.example.md` and skills turn Synapse into a conversational interface to your Obsidian vault. Claude doesn't just search your notes — it **writes to them**. It creates notes, appends to your daily log, extracts action items, links related ideas, and maintains your knowledge graph with the same conventions you use. It's not a viewer, it's a collaborator.
-
-And because it runs on your machine through Claude Code, there's no middleware — no extra SaaS layer, no third-party database, no additional cloud service sitting between you and your notes. Your vault, your agent, your Claude account.
-
-Send messages to your agent on Telegram:
-
-- **"what's on my plate today?"** — reads your daily note and outstanding tasks
-- **"capture: interesting idea about X"** — appends a timestamped entry to today's daily note
-- **"find: session management"** — deep search across your vault
-- **"log: finished the review"** — quick timestamped log entry
-- **"note: Meeting Notes — discussed project timeline"** — creates a new structured note
-- **Send a photo** with a caption — Claude sees the image, saves it to your vault, and files it into the right note
-- **Send a file** (PDF, document, etc.) with a caption — saved to your vault and filed into the right note
-- **Send a voice message** — transcribed locally via whisper.cpp, then processed as text
-- **Free-form text** — Claude uses judgment to search, capture, or act
-
-### Agent Commands
-
-- `/reset` — flush the current session (reconcile + capture missed items) and start fresh
-- `/status` — show current session info (ID, message count, last activity)
-
-## Quick Start
-
-Have [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed? Run the setup wizard:
-
-```bash
-bash -c "$(curl -sL https://raw.githubusercontent.com/jason-c-dev/synapse/main/install.sh)"
-```
-
-The wizard detects your environment, installs dependencies, and walks you through configuration interactively. Safe to re-run for repairs and updates.
-
-Already cloned the repo? Run it locally:
-
-```bash
-claude "$(cat setup.md)"
-```
-
-For manual setup, see [Prerequisites](#prerequisites) below.
-
-## Prerequisites
-
-**Native install:**
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
-- [Vault MCP Server](https://github.com/jason-c-dev/obsidian-mcp) configured in your Claude Code project settings
-- Node.js 20+
-- A Telegram bot token (from [@BotFather](https://t.me/BotFather))
-- Your Telegram user ID (from [@userinfobot](https://t.me/userinfobot))
-- [whisper.cpp](https://github.com/ggerganov/whisper.cpp) + ffmpeg (optional, for voice messages) — `brew install whisper-cpp ffmpeg`
-- [pipx](https://pipx.pypa.io/) (optional, for Piper TTS) — `brew install pipx` (macOS) or `apt install pipx` (Linux)
-- [Piper TTS](https://github.com/rhasspy/piper) (optional, for voice replies) — `pipx install piper-tts`
-
-**Docker:** Docker + an `ANTHROPIC_API_KEY`. See [Docker Deployment](#docker-deployment).
-
-## Telegram Setup
-
-Before you can run the agent, you need a Telegram bot token and your user ID.
-
-### Creating a Bot
-
-1. Open Telegram and search for [@BotFather](https://t.me/BotFather) (the official Telegram tool for creating bots)
-2. Send `/newbot`
-3. Choose a display name (e.g. "Synapse")
-4. Choose a username — must end in `bot` (e.g. `my_vault_bot`)
-5. BotFather will reply with an API token — copy this for `BOT_TOKEN`
-
-For more details, see the [Telegram Bot API documentation](https://core.telegram.org/bots#how-do-i-create-a-bot).
-
-### Getting Your User ID
-
-The agent is locked to specific Telegram user IDs so only you can use it. To find yours:
-
-1. Open Telegram and search for [@userinfobot](https://t.me/userinfobot)
-2. Send it any message
-3. It replies with your numeric user ID — copy this for `ALLOWED_USER_IDS`
-
-You can add multiple user IDs as a comma-separated list if you want to allow others access.
 
 ## Setup
 
-> **Building your own agent?** See [Creating Your Own Agent](#creating-your-own-agent) above for the recommended submodule approach. The steps below are for running Synapse standalone with the default agent.
+### Prerequisites
 
-1. Clone the repo:
-   ```bash
-   git clone https://github.com/jason-c-dev/synapse.git
-   cd synapse
-   ```
+- Node.js 20+
+- ffmpeg (`brew install ffmpeg`)
+- Piper TTS (`pipx install piper-tts && pipx inject piper-tts pathvalidate`)
+- whisper.cpp (`brew install whisper-cpp`)
+- Ollama (`brew install ollama && brew services start ollama && ollama pull mistral`)
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Copy the example env and agent template:
-   ```bash
-   cp .env.example .env
-   cp agent.example.md agent.md   # customize your agent's identity
-   ```
-
-4. Verify Claude can reach your vault:
-   ```bash
-   claude -p "read today's daily note" --output-format json --dangerously-skip-permissions
-   ```
-
-5. Start the agent:
-   ```bash
-   npm start
-   ```
-
-   Or with auto-reload during development:
-   ```bash
-   npm run dev
-   ```
-
-   For verbose output while debugging:
-   ```bash
-   npm run dev:debug
-   ```
-
-   To write debug logs to a file (useful with `tail -f synapse.log`):
-   ```bash
-   npm run dev:log
-   ```
-
-## Configuration
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `SYNAPSE_PROJECT_DIR` | No | Synapse dir | Path to the agent project directory. Set this when running Synapse as a submodule so it reads `agent.md`, `.env`, and sessions from your agent project instead of its own directory. Must be set in the shell environment (not `.env`) |
-| `BOT_TOKEN` | Yes | — | Telegram bot token from BotFather |
-| `ALLOWED_USER_IDS` | Yes | — | Comma-separated Telegram user IDs allowed to use the agent |
-| `SESSION_EXPIRY` | No | `daily` | `"daily"` for day-based sessions, or a number for minutes |
-| `CLAUDE_TIMEOUT` | No | `300000` | Max milliseconds to wait for Claude to respond |
-| `VAULT_PATH` | For images | — | Absolute path to your vault directory. Required for photo and file attachment support |
-| `ANTHROPIC_API_KEY` | Docker only | — | Anthropic API key. Required for Docker deployment (native installs use Claude Code login) |
-| `IMAGE_TEMP_DIR` | No | OS temp dir | Directory for temporary image files passed to Claude for analysis |
-| `PROGRESS_MODE` | No | `off` | Progress feedback during Claude processing: `off` (typing indicator only), `standard` (acknowledgment + generic activity labels), `detailed` (tool names, inputs, and cost summary) |
-| `QUEUE_DEPTH` | No | `3` | Maximum queued messages per user. Messages beyond this limit are rejected |
-| `LOG_LEVEL` | No | `info` | Logging verbosity: `error`, `warn`, `info`, or `debug` |
-| `STT_PATH` | No | `whisper-cli` | Path to whisper.cpp binary for voice transcription |
-| `STT_MODEL` | For voice | — | Path to GGML model file. Required to enable voice message support |
-| `AUDIO_TEMP_DIR` | No | OS temp dir | Directory for temporary audio files during transcription |
-| `TTS_PATH` | No | `piper` | Path to Piper TTS binary |
-| `TTS_MODEL` | For voice replies | — | Path to Piper ONNX model. Enables voice memo replies |
-| `TTS_VOICE_THRESHOLD` | No | `400` | Max chars for voice-only reply (longer gets voice + text) |
-| `API_PORT` | No | — | HTTP API port. Enables the API when set (binds to 127.0.0.1 only) |
-| `API_SECRET` | If API_PORT set | — | Bearer token for API authentication. Required when API is enabled |
-| `LOG_FILE` | No | — | Path to a log file. When set, all output is appended here in addition to the console |
-
-## Session Management
-
-Sessions give Claude conversational memory across messages:
-
-- **First message of the day** starts a new session
-- **Subsequent messages** resume the same session, so Claude remembers context
-- **Session expiry** triggers a reconciliation pass where Claude reviews the conversation, captures anything missed, and writes a summary to your daily note
-- **`/reset`** manually triggers a flush and starts a new session
-
-```mermaid
-stateDiagram-v2
-  [*] --> New: first message of day
-  New --> Active: session created
-  Active --> Active: subsequent messages
-  Active --> Flush: day ends or /reset
-  Flush --> [*]: reconciliation complete
-  note right of Flush: Claude reviews conversation, captures missed items, writes daily summary
-```
-
-## HTTP API
-
-Synapse exposes an optional HTTP API for agent-to-agent messaging. API requests share the same Claude session as Telegram, so callers get full conversational context. A session-level lock serializes all Claude invocations regardless of source.
-
-### Configuration
-
-Add to `.env`:
-
-```
-API_PORT=3000
-API_SECRET=your-secret-token-here
-```
-
-The API binds to `127.0.0.1` only. Both variables are required — if `API_PORT` is set without `API_SECRET`, the API refuses to start (Telegram still works).
-
-### Endpoints
-
-**`GET /health`** — no auth required
+### 1. Install
 
 ```bash
-curl http://localhost:3000/health
-# {"status":"ok"}
+git clone <repo-url> vertex-nova && cd vertex-nova
+git submodule update --init --recursive
+cd obsidian-mcp && npm install && npm run build && cd ..
+npm install
 ```
 
-**`POST /message`** — send a message to Claude
+### 2. Sonos Authorization
 
 ```bash
-curl -X POST http://localhost:3000/message \
-  -H "Authorization: Bearer your-secret-token-here" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "what tasks are outstanding?"}'
-# {"response":"Here are your outstanding tasks..."}
+node scripts/sonos-auth.js
 ```
 
-### Errors
-
-```
-401  Bad or missing Authorization header
-400  Invalid JSON, missing "message" field, or message too long (>50K chars)
-500  Claude invocation failed
-```
-
-### Notes
-
-- Responses are raw markdown (no Telegram formatting applied)
-- Requests block until Claude responds — the server timeout accommodates the configured `CLAUDE_TIMEOUT`
-- If a Telegram message is processing, the API request queues behind it (and vice versa) via the session lock
-- Body size limit: 100KB
-
-## Attachments
-
-Photos and documents follow the same dual-write pattern: the file is saved to the vault for permanent storage, and a temp copy is passed to Claude via `--add-dir` so it can see the file during processing. Claude handles the caption as a normal message with the attachment available for analysis.
-
-```mermaid
-flowchart TB
-  A["📱 Telegram photo or file + caption"] -->|"getFile API"| B{Document?}
-  B -->|Yes| SC{Size <= 20MB?}
-  SC -->|No| X2["Reply: use cloud link"]
-  SC -->|Yes| C
-  B -->|No| C{VAULT_PATH set?}
-  C -->|No| X["Reply: set VAULT_PATH"]
-  C -->|Yes| D["Save to vault/attachments/"]
-  D --> E["Save temp copy to IMAGE_TEMP_DIR"]
-  E --> F["Build prompt with ![[filename]]"]
-  F --> G["processOrQueue(ctx, prompt, {addDirs})"]
-  G --> H["claude -p --add-dir IMAGE_TEMP_DIR"]
-  H -->|"Claude sees file + prompt"| I["MCP: vault_append / vault_create"]
-  I --> J["Reply to user"]
-  H -.->|"onComplete callback"| K["Delete temp file"]
-```
-
-**Photos** are compressed by Telegram before delivery. The agent generates a random filename (`telegram-YYYY-MM-DD-abcd1234.jpg`) since Telegram doesn't provide the original name. Claude can see and analyze the image content.
-
-**Documents** (PDFs, spreadsheets, etc.) preserve the original filename with a date prefix (`2026-03-06-report.pdf`). A 20MB size check enforces the Telegram Bot API download limit — oversized files get a reply suggesting a cloud link instead. Claude can't see document contents visually but can reference the embed in notes.
-
-Why not use the MCP server's `vault_attachment` tool and let Claude handle everything? Because that would require base64-encoding the file into Claude's prompt, bloating context with kilobytes of encoded data on every attachment. Instead, the agent saves the file directly to the vault and passes a temp copy via `--add-dir` so Claude can see it without the base64 overhead. Claude gets the content, the vault gets the file, and the context window stays clean.
-
-The temp copy exists only for the duration of Claude's processing. The `onComplete` callback in `processOrQueue` deletes it after Claude responds, so `IMAGE_TEMP_DIR` stays clean. The vault copy is permanent.
-
-## Voice Handling
-
-Voice messages are transcribed locally, then the text feeds into the same message pipeline as typed text. There's no special routing — Claude handles intent detection the same way for voice and text.
-
-```mermaid
-flowchart TB
-  A["🎤 Telegram voice message"] --> B{STT_MODEL set?}
-  B -->|No| X["Reply: set STT_MODEL"]
-  B -->|Yes| C["Download OGG Opus from Telegram"]
-  C --> S["Send 'Transcribing audio...' + typing indicator"]
-  S --> D["transcribe.js"]
-
-  subgraph D["transcribe(buffer, config)"]
-    direction TB
-    E["Write OGG to temp file"] --> F["ffmpeg: OGG → 16kHz mono WAV"]
-    F --> G["whisper.cpp: WAV → text"]
-    G --> H["Clean up temp files"]
-  end
-
-  D --> T["Delete status message"]
-  T --> I["Reply with transcription (italic)"]
-  I --> J["processOrQueue(ctx, '[Voice transcription] text')"]
-  J --> K["claude -p — same pipeline as typed text"]
-  K --> M{TTS_MODEL set?}
-  M -->|No| L["Reply with text"]
-  M -->|Yes| N["stripForSpeech + truncate"]
-  N --> O["tts.js"]
-
-  subgraph O["synthesize(text, config)"]
-    direction TB
-    P["piper: text → WAV"] --> Q["ffmpeg: WAV → OGG Opus"]
-  end
-
-  O --> R["replyWithVoice (voice memo)"]
-  R --> S2{Response > 400 chars?}
-  S2 -->|No| Done["Done (voice only)"]
-  S2 -->|Yes| L
-```
-
-The transcription pipeline in `src/transcribe.js` is backend-agnostic. The public interface is `transcribe(buffer, config) → string`. Internally, it handles format conversion (OGG Opus → WAV) and temp file lifecycle regardless of which STT engine runs. The whisper.cpp backend is one function — to add sherpa-onnx or another engine, add a new backend function and a config key to select it.
-
-Voice is opt-in: if `STT_MODEL` is not set, the agent works normally for text and photos and replies with setup instructions on voice messages. At startup, `checkTranscriptionDeps()` logs whether voice is enabled and warns about missing dependencies (ffmpeg, whisper binary, model file) without blocking the agent from starting.
-
-When TTS is enabled (`TTS_MODEL` set), the agent replies to voice messages with voice memos. Short responses (<=400 chars of stripped text) are sent as voice only — the audio is the full reply. Longer responses get a spoken summary of the first paragraph followed by the full text. This keeps the conversational feel of voice without losing detail on rich responses. If TTS fails for any reason, the agent falls back to text silently.
-
-### Enabling Voice
-
-Voice requires [whisper.cpp](https://github.com/ggerganov/whisper.cpp) and ffmpeg. On macOS:
+### 3. Configure
 
 ```bash
-brew install whisper-cpp ffmpeg
+cp .env.home.example .env
+# Edit .env with your credentials
 ```
 
-Download a model (~150MB):
+### 4. Run
 
 ```bash
-mkdir -p /opt/homebrew/share/whisper-cpp/models
-curl -L --progress-bar -o /opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+npm start
 ```
 
-Add to `.env` and restart:
+## Channel Configuration
 
-```
-STT_MODEL=/opt/homebrew/share/whisper-cpp/models/ggml-base.en.bin
-# STT_PATH=whisper-cli  # default works for Homebrew
-```
-
-The agent logs voice status at startup. Send a voice message to test — you'll see the transcription in italics before Claude responds.
-
-### Enabling Voice Replies
-
-Voice replies use [Piper TTS](https://github.com/rhasspy/piper) for neural text-to-speech. Install Piper:
+Enable channels in `.env`:
 
 ```bash
-pipx install piper-tts
-pipx inject piper-tts pathvalidate   # missing upstream dependency
+# Telegram (default)
+TELEGRAM_ENABLED=true
+TELEGRAM_BOT_TOKEN=your-token-from-botfather
+TELEGRAM_ALLOWED_USER_IDS=your-numeric-id
+
+# WhatsApp (optional, requires Meta Business + tunnel)
+WHATSAPP_ENABLED=false
+WHATSAPP_TOKEN=your-meta-token
+WHATSAPP_PHONE_ID=your-phone-id
+WHATSAPP_VERIFY_TOKEN=vertex-nova-whatsapp
 ```
 
-Download a voice model — preview voices at [piper.ttstool.com](https://piper.ttstool.com):
+## Model Routing
 
-```bash
-mkdir -p ~/.piper/models
-curl -L -o ~/.piper/models/en_US-amy-medium.onnx \
-  'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx'
-curl -L -o ~/.piper/models/en_US-amy-medium.onnx.json \
-  'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json'
+Edit `config/routing.yaml` to control which AI model handles which messages:
+
+```yaml
+routes:
+  - name: sonos-control
+    patterns: ["sonos", "speaker", "annonce"]
+    model: claude          # needs tool use
+
+  - name: casual-chat
+    patterns: ["bonjour", "merci", "salut"]
+    model: ollama          # fast, free, local
+
+default:
+  model: claude            # unmatched → Claude
 ```
 
-Add to `.env` and restart:
+Images always go to Claude (vision). Ollama is automatic fallback if Claude API is down.
 
-```
-TTS_MODEL=~/.piper/models/en_US-amy-medium.onnx
-```
+## AI Tools
 
-## Vault Engine
+| Tool | Description |
+|------|-------------|
+| `sonos_speak` | TTS on a specific Sonos speaker |
+| `sonos_speak_all` | TTS on all speakers |
+| `sonos_chime` | Play notification chime |
+| `sonos_volume` | Set speaker volume |
+| `sonos_rooms` | List available speakers |
+| `vault_read` | Read a note from the vault |
+| `vault_search` | Search across all notes |
+| `vault_create` | Create a new note |
+| `vault_append` | Append to an existing note |
+| `vault_list` | List files in a folder |
 
-Synapse includes a filesystem-native vault engine ([obsidian-mcp](https://github.com/jason-c-dev/obsidian-mcp)) that implements Obsidian's conventions — wikilinks, daily notes, YAML frontmatter, tags, tasks, backlinks — directly on standard markdown files. It requires no Obsidian installation and runs anywhere Node.js runs: macOS, Linux, Docker, headless servers.
+## Night Mode
 
-**Why not use Obsidian's own CLI or REST API?** A core design goal of Synapse is cloud deployability — running as a container on AWS, a VPS, or any headless server. Obsidian's CLI requires the desktop app to be running, and community MCP servers use the Local REST API plugin, which has the same dependency. Neither works in a headless environment. Since an Obsidian vault is just a folder of markdown files with well-defined conventions, the vault engine operates on them directly via Node.js `fs` — no GUI app, no IPC, no plugins.
+10 PM – 7 AM: Sonos commands targeting "Rez de Chaussee" are automatically redirected to "Sous-sol". Enforced at three levels: AI prompt, tool execution, and CLI guardrail.
 
-The vault folder is **fully Obsidian-compatible**. On a desktop environment, open the same folder in Obsidian and all notes, links, and metadata work as expected. The engine reads Obsidian's configuration (daily note folder, etc.) when present but operates independently. You get the best of both worlds: a rich desktop editor when you want it, and a headless agent that works without it.
+## Future
 
-`OBSIDIAN_VAULT` is set to the **filesystem path** of your vault directory (e.g., `/Users/you/my-vault` or `/vault` in Docker).
-
-## Docker Deployment
-
-Synapse can run as a self-contained Docker container — no Obsidian desktop app, no Claude Code login, no GUI of any kind. Just an API key, a vault directory, and a Telegram bot token.
-
-```mermaid
-flowchart TB
-  subgraph Docker["Docker container"]
-    A[Synapse bot\nNode.js + Telegraf] -->|spawns| B["claude -p\n(Claude Code CLI)"]
-    B -->|MCP stdio| C[vault-mcp\nfilesystem engine]
-    C -->|read/write| D["/vault/*.md"]
-  end
-  U["👤 User"] <-->|Telegram| A
-  B <-->|API| CL["☁️ Anthropic API"]
-  V["📁 Host vault folder\nor cloud volume"] -.-|bind mount| D
-
-  style Docker fill:#f8f9fa,stroke:#333
-```
-
-The vault is bind-mounted from the host — on macOS it can be your existing Obsidian folder (synced via iCloud), on AWS it can be an EBS or EFS volume. The container itself is stateless beyond session data.
-
-### Quick start
-
-```bash
-# Clone with submodule
-git clone --recurse-submodules https://github.com/jason-c-dev/synapse.git
-cd synapse
-
-# Configure
-cp .env.example .env
-# Edit .env: set BOT_TOKEN, ALLOWED_USER_IDS, ANTHROPIC_API_KEY
-
-# Run (VAULT_PATH points to your vault on the host)
-VAULT_PATH=~/my-vault docker compose up -d
-```
-
-### Volumes
-
-- `/vault` — your markdown vault (bind mount from host)
-- `.sessions` — Synapse session state (named volume)
-- `~/.claude` — Claude Code sessions/cache (named volume)
-
-### Requirements
-
-- `ANTHROPIC_API_KEY` in `.env` (Docker can't use native Claude Code login)
-- A vault directory on the host (or an EBS/EFS volume on AWS)
-
-## Project Structure
-
-```
-├── CLAUDE.md            # Platform: MCP tools, vault conventions, formatting rules
-├── agent.example.md     # Example agent identity (copy to agent.md to customize)
-├── .env.example         # Environment variable template
-├── package.json         # ESM, single dependency (telegraf)
-├── Dockerfile           # Container build (Node.js + Claude CLI + vault-mcp)
-├── docker-compose.yml   # Container orchestration with vault volume
-├── obsidian-mcp/        # Git submodule: filesystem vault engine (16 MCP tools)
-├── skills/              # Platform skill definitions (symlinked into .claude/skills/ at startup)
-│   ├── capture/
-│   ├── find/
-│   ├── log/
-│   └── ...
-├── scripts/
-│   └── create-agent.sh  # Scaffold a new agent project
-├── src/
-│   ├── agent.js         # Entry point: Telegraf, auth, commands, message handler
-│   ├── api.js           # HTTP API server for agent-to-agent messaging
-│   ├── claude.js        # Spawns claude -p with session management flags
-│   ├── session.js       # Session lifecycle: create, resume, expire, flush, lock
-│   ├── setup-skills.js  # Symlinks platform skills into .claude/skills/ at startup
-│   ├── transcribe.js    # Speech-to-text pipeline (pluggable, default: whisper.cpp)
-│   ├── tts.js           # Text-to-speech pipeline (Piper TTS → OGG Opus)
-│   ├── config.js        # Env loading and validation (supports SYNAPSE_PROJECT_DIR)
-│   ├── format.js        # Obsidian markdown → Telegram formatting, message splitting
-│   ├── progress.js      # Progress reporting: status messages, throttled edits, mode-aware formatting
-│   ├── queue.js         # Per-user message queue with depth limits
-│   └── log.js           # Leveled logger (error/warn/info/debug)
-└── .claude/
-    └── skills/          # Runtime skill location (gitignored, auto-populated by symlinks)
-```
-
-## Why `claude -p` and Not the Agent SDK
-
-Synapse uses `claude -p` (Claude Code's prompt mode) rather than the Anthropic Agent SDK. Telegram is just the transport layer — each message is passed to Claude as if you were talking to it directly, with session flags for conversational memory.
-
-This is a deliberate choice:
-
-- **Fixed cost** — runs on Anthropic's Max plan (flat monthly fee), no per-token API charges. For personal use, this is significantly cheaper than the API
-- **No API key required** — Claude Code authenticates via your subscription, not an API key
-- **Terms-compliant** — stays on the right side of Anthropic's acceptable use for personal, non-commercial automation via Claude Code
-- **Good enough for async chat** — response latency is acceptable for a Telegram agent where you're not expecting sub-second replies
-
-**Roadmap: Agent SDK support.** For business and commercial use cases, a future version will support the Anthropic Agent SDK as an alternative invocation backend. This would provide faster responses through long-running sessions and streaming, but at higher cost (per-token API pricing). The invocation layer is largely isolated in `claude.js`, though session management (`session.js`) is currently coupled to `claude -p`'s CLI session model and would also need adapting.
-
-## Design Decisions
-
-- **Plain JavaScript, ESM, no build step** — simple wrapper, fast iteration
-- **Single dependency** (Telegraf) — .env is parsed manually in config.js, no dotenv package, no TypeScript, no framework
-- **Long polling** — personal agent running locally, no public URL needed for webhooks
-- **`claude -p` over Agent SDK** — fixed-cost Max plan for personal use; Agent SDK on the roadmap for commercial deployments (see above)
-- **`--dangerously-skip-permissions`** — required for non-interactive MCP tool use in `claude -p` mode
-- **Legacy Markdown** for Telegram — MarkdownV2 requires escaping 18 special characters; legacy mode is forgiving enough for this use case
-- **Vault is the database** — no SQLite, no Redis. Session state is one small JSON file; all real data lives in Obsidian
-- **Configurable progress updates** — three modes (`off`/`standard`/`detailed`) control how much feedback the user sees during Claude processing. `off` preserves silent behavior for derived agents targeting non-technical users. `detailed` streams tool call names and inputs for power users. Progress uses a single editable Telegram message (send once, edit in place) to avoid chat clutter, with throttled edits (~1/second) to respect Telegram rate limits
-- **Session lock** — a promise-chain lock serializes all Claude invocations regardless of source (Telegram or API). The per-user Telegram queue remains for UX (acknowledgment messages) but the lock ensures only one `runClaude` process runs at a time
-- **Per-user message queue** — instead of rejecting messages while processing, queues them (up to `QUEUE_DEPTH`) and processes sequentially. Different users can process concurrently
-- **Voice transcription is pluggable** — `src/transcribe.js` defines a `transcribe(buffer, config)` interface with whisper.cpp as the default backend. Alternative engines (sherpa-onnx, etc.) can be added without touching the agent layer. Transcribed text feeds into the same message pipeline as typed text — no special routing
-- **Voice replies are length-aware** — when the user sends a voice memo and TTS is enabled, short responses (<=400 chars) are returned as voice only. Longer responses get a spoken summary of the first paragraph plus the full text. The agent decides based on response length, not Claude — no extra API call needed
-- **Separate project architecture** — agent developers work in their own git repo with Synapse as a submodule. `SYNAPSE_PROJECT_DIR` tells Synapse to read `agent.md`, `.env`, and sessions from the agent's directory. Platform skills are symlinked from `synapse/skills/` into `.claude/skills/` at startup. This keeps agent code and platform code in separate repos with independent version control
-- **Attachments bypass Claude's context** — photos and documents are saved directly to the vault, with a temp copy passed via `--add-dir` so Claude can see the file without base64 bloating the prompt
-- **Leveled logging** — `LOG_LEVEL` controls verbosity; `debug` streams Claude's stderr in real-time and logs spawn args, response previews, and exit codes. `LOG_FILE` optionally writes all output to a file for `tail -f` debugging
-
-## Related
-
-- [Vault MCP Server](https://github.com/jason-c-dev/obsidian-mcp) — filesystem vault engine with 16 MCP tools (Obsidian-compatible)
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — the CLI that powers the Claude invocations
-
-## License
-
-[MIT](LICENSE)
+- **Alexa+** — Multi-Agent SDK integration (pending early access)
+- **Home Assistant** — device event capture when Alexa Media Player stabilizes
+- **Docker** — containerized deployment
+- **More Sonos speakers** — as you add them, they're auto-discovered

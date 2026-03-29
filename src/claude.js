@@ -85,6 +85,12 @@ export async function runClaude(message, { sessionId, resume, addDirs, onEvent }
     '--dangerously-skip-permissions',
   ];
 
+  // Explicitly load MCP config (needed when using API key)
+  const mcpConfigPath = join(config.projectDir, '.mcp.json');
+  if (existsSync(mcpConfigPath)) {
+    args.push('--mcp-config', mcpConfigPath);
+  }
+
   if (resume) {
     args.push('--resume', resume);
   } else if (sessionId) {

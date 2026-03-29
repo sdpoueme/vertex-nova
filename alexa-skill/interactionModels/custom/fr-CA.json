@@ -1,0 +1,133 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "vertex nova",
+      "intents": [
+        {
+          "name": "HomeAssistantIntent",
+          "slots": [
+            {
+              "name": "query",
+              "type": "AMAZON.SearchQuery"
+            }
+          ],
+          "samples": [
+            "demande pour {query}",
+            "dis-moi à propos de {query}",
+            "qu'en est-il de {query}",
+            "vérifie pour {query}",
+            "aide-moi avec {query}",
+            "j'ai besoin d'aide avec {query}",
+            "peux-tu vérifier {query}",
+            "s'il te plaît regarde {query}",
+            "occupe-toi de {query}"
+          ]
+        },
+        {
+          "name": "HomeStatusIntent",
+          "slots": [],
+          "samples": [
+            "quel est le statut",
+            "statut de la maison",
+            "qu'est-ce qui se passe",
+            "qu'est-ce que j'ai à faire",
+            "des mises à jour",
+            "donne-moi un aperçu",
+            "qu'est-ce que je dois savoir",
+            "quelque chose à signaler"
+          ]
+        },
+        {
+          "name": "HomeEventIntent",
+          "slots": [
+            {
+              "name": "eventType",
+              "type": "HomeEventType"
+            }
+          ],
+          "samples": [
+            "enregistre une {eventType}",
+            "signale une {eventType}",
+            "il y a eu une {eventType}",
+            "on a eu une {eventType}",
+            "note une {eventType}"
+          ]
+        },
+        {
+          "name": "HomeRecommendIntent",
+          "slots": [],
+          "samples": [
+            "donne-moi des recommandations",
+            "des recommandations",
+            "qu'est-ce que je devrais faire pour la maison",
+            "recommandations d'entretien",
+            "qu'est-ce qui a besoin d'attention",
+            "quelque chose en retard"
+          ]
+        },
+        {
+          "name": "AMAZON.HelpIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.StopIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.CancelIntent",
+          "samples": []
+        },
+        {
+          "name": "AMAZON.FallbackIntent",
+          "samples": []
+        }
+      ],
+      "types": [
+        {
+          "name": "HomeEventType",
+          "values": [
+            { "name": { "value": "panne de courant", "synonyms": ["panne électrique", "coupure de courant", "blackout"] } },
+            { "name": { "value": "remplacement de batterie", "synonyms": ["changement de pile", "nouvelle pile", "nouvelle batterie"] } },
+            { "name": { "value": "entretien", "synonyms": ["réparation", "service", "maintenance"] } },
+            { "name": { "value": "problème d'appareil", "synonyms": ["appareil brisé", "panne d'appareil"] } },
+            { "name": { "value": "problème de plomberie", "synonyms": ["fuite", "problème d'eau", "tuyau brisé"] } },
+            { "name": { "value": "problème de chauffage", "synonyms": ["problème de climatisation", "problème de fournaise", "problème HVAC"] } },
+            { "name": { "value": "événement de sécurité", "synonyms": ["alarme", "problème de sécurité"] } }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "intents": [
+        {
+          "name": "HomeEventIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "eventType",
+              "type": "HomeEventType",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": {
+                "elicitation": "Elicit.Slot.eventType"
+              }
+            }
+          ]
+        }
+      ],
+      "delegationStrategy": "ALWAYS"
+    },
+    "prompts": [
+      {
+        "id": "Elicit.Slot.eventType",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "Quel type d'événement? Par exemple, panne de courant, entretien, ou remplacement de batterie."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,123 @@
+# ═══════════════════════════════════════════════════════
+# Vertex Nova — AI Model Routing Configuration
+# ═══════════════════════════════════════════════════════
+#
+# Routes messages to different AI models based on task type.
+# Each route has a pattern (regex) that matches against the message,
+# and a model target (claude or ollama).
+#
+# Order matters — first match wins.
+# The "default" route catches everything else.
+
+routes:
+  # --- Deep reasoning → Claude ---
+  - name: home-events
+    description: "Home event analysis, recommendations, pattern detection"
+    patterns:
+      - "recommand"
+      - "analyse"
+      - "pattern"
+      - "tendance"
+      - "prédiction"
+      - "planifi"
+      - "stratégi"
+      - "optimis"
+    model: claude
+
+  - name: sonos-control
+    description: "Sonos speaker commands require tool use"
+    patterns:
+      - "sonos"
+      - "haut-parleur"
+      - "speaker"
+      - "parle.*sous-sol"
+      - "parle.*rez"
+      - "annonce"
+      - "joue.*musique"
+      - "volume"
+      - "chime"
+      - "echo"
+      - "alexa"
+      - "parle.*sur"
+      - "dis.*bonjour"
+      - "dis.*à"
+      - "fire tv"
+    model: claude
+
+  - name: vault-operations
+    description: "Creating, searching, or modifying vault notes"
+    patterns:
+      - "crée.*note"
+      - "cherche.*vault"
+      - "ajoute.*appareil"
+      - "enregistre"
+      - "log.*event"
+      - "note.*maison"
+      - "sauvegarde"
+    model: claude
+
+  - name: complex-reasoning
+    description: "Questions requiring deep thinking or multi-step reasoning"
+    patterns:
+      - "pourquoi"
+      - "explique"
+      - "compare"
+      - "comment.*fonctionne"
+      - "quelle.*différence"
+      - "avantage.*inconvénient"
+      - "should I"
+      - "what if"
+      - "pros.*cons"
+    model: claude
+
+  # --- Data analysis → Ollama (local) ---
+  - name: document-analysis
+    description: "Analyzing documents, images, files sent to the bot"
+    patterns:
+      - "\\[Voice message\\]"
+      - "analyse.*document"
+      - "résume.*fichier"
+      - "lis.*document"
+      - "que.*contient"
+      - "summarize"
+      - "extract"
+    model: ollama
+    # Note: images always go to Claude (Ollama doesn't support vision)
+
+  - name: simple-data
+    description: "Simple data lookups, status checks, quick answers"
+    patterns:
+      - "quelle heure"
+      - "quel jour"
+      - "météo"
+      - "weather"
+      - "bonjour"
+      - "hello"
+      - "merci"
+      - "thanks"
+      - "salut"
+      - "ok"
+      - "oui"
+      - "non"
+    model: ollama
+
+  - name: casual-chat
+    description: "Casual conversation, greetings, small talk"
+    patterns:
+      - "comment.*va"
+      - "ça va"
+      - "how are"
+      - "what's up"
+      - "bonne nuit"
+      - "good night"
+    model: ollama
+
+# Default model when no route matches
+default:
+  model: claude
+  description: "Unmatched messages go to Claude for safety"
+
+# Override: force a specific model for all messages (ignores routes)
+# Useful for testing or when one model is down
+# force_model: claude
+# force_model: ollama
