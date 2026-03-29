@@ -83,7 +83,7 @@ vault/                     # Knowledge base
 ├── people/                # User profiles + contacts
 └── notes/                 # General notes
 
-alexa-skill/               # Alexa integration (pending Alexa+ SDK)
+alexa-skill/               # Alexa skill (blocked by Alexa+, pending SDK)
 ```
 
 ## Setup
@@ -180,9 +180,9 @@ Images always go to Claude (vision). Ollama is automatic fallback if Claude API 
 
 10 PM – 7 AM: Sonos commands targeting "Rez de Chaussee" are automatically redirected to "Sous-sol". Enforced at three levels: AI prompt, tool execution, and CLI guardrail.
 
-## Future
+## Roadmap
 
-- **Alexa+** — Multi-Agent SDK integration (pending early access)
-- **Home Assistant** — device event capture when Alexa Media Player stabilizes
-- **Docker** — containerized deployment
-- **More Sonos speakers** — as you add them, they're auto-discovered
+- Alexa+ Multi-Agent SDK — voice input from Echo devices (pending SDK access)
+- Honeywell thermostat API — direct temperature monitoring and control
+- Docker — containerized deployment
+- Device email alerts — automated anomaly detection
