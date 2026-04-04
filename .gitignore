@@ -8,3 +8,4 @@ node_modules/
 .claude/skills/
 agent.md
 .sonos-tokens.json
+vault/

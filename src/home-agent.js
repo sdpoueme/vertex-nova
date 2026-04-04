@@ -185,6 +185,35 @@ async function main() {
     await emailMonitor.start();
   }
 
+  // Proactive scheduler
+  var { startProactive } = await import('./proactive.js');
+  startProactive(async function(response, route, action) {
+    try {
+      // Route notification to the right channel/device
+      if (route.channel === 'telegram' && telegramChannel) {
+        await telegramChannel.bot.telegram.sendMessage(787677377, '🏠 ' + response);
+      } else if (route.channel === 'echo') {
+        var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
+        var vm = new VoiceMonkey(config);
+        await vm.speak(response.slice(0, 500), route.device);
+      } else if (route.channel === 'sonos') {
+        var { execFile } = await import('node:child_process');
+        var { join: joinPath } = await import('node:path');
+        var cliPath = joinPath(config.projectDir, 'scripts/sonos-cli.js');
+        execFile('node', [cliPath, 'speak', response.slice(0, 500), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
+          if (err) log.error('Proactive Sonos failed:', err.message);
+        });
+      }
+
+      // Also send to Telegram as backup for non-telegram channels
+      if (route.channel !== 'telegram' && telegramChannel) {
+        await telegramChannel.bot.telegram.sendMessage(787677377, '📋 [' + action.name + '] ' + response.slice(0, 500));
+      }
+    } catch (err) {
+      log.error('Proactive notification failed:', err.message);
+    }
+  });
+
   log.info('Vertex Nova is running');
   log.info('Channels: ' + [
     config.telegramEnabled ? 'Telegram' : null,

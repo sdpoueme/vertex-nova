@@ -1,0 +1,124 @@
+# ═══════════════════════════════════════════════════════
+# Vertex Nova — Proactive Actions Configuration
+# ═══════════════════════════════════════════════════════
+#
+# Defines recurring checks and notifications for the household.
+# The scheduler runs these at intervals and uses AI to decide
+# whether to notify based on relevance and urgency.
+#
+# Notification routing by time of day:
+#   Night (10 PM – 7 AM):     Telegram only (silent)
+#   Morning (7 AM – 9 AM):    Echo Show (kitchen)
+#   Workday (9 AM – 5 PM):    Echo bureau-serge (office)
+#   Evening (5 PM – 7 PM):    Echo Show (kitchen)
+#   Prime time (7 PM – 9 PM): Telegram or Sonos Sous-sol
+#   Late evening (9 PM–10 PM): Telegram only
+
+# --- Notification routing rules ---
+routing:
+  night:
+    hours: [22, 23, 0, 1, 2, 3, 4, 5, 6]
+    channel: telegram
+  morning:
+    hours: [7, 8]
+    channel: echo
+    device: vertexnovaspeaker
+  workday:
+    hours: [9, 10, 11, 12, 13, 14, 15, 16]
+    channel: echo
+    device: bureau-serge
+  evening:
+    hours: [17, 18]
+    channel: echo
+    device: vertexnovaspeaker
+  prime_time:
+    hours: [19, 20]
+    channel: sonos
+    room: Sous-sol
+    fallback: telegram
+  late_evening:
+    hours: [21]
+    channel: telegram
+
+# --- Proactive actions ---
+actions:
+  - name: breaking-news
+    description: "Check for major breaking news (war, political change, tech breakthroughs)"
+    interval_minutes: 30
+    prompt: >
+      Search the web for today's top breaking news. Only report if there is
+      something truly significant: a war, a major political change, a major
+      technology advancement, a natural disaster, or something that directly
+      affects Canada or Quebec. Do NOT report routine news. If nothing major,
+      respond with just "SKIP". If something important, summarize in 2-3 sentences.
+    notify_condition: not_skip
+    priority: high
+
+  - name: home-maintenance-check
+    description: "Proactive home maintenance recommendations based on season and house type"
+    interval_minutes: 360
+    prompt: >
+      Based on the current date and season, what home maintenance tasks should
+      be done for a Capella SHAM D house in Sainte-Julie, Quebec? Consider:
+      HVAC filter changes, gutter cleaning, snow removal, lawn care, deck
+      maintenance, window sealing, smoke detector batteries, water heater flush.
+      Check the vault for past maintenance events to avoid repeating recent ones.
+      Only suggest tasks that are actually due. If nothing is due, respond "SKIP".
+    notify_condition: not_skip
+    priority: medium
+
+  - name: email-digest
+    description: "Summarize important emails from device alerts"
+    interval_minutes: 120
+    prompt: >
+      Check the vault for any recent home device alerts logged today.
+      Summarize anything noteworthy. If there are no alerts or nothing
+      unusual, respond "SKIP".
+    notify_condition: not_skip
+    priority: low
+
+  - name: friday-movies
+    description: "Movie recommendations for Friday evening"
+    interval_minutes: 1440
+    day_of_week: friday
+    active_hours: [17, 18, 19]
+    prompt: >
+      Search the web for the best movies currently available to stream
+      in Canada (Netflix, Prime Video, Disney+, Crave). Recommend 3 movies
+      that would be great for a family Friday movie night. Include genre,
+      rating, and a one-line description for each. Respond in French.
+    notify_condition: always
+    priority: medium
+
+  - name: weekend-activities
+    description: "Suggest weekend activities near Sainte-Julie"
+    interval_minutes: 1440
+    day_of_week: saturday
+    active_hours: [8, 9]
+    prompt: >
+      Search the web for interesting activities, events, or outings
+      happening this weekend near Sainte-Julie, Quebec or the greater
+      Montreal area. Include family-friendly options. Suggest 2-3 options
+      with brief descriptions. Respond in French.
+    notify_condition: always
+    priority: medium
+
+  - name: weather-alert
+    description: "Check for severe weather warnings"
+    interval_minutes: 60
+    prompt: >
+      Search the web for current weather alerts or warnings for
+      Sainte-Julie, Quebec. Only report if there is a severe weather
+      warning (storm, freezing rain, extreme cold/heat, tornado).
+      If normal weather, respond "SKIP".
+    notify_condition: not_skip
+    priority: high
+
+# --- Notification behavior ---
+behavior:
+  # Don't notify more than this many times per hour
+  max_notifications_per_hour: 4
+  # Minimum minutes between notifications (prevents spam)
+  min_interval_minutes: 10
+  # High priority ignores rate limits
+  high_priority_bypass: true
