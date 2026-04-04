@@ -47,6 +47,7 @@ Qwen3 handles 80%+ of requests. Images fall back to Gemma 4 E2B (vision) or Clau
 | sonos_volume | Set volume |
 | echo_speak | TTS on Echo (Voice Monkey) |
 | echo_speak_all | TTS on all Echo devices |
+| news_search | Google News (Canada + Cameroun + Business Insider) |
 | web_search | DuckDuckGo search |
 | web_fetch | Fetch web page content |
 | vault_read | Read vault note |
@@ -93,9 +94,9 @@ launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 
 ## Proactive Actions
 
-| Action | Interval | Model |
-|--------|----------|-------|
-| Breaking news | 30 min | Qwen3 |
+| Action | Interval | Model | Notes |
+|--------|----------|-------|-------|
+| Breaking news | 30 min | Qwen3 | 🇨🇦 Canada, 🇨🇲 Cameroun, 💼 Business |
 | Weather alerts | 60 min | Qwen3 |
 | Home maintenance | 6 hours | Qwen3 |
 | Friday movies | Fridays 5-7 PM | Qwen3 |
