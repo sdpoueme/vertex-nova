@@ -8,6 +8,11 @@ import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { config } from './home-config.js';
 import { routeMessage } from './model-router.js';
+import {
+  getConversation, addUserMessage, addAssistantMessage, addToolResult,
+  needsSummarization, summarizeAndCompact, buildMessages,
+  getSummarizationPrompt, clearConversation, cleanupOldConversations
+} from './conversation.js';
 import { logger } from './log.js';
 
 var log = logger('ai');
@@ -420,44 +425,41 @@ async function executeTool(name, input) {
   return 'Unknown tool: ' + name;
 }
 
-// --- Conversation history per session ---
-var conversations = new Map(); // sessionId → messages[]
+// --- Retry helper ---
+async function withRetry(fn, maxRetries, delayMs) {
+  for (var attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      log.warn('Retry ' + (attempt + 1) + '/' + maxRetries + ': ' + err.message);
+      await new Promise(function(r) { setTimeout(r, delayMs * (attempt + 1)); });
+    }
+  }
+}
 
 /**
- * Chat via Ollama (local fallback). Simpler — no tool use, just conversation.
- * Ollama's tool support is limited, so we handle Sonos commands by pattern matching.
+ * Chat via Ollama with tool use and conversation memory.
  */
 async function chatOllama(message, sessionId, modelOverride) {
   var modelName = modelOverride || OLLAMA_MODEL;
-  if (!ollamaConversations.has(sessionId)) {
-    ollamaConversations.set(sessionId, []);
-  }
-  var messages = ollamaConversations.get(sessionId);
-  messages.push({ role: 'user', content: message });
 
-  if (messages.length > 20) messages.splice(0, messages.length - 20);
+  addUserMessage(sessionId, message);
+  var messages = buildMessages(sessionId);
 
   var ollamaSystemPrompt = "Tu es Vertex Nova, un assistant personnel. " +
-    "RÈGLE ABSOLUE: Réponds TOUJOURS dans la langue du message de l'utilisateur. Si le message est en français, réponds en français. Si en anglais, réponds en anglais. " +
-    "Sois concis et utile. Tu as accès à des outils pour chercher sur internet (web_search), lire des notes (vault_read), créer des rappels (reminder_set), et parler sur des haut-parleurs (sonos_speak, echo_speak). " +
-    "Utilise les outils quand c'est pertinent. Ne parle PAS de la maison ou de maintenance sauf si on te le demande explicitement.";
+    "RÈGLE ABSOLUE: Réponds TOUJOURS dans la langue du message de l'utilisateur. " +
+    "Sois concis et utile. Utilise les outils quand c'est pertinent. " +
+    "Ne parle PAS de la maison sauf si on te le demande.";
 
-  // Convert tools to Ollama format
   var ollamaTools = tools.map(function(t) {
-    return {
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.input_schema,
-      }
-    };
+    return { type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } };
   });
 
-  var maxIterations = 10;
+  var maxIterations = 8;
 
   for (var i = 0; i < maxIterations; i++) {
-    try {
+    var data = await withRetry(async function() {
       var res = await fetch(OLLAMA_URL + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -468,195 +470,180 @@ async function chatOllama(message, sessionId, modelOverride) {
           stream: false,
         }),
       });
-
       if (!res.ok) throw new Error('Ollama error: ' + res.status);
-      var data = await res.json();
-      var msg = data.message;
+      return res.json();
+    }, 2, 1000);
 
-      messages.push(msg);
+    var msg = data.message;
+    addAssistantMessage(sessionId, msg.content || '');
+    messages = buildMessages(sessionId);
 
-      // If no tool calls, return the text
-      if (!msg.tool_calls || msg.tool_calls.length === 0) {
-        return msg.content || 'Pas de réponse.';
-      }
-
-      // Handle tool calls
-      for (var j = 0; j < msg.tool_calls.length; j++) {
-        var tc = msg.tool_calls[j];
-        var toolName = tc.function.name;
-        var toolArgs = tc.function.arguments || {};
-        try {
-          var result = await executeTool(toolName, toolArgs);
-          log.debug('Ollama tool result (' + toolName + '): ' + String(result).slice(0, 200));
-          messages.push({ role: 'tool', content: String(result) });
-        } catch (err) {
-          log.error('Ollama tool error (' + toolName + '): ' + err.message);
-          messages.push({ role: 'tool', content: 'Error: ' + err.message });
-        }
-      }
-    } catch (err) {
-      log.error('Ollama error:', err.message);
-      throw err;
+    if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      maybeSummarize(sessionId);
+      return msg.content || 'Pas de réponse.';
     }
+
+    for (var j = 0; j < msg.tool_calls.length; j++) {
+      var tc = msg.tool_calls[j];
+      try {
+        var result = await executeTool(tc.function.name, tc.function.arguments || {});
+        log.debug('Tool result (' + tc.function.name + '): ' + String(result).slice(0, 150));
+        addToolResult(sessionId, { role: 'tool', content: String(result) });
+      } catch (err) {
+        log.error('Tool error (' + tc.function.name + '): ' + err.message);
+        addToolResult(sessionId, { role: 'tool', content: 'Error: ' + err.message });
+      }
+    }
+    messages = buildMessages(sessionId);
   }
 
   return 'Trop d\'itérations. Réessayez.';
 }
 
-var ollamaConversations = new Map();
+/**
+ * Auto-summarize if conversation is getting long.
+ */
+async function maybeSummarize(sessionId) {
+  if (!needsSummarization(sessionId)) return;
+
+  try {
+    var prompt = getSummarizationPrompt(sessionId);
+    // Use Ollama for summarization (free, fast)
+    var res = await fetch(OLLAMA_URL + '/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        messages: [{ role: 'user', content: prompt }],
+        stream: false,
+      }),
+    });
+    if (res.ok) {
+      var data = await res.json();
+      var summary = data.message?.content || '';
+      if (summary) {
+        summarizeAndCompact(sessionId, summary);
+      }
+    }
+  } catch (err) {
+    log.warn('Summarization failed: ' + err.message);
+  }
+}
 
 /**
- * Send a message and get a response.
- * Uses Claude API, falls back to Ollama on rate limit or error.
+ * Main chat function — routes to Claude or Ollama with full conversation management.
  */
 export async function chat(message, sessionId, image) {
-  // Route the message to the right model
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
-  // If routed to Ollama models (and not an image), use Ollama
+  // Local models (Gemma 4, Mistral)
   if ((routing.model === 'gemma4' || routing.model === 'mistral') && !image) {
-    if (usingFallback || true) { // always use Ollama for these routes
-      return chatOllama(message, sessionId, routing.model);
-    }
+    return chatOllama(message, sessionId, routing.model);
   }
-
-  // If routed to ollama generically
   if (routing.model === 'ollama' && !image) {
     return chatOllama(message, sessionId, OLLAMA_MODEL);
   }
-
-  // If already using fallback due to API issues, use Gemma 4
   if (usingFallback && !image) {
-    log.debug('Using Gemma 4 fallback (API issue)');
     return chatOllama(message, sessionId, 'gemma4');
   }
-
-  // No API key and no image — must use Gemma 4
   if (!CLAUDE_API_KEY && !image) {
     return chatOllama(message, sessionId, 'gemma4');
   }
 
-  // Get or create conversation history
-  if (!conversations.has(sessionId)) {
-    conversations.set(sessionId, []);
-  }
-  var messages = conversations.get(sessionId);
+  // Claude API
+  addUserMessage(sessionId, image ? [
+    { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+    { type: 'text', text: message }
+  ] : message);
 
-  // Build user content (text or text + image)
-  var userContent;
-  if (image) {
-    userContent = [
-      { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
-      { type: 'text', text: message }
-    ];
-  } else {
-    userContent = message;
-  }
-
-  messages.push({ role: 'user', content: userContent });
-
-  if (messages.length > 40) messages.splice(0, messages.length - 40);
-
-  var maxIterations = 10;
+  var messages = buildMessages(sessionId);
+  var maxIterations = 8;
 
   for (var i = 0; i < maxIterations; i++) {
-    var start = Date.now();
-
-    var res;
+    var data;
     try {
-      res = await fetch(CLAUDE_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': CLAUDE_API_KEY,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: CLAUDE_MODEL,
-          max_tokens: MAX_TOKENS,
-          system: systemPrompt,
-          tools: tools,
-          messages: messages,
-        }),
-      });
+      data = await withRetry(async function() {
+        var res = await fetch(CLAUDE_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': CLAUDE_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: CLAUDE_MODEL,
+            max_tokens: MAX_TOKENS,
+            system: systemPrompt,
+            tools: tools,
+            messages: messages,
+          }),
+        });
+
+        if (res.status === 429 || res.status === 529) {
+          throw new Error('Rate limited: ' + res.status);
+        }
+        if (res.status === 400) {
+          var errText = await res.text();
+          if (errText.indexOf('tool_result') !== -1) {
+            log.warn('Conversation corrupted, clearing');
+            clearConversation(sessionId);
+            throw new Error('Conversation reset needed');
+          }
+          throw new Error('Bad request: ' + errText.slice(0, 200));
+        }
+        if (!res.ok) throw new Error('API error: ' + res.status);
+        return res.json();
+      }, 2, 2000);
     } catch (err) {
-      log.warn('Claude API unreachable, switching to Ollama: ' + err.message);
+      log.warn('Claude failed, falling back to Gemma 4: ' + err.message);
       usingFallback = true;
       setTimeout(function() { usingFallback = false; log.info('Retrying Claude API'); }, 5 * 60 * 1000);
       return chatOllama(message, sessionId, 'gemma4');
     }
 
-    if (res.status === 429 || res.status === 529 || res.status === 402) {
-      log.warn('Claude API limit hit (' + res.status + '), switching to Ollama');
-      usingFallback = true;
-      setTimeout(function() { usingFallback = false; log.info('Retrying Claude API'); }, 5 * 60 * 1000);
-      return chatOllama(message, sessionId, 'gemma4');
-    }
+    var elapsed = ((Date.now()) / 1000).toFixed(1);
+    log.debug('API response, stop_reason: ' + data.stop_reason);
 
-    if (!res.ok) {
-      var errText = await res.text();
-      log.error('API error: ' + res.status + ' ' + errText);
-      // If conversation history is corrupted, clear it and try Ollama
-      if (res.status === 400 && errText.indexOf('tool_result') !== -1) {
-        log.warn('Conversation history corrupted, clearing session');
-        conversations.delete(sessionId);
-      }
-      log.warn('Claude API error, trying Ollama');
-      return chatOllama(message, sessionId, 'gemma4');
-    }
+    addAssistantMessage(sessionId, data.content);
+    messages = buildMessages(sessionId);
 
-    var data = await res.json();
-    var elapsed = ((Date.now() - start) / 1000).toFixed(1);
-    log.debug('API response in ' + elapsed + 's, stop_reason: ' + data.stop_reason);
-
-    // Add assistant response to history
-    messages.push({ role: 'assistant', content: data.content });
-
-    // If no tool use, extract text and return
     if (data.stop_reason === 'end_turn' || data.stop_reason !== 'tool_use') {
       var textParts = [];
-      for (var j = 0; j < data.content.length; j++) {
-        if (data.content[j].type === 'text') textParts.push(data.content[j].text);
+      for (var k = 0; k < data.content.length; k++) {
+        if (data.content[k].type === 'text') textParts.push(data.content[k].text);
       }
-      return textParts.join('\n') || 'No response.';
+      maybeSummarize(sessionId);
+      return textParts.join('\n') || 'Pas de réponse.';
     }
 
-    // Handle tool use
+    // Handle tool calls
     var toolResults = [];
-    for (var k = 0; k < data.content.length; k++) {
-      var block = data.content[k];
+    for (var t = 0; t < data.content.length; t++) {
+      var block = data.content[t];
       if (block.type === 'tool_use') {
         try {
           var result = await executeTool(block.name, block.input);
-          log.debug('Tool result (' + block.name + '): ' + String(result).slice(0, 200));
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: String(result),
-          });
+          log.debug('Tool result (' + block.name + '): ' + String(result).slice(0, 150));
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: String(result) });
         } catch (err) {
           log.error('Tool error (' + block.name + '): ' + err.message);
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: 'Error: ' + err.message,
-            is_error: true,
-          });
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Error: ' + err.message, is_error: true });
         }
       }
     }
 
-    // Add tool results to conversation
-    messages.push({ role: 'user', content: toolResults });
+    addToolResult(sessionId, { role: 'user', content: toolResults });
+    messages = buildMessages(sessionId);
   }
 
-  return 'I ran out of steps processing your request. Please try again.';
+  return 'Trop d\'itérations.';
 }
 
-/**
- * Clear conversation history for a session.
- */
-export function clearSession(sessionId) {
-  conversations.delete(sessionId);
-}
+export { clearConversation };
+
+// Periodic cleanup of old conversations
+setInterval(function() {
+  var vaultPath = config.vaultPath || join(config.projectDir, 'vault');
+  cleanupOldConversations(vaultPath);
+}, 30 * 60 * 1000); // Every 30 minutes
