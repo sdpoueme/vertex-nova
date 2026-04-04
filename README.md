@@ -42,6 +42,7 @@ Routing is configurable via `config/routing.yaml`. Images always go to Claude. G
 - Email monitor — polls Gmail for device alerts (Telus, MyQ, Honeywell), AI analyzes for anomalies
 - Proactive scheduler — breaking news, weather alerts, home maintenance, Friday movies, weekend activities
 - Smart notification routing by time of day (Echo Show mornings, office Echo workday, Sonos evenings, Telegram nights)
+- Reminders — natural language ("rappelle-moi demain à 10h"), auto-delivers via best channel at the right time
 - Knowledge base — markdown vault for home topology, devices, events, tasks (excluded from git)
 - User identity — knows who's talking, auto-detects language (FR/EN)
 - Night mode — Sonos guardrail redirects ground floor to basement 10 PM–7 AM
@@ -56,6 +57,7 @@ src/
 ├── ai.js                  # Claude + Gemma 4 + Mistral, tool execution
 ├── model-router.js        # YAML-based model routing
 ├── proactive.js           # Proactive scheduler (news, weather, maintenance)
+├── reminders.js           # Reminder engine with smart delivery
 ├── email-monitor.js       # Gmail polling for device alerts
 ├── home-config.js         # Configuration from .env
 ├── tts-server.js          # Local HTTP server for Sonos TTS
@@ -124,6 +126,8 @@ launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 | vault_create | Create note |
 | vault_append | Append to note |
 | vault_list | List folder |
+| reminder_set | Set a reminder (date, time, text) |
+| reminder_list | List pending reminders |
 
 ## Proactive Actions (config/proactive.yaml)
 
@@ -137,6 +141,19 @@ launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 | Email digest | 2 hours | Low |
 
 Notifications route to the right device based on time of day. AI decides whether to notify based on relevance — routine stuff gets skipped.
+
+## Notification Routing
+
+| Time | Channel | Device |
+|------|---------|--------|
+| 10 PM – 7 AM | Telegram | Silent (night mode) |
+| 7 – 9 AM | Echo | Echo Show (kitchen) |
+| 9 AM – 5 PM | Echo | Bureau Serge (office) |
+| 5 – 7 PM | Echo | Echo Show (kitchen) |
+| 7 – 9 PM | Sonos | Sous-sol (basement) |
+| 9 – 10 PM | Telegram | Silent |
+
+Applies to reminders, proactive actions, and email alerts. Night guardrail enforced at all levels — voice devices never speak between 10 PM and 7 AM.
 
 ## Roadmap
 
