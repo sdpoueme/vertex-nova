@@ -33,21 +33,15 @@ actions:
     interval_minutes: 30
     model: qwen3:8b
     prompt: >
-      Utilise web_search pour chercher "top news today" puis "actualités importantes Canada".
-      Analyse les résultats et ne rapporte QUE les événements vraiment significatifs.
-      Critères de sélection:
-      - Conflit armé ou escalade militaire
-      - Changement de gouvernement ou élection majeure
-      - Catastrophe naturelle affectant des milliers de personnes
-      - Avancée technologique majeure (IA, espace, médecine)
-      - Événement affectant directement le Canada ou le Québec
-      - Crise économique ou changement de politique monétaire majeur
-      Si rien ne correspond à ces critères, réponds "SKIP".
-      Si quelque chose est important, écris un briefing clair en français:
-      - Titre en gras
-      - 2-3 phrases résumant les faits (qui, quoi, où, quand)
-      - Une phrase sur l'impact potentiel
-      Ton: informatif et factuel, pas alarmiste.
+      Utilise l'outil news_search sans sujet pour obtenir les dernières nouvelles.
+      Puis utilise news_search avec le sujet "Canada" pour les nouvelles canadiennes.
+      À partir des résultats, sélectionne les 3-5 nouvelles les plus importantes.
+      Critères: conflit armé, changement politique, catastrophe, avancée technologique,
+      événement affectant le Canada/Québec, crise économique.
+      Si rien de significatif, réponds "SKIP".
+      Sinon écris un briefing en français:
+      - Pour chaque nouvelle: titre en gras, 1-2 phrases résumant les faits, source
+      - Ton informatif et factuel
     notify_condition: not_skip
     priority: high
 

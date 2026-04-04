@@ -161,13 +161,23 @@ var tools = [
   },
   {
     name: 'web_search',
-    description: 'Cherche sur internet via DuckDuckGo. Utilise pour: météo, actualités, prix, événements, ou toute info que tu ne connais pas. Retourne les 5 premiers résultats avec titre, extrait et URL.',
+    description: 'Cherche sur internet via DuckDuckGo. Utilise pour: météo, prix, événements, ou toute info que tu ne connais pas.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Requête de recherche (en français ou anglais)' }
+        query: { type: 'string', description: 'Requête de recherche' }
       },
       required: ['query']
+    }
+  },
+  {
+    name: 'news_search',
+    description: 'Récupère les dernières nouvelles via Google News. Utilise TOUJOURS cet outil pour les actualités, nouvelles, briefing quotidien, ou quand on demande "les news". Retourne les titres, résumés et sources des articles récents.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        topic: { type: 'string', description: 'Sujet (ex: "Canada", "technologie", "monde"). Laisser vide pour les top news.' }
+      }
     }
   },
   {
@@ -379,6 +389,57 @@ async function executeTool(name, input) {
     var results = await vmAll.speakAll(input.text, devices);
     var successCount = results.filter(function(r) { return r; }).length;
     return 'Annonce envoyée sur ' + successCount + '/' + devices.length + ' appareils Echo';
+  }
+
+  // Google News search
+  if (name === 'news_search') {
+    try {
+      var topic = input.topic || '';
+      var newsUrl = topic
+        ? 'https://news.google.com/rss/search?q=' + encodeURIComponent(topic) + '&hl=fr-CA&gl=CA&ceid=CA:fr'
+        : 'https://news.google.com/rss?hl=fr-CA&gl=CA&ceid=CA:fr';
+
+      var newsRes = await fetch(newsUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+        redirect: 'follow',
+      });
+      if (!newsRes.ok) return 'Erreur Google News: ' + newsRes.status;
+      var xml = await newsRes.text();
+
+      // Parse RSS items
+      var itemRegex = /<item>([\s\S]*?)<\/item>/g;
+      var newsItems = [];
+      var m;
+      var count = 0;
+      while ((m = itemRegex.exec(xml)) !== null && count < 8) {
+        var item = m[1];
+        var title = (item.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '';
+        var pubDate = (item.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1] || '';
+        var source = (item.match(/<source[^>]*>([\s\S]*?)<\/source>/) || [])[1] || '';
+        var desc = (item.match(/<description>([\s\S]*?)<\/description>/) || [])[1] || '';
+        // Clean HTML from description
+        desc = desc.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+        title = title.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+
+        if (title) {
+          newsItems.push({
+            title: title,
+            source: source,
+            date: pubDate,
+            summary: desc.slice(0, 200),
+          });
+          count++;
+        }
+      }
+
+      if (newsItems.length === 0) return 'Aucune nouvelle trouvée' + (topic ? ' pour: ' + topic : '');
+
+      return newsItems.map(function(n, i) {
+        return (i + 1) + '. **' + n.title + '**\n   _' + n.source + '_ — ' + n.date.slice(0, 16) + '\n   ' + n.summary;
+      }).join('\n\n');
+    } catch (err) {
+      return 'Erreur news: ' + err.message;
+    }
   }
 
   // Web search

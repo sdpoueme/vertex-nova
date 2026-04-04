@@ -18,6 +18,15 @@ routes:
       - "que vois"
     model: claude
 
+  - name: news
+    patterns:
+      - "actualit"
+      - "nouvelles"
+      - "news"
+      - "briefing"
+      - "journal"
+    model: qwen3:8b
+
 default:
   model: qwen3:8b
 
