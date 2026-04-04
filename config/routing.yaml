@@ -1,19 +1,16 @@
 # ═══════════════════════════════════════════════════════
-# Vertex Nova — AI Model Routing Configuration
+# Vertex Nova — Model Routing
 # ═══════════════════════════════════════════════════════
 #
-# Three models available:
-#   claude   — Best reasoning, tool use, vision. Cloud API, costs money.
-#   gemma4   — Strong reasoning, tool use, multilingual. Local, free, low hallucination.
-#   mistral  — Fast casual chat. Local, free, lightweight.
+# Two-model architecture:
+#   gemma4  — Default for everything. Local, free, tool use.
+#   claude  — Escalation only: vision, complex reasoning, Gemma 4 failures.
 #
-# Strategy: Use gemma4 as the primary local model (better accuracy),
-# mistral for simple chat, claude for vision and complex tasks.
+# Gemma 4 handles 80%+ of requests. Claude is the safety net.
 
 routes:
-  # --- Claude only (vision, complex multi-step) ---
-  - name: image-analysis
-    description: "Images require Claude vision"
+  # Only Claude can do vision
+  - name: vision
     patterns:
       - "\\[image\\]"
       - "photo"
@@ -21,112 +18,8 @@ routes:
       - "que vois"
     model: claude
 
-  - name: complex-reasoning
-    description: "Deep analysis, comparisons, multi-step reasoning"
-    patterns:
-      - "pourquoi"
-      - "explique.*en détail"
-      - "compare"
-      - "avantage.*inconvénient"
-      - "analyse.*pattern"
-      - "what if"
-      - "pros.*cons"
-    model: claude
-
-  # --- Gemma 4 (reliable tool use, good reasoning, low hallucination) ---
-  - name: device-control
-    description: "Sonos, Echo, device commands need reliable tool use"
-    patterns:
-      - "sonos"
-      - "haut-parleur"
-      - "speaker"
-      - "parle.*sur"
-      - "parle.*sous-sol"
-      - "parle.*rez"
-      - "annonce"
-      - "echo"
-      - "alexa"
-      - "dis.*bonjour"
-      - "dis.*à"
-      - "fire tv"
-      - "volume"
-      - "chime"
-    model: gemma4
-
-  - name: vault-operations
-    description: "Knowledge base and reminder operations"
-    patterns:
-      - "crée.*note"
-      - "cherche.*vault"
-      - "ajoute.*appareil"
-      - "enregistre"
-      - "log.*event"
-      - "note.*maison"
-      - "sauvegarde"
-      - "statut.*maison"
-      - "home status"
-      - "rappel"
-      - "remind"
-      - "rappelle"
-      - "n'oublie pas"
-      - "don't forget"
-      - "reminder"
-    model: gemma4
-
-  - name: web-search
-    description: "Internet searches need reliable tool use"
-    patterns:
-      - "cherche.*internet"
-      - "search.*web"
-      - "météo"
-      - "weather"
-      - "actualité"
-      - "news"
-      - "quelle.*heure"
-      - "quel.*prix"
-      - "combien.*coûte"
-    model: gemma4
-
-  - name: home-knowledge
-    description: "Questions about the house, maintenance, recommendations"
-    patterns:
-      - "maison"
-      - "house"
-      - "maintenance"
-      - "entretien"
-      - "recommand"
-      - "température"
-      - "chauffage"
-      - "garage"
-      - "cuisine"
-      - "chambre"
-      - "sous-sol"
-      - "étage"
-    model: gemma4
-
-  # --- Mistral (fast, lightweight casual chat) ---
-  - name: casual-chat
-    description: "Greetings, small talk, simple questions"
-    patterns:
-      - "bonjour"
-      - "hello"
-      - "salut"
-      - "merci"
-      - "thanks"
-      - "ok"
-      - "oui"
-      - "non"
-      - "comment.*va"
-      - "ça va"
-      - "how are"
-      - "bonne nuit"
-      - "good night"
-    model: mistral
-
-# Default: gemma4 (best balance of accuracy and tool use)
 default:
   model: gemma4
-  description: "Unmatched messages go to Gemma 4 for reliable responses"
 
-# Override: force a specific model for all messages
-# force_model: claude
+# Escalation: if Gemma 4 returns a bad response, retry with Claude
+# (handled in code, not here)

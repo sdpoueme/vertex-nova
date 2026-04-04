@@ -610,27 +610,98 @@ async function maybeSummarize(sessionId) {
 }
 
 /**
- * Main chat function — routes to Claude or Ollama with full conversation management.
+ * Main chat function — Gemma 4 first, escalate to Claude when needed.
+ *
+ * Strategy:
+ *   1. Images → Claude (vision required)
+ *   2. Explicit [ROUTE:claude] → Claude
+ *   3. Everything else → Gemma 4
+ *   4. If Gemma 4 fails or gives bad response → escalate to Claude
+ *   5. If Claude fails → return Gemma 4's response anyway
  */
 export async function chat(message, sessionId, image) {
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
-  // Local models (Gemma 4, Mistral)
-  if ((routing.model === 'gemma4' || routing.model === 'mistral') && !image) {
-    return chatOllama(message, sessionId, routing.model);
+  // Images always go to Claude (vision)
+  if (image) {
+    return chatClaude(message, sessionId, image);
   }
-  if (routing.model === 'ollama' && !image) {
-    return chatOllama(message, sessionId, OLLAMA_MODEL);
+
+  // Explicit route to Claude (from proactive scheduler)
+  if (routing.model === 'claude') {
+    return chatClaude(message, sessionId, null);
   }
-  if (usingFallback && !image) {
-    return chatOllama(message, sessionId, 'gemma4');
+
+  // Default: try Gemma 4 first
+  try {
+    var gemmaResponse = await chatOllama(message, sessionId, 'gemma4');
+
+    // Check if response seems bad (too short, confused, or error-like)
+    if (shouldEscalate(gemmaResponse, message)) {
+      log.info('Escalating to Claude — Gemma 4 response was weak');
+      try {
+        var claudeResponse = await chatClaude(message, sessionId, null);
+        // Save the pattern so Gemma 4 can learn
+        saveEscalationPattern(message, claudeResponse);
+        return claudeResponse;
+      } catch (claudeErr) {
+        log.warn('Claude escalation failed: ' + claudeErr.message + ', using Gemma 4 response');
+        return gemmaResponse; // Fall back to Gemma 4's response
+      }
+    }
+
+    return gemmaResponse;
+  } catch (gemmaErr) {
+    log.warn('Gemma 4 failed: ' + gemmaErr.message + ', escalating to Claude');
+    try {
+      return await chatClaude(message, sessionId, null);
+    } catch (claudeErr) {
+      log.error('Both models failed. Gemma: ' + gemmaErr.message + ', Claude: ' + claudeErr.message);
+      return 'Désolé, je rencontre des difficultés techniques. Réessayez dans un moment.';
+    }
   }
-  if (!CLAUDE_API_KEY && !image) {
+}
+
+/**
+ * Detect if Gemma 4's response should be escalated to Claude.
+ */
+function shouldEscalate(response, originalMessage) {
+  if (!response || response.length < 10) return true;
+  if (response.includes('Unknown tool') || response.includes('Trop d\'itérations')) return true;
+  // Response is just the system prompt regurgitated
+  if (response.includes('Vertex Nova') && response.includes('assistant') && response.length > 500 && originalMessage.length < 100) return true;
+  // Response is in wrong language (asked in French, got English)
+  var askedInFrench = /[àâéèêëïîôùûüÿçœæ]|bonjour|merci|maison|comment|quoi|quel/i.test(originalMessage);
+  var respondedInEnglish = /\b(the|this|that|with|from|have|been|would|could|should)\b/i.test(response.slice(0, 200));
+  if (askedInFrench && respondedInEnglish && !/\b(le|la|les|des|une|est|dans|pour|avec)\b/i.test(response.slice(0, 200))) return true;
+  return false;
+}
+
+/**
+ * Save escalation pattern to memory so Gemma 4 can learn.
+ */
+async function saveEscalationPattern(message, claudeResponse) {
+  try {
+    var { appendFileSync, mkdirSync } = await import('node:fs');
+    var memDir = join(resolve(config.vaultPath || join(config.projectDir, 'vault')), 'memories');
+    mkdirSync(memDir, { recursive: true });
+    var entry = '\n## ' + new Date().toISOString().slice(0, 16) + '\n' +
+      'Q: ' + message.slice(0, 200) + '\n' +
+      'A: ' + claudeResponse.slice(0, 300) + '\n';
+    appendFileSync(join(memDir, 'escalation-patterns.md'), entry);
+  } catch {}
+}
+
+/**
+ * Chat via Claude API with conversation memory.
+ */
+async function chatClaude(message, sessionId, image) {
+  if (!CLAUDE_API_KEY) {
+    log.warn('No Claude API key, falling back to Gemma 4');
     return chatOllama(message, sessionId, 'gemma4');
   }
 
-  // Claude API
   addUserMessage(sessionId, image ? [
     { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
     { type: 'text', text: message }
@@ -640,50 +711,37 @@ export async function chat(message, sessionId, image) {
   var maxIterations = 8;
 
   for (var i = 0; i < maxIterations; i++) {
-    var data;
-    try {
-      data = await withRetry(async function() {
-        var res = await fetch(CLAUDE_API_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': CLAUDE_API_KEY,
-            'anthropic-version': '2023-06-01',
-          },
-          body: JSON.stringify({
-            model: CLAUDE_MODEL,
-            max_tokens: MAX_TOKENS,
-            system: systemPrompt,
-            tools: tools,
-            messages: messages,
-          }),
-        });
+    var data = await withRetry(async function() {
+      var res = await fetch(CLAUDE_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': CLAUDE_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: CLAUDE_MODEL,
+          max_tokens: MAX_TOKENS,
+          system: systemPrompt,
+          tools: tools,
+          messages: messages,
+        }),
+      });
 
-        if (res.status === 429 || res.status === 529) {
-          throw new Error('Rate limited: ' + res.status);
+      if (res.status === 429 || res.status === 529) throw new Error('Rate limited: ' + res.status);
+      if (res.status === 400) {
+        var errText = await res.text();
+        if (errText.indexOf('tool_result') !== -1) {
+          clearConversation(sessionId);
+          throw new Error('Conversation reset');
         }
-        if (res.status === 400) {
-          var errText = await res.text();
-          if (errText.indexOf('tool_result') !== -1) {
-            log.warn('Conversation corrupted, clearing');
-            clearConversation(sessionId);
-            throw new Error('Conversation reset needed');
-          }
-          throw new Error('Bad request: ' + errText.slice(0, 200));
-        }
-        if (!res.ok) throw new Error('API error: ' + res.status);
-        return res.json();
-      }, 2, 2000);
-    } catch (err) {
-      log.warn('Claude failed, falling back to Gemma 4: ' + err.message);
-      usingFallback = true;
-      setTimeout(function() { usingFallback = false; log.info('Retrying Claude API'); }, 5 * 60 * 1000);
-      return chatOllama(message, sessionId, 'gemma4');
-    }
+        throw new Error('Bad request: ' + errText.slice(0, 200));
+      }
+      if (!res.ok) throw new Error('API error: ' + res.status);
+      return res.json();
+    }, 2, 2000);
 
-    var elapsed = ((Date.now()) / 1000).toFixed(1);
-    log.debug('API response, stop_reason: ' + data.stop_reason);
-
+    log.debug('Claude response, stop_reason: ' + data.stop_reason);
     addAssistantMessage(sessionId, data.content);
     messages = buildMessages(sessionId);
 
@@ -696,22 +754,19 @@ export async function chat(message, sessionId, image) {
       return textParts.join('\n') || 'Pas de réponse.';
     }
 
-    // Handle tool calls
     var toolResults = [];
     for (var t = 0; t < data.content.length; t++) {
       var block = data.content[t];
       if (block.type === 'tool_use') {
         try {
           var result = await executeTool(block.name, block.input);
-          log.debug('Tool result (' + block.name + '): ' + String(result).slice(0, 150));
+          log.debug('Tool (' + block.name + '): ' + String(result).slice(0, 150));
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: String(result) });
         } catch (err) {
-          log.error('Tool error (' + block.name + '): ' + err.message);
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Error: ' + err.message, is_error: true });
         }
       }
     }
-
     addToolResult(sessionId, { role: 'user', content: toolResults });
     messages = buildMessages(sessionId);
   }
