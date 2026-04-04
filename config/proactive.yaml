@@ -49,7 +49,7 @@ actions:
       Search the web for today's top breaking news. Only report if there is
       something truly significant: a war, a major political change, a major
       technology advancement, a natural disaster, or something that directly
-      affects Canada or Quebec. Do NOT report routine news. If nothing major,
+      affects Canada, Quebec, North America, Europe, or Cameroon my home country. Do NOT report routine news. If nothing major,
       respond with just "SKIP". If something important, summarize in 2-3 sentences.
     notify_condition: not_skip
     priority: high
@@ -61,7 +61,7 @@ actions:
       Based on the current date and season, what home maintenance tasks should
       be done for a Capella SHAM D house in Sainte-Julie, Quebec? Consider:
       HVAC filter changes, gutter cleaning, snow removal, lawn care, deck
-      maintenance, window sealing, smoke detector batteries, water heater flush.
+      maintenance, window sealing,water leak detector flush, smoke detector batteries, water heater flush.
       Check the vault for past maintenance events to avoid repeating recent ones.
       Only suggest tasks that are actually due. If nothing is due, respond "SKIP".
     notify_condition: not_skip
@@ -83,7 +83,7 @@ actions:
     day_of_week: friday
     active_hours: [17, 18, 19]
     prompt: >
-      Search the web for the best movies currently available to stream
+      Search the web for the best tv shows or movies currently available to stream
       in Canada (Netflix, Prime Video, Disney+, Crave). Recommend 3 movies
       that would be great for a family Friday movie night. Include genre,
       rating, and a one-line description for each. Respond in French.

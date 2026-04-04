@@ -2,50 +2,59 @@
 # Vertex Nova — AI Model Routing Configuration
 # ═══════════════════════════════════════════════════════
 #
-# Routes messages to different AI models based on task type.
-# Each route has a pattern (regex) that matches against the message,
-# and a model target (claude or ollama).
+# Three models available:
+#   claude   — Best reasoning, tool use, vision. Cloud API, costs money.
+#   gemma4   — Strong reasoning, tool use, multilingual. Local, free, low hallucination.
+#   mistral  — Fast casual chat. Local, free, lightweight.
 #
-# Order matters — first match wins.
-# The "default" route catches everything else.
+# Strategy: Use gemma4 as the primary local model (better accuracy),
+# mistral for simple chat, claude for vision and complex tasks.
 
 routes:
-  # --- Deep reasoning → Claude ---
-  - name: home-events
-    description: "Home event analysis, recommendations, pattern detection"
+  # --- Claude only (vision, complex multi-step) ---
+  - name: image-analysis
+    description: "Images require Claude vision"
     patterns:
-      - "recommand"
-      - "analyse"
-      - "pattern"
-      - "tendance"
-      - "prédiction"
-      - "planifi"
-      - "stratégi"
-      - "optimis"
+      - "\\[image\\]"
+      - "photo"
+      - "image"
+      - "que vois"
     model: claude
 
-  - name: sonos-control
-    description: "Sonos speaker commands require tool use"
+  - name: complex-reasoning
+    description: "Deep analysis, comparisons, multi-step reasoning"
+    patterns:
+      - "pourquoi"
+      - "explique.*en détail"
+      - "compare"
+      - "avantage.*inconvénient"
+      - "analyse.*pattern"
+      - "what if"
+      - "pros.*cons"
+    model: claude
+
+  # --- Gemma 4 (reliable tool use, good reasoning, low hallucination) ---
+  - name: device-control
+    description: "Sonos, Echo, device commands need reliable tool use"
     patterns:
       - "sonos"
       - "haut-parleur"
       - "speaker"
+      - "parle.*sur"
       - "parle.*sous-sol"
       - "parle.*rez"
       - "annonce"
-      - "joue.*musique"
-      - "volume"
-      - "chime"
       - "echo"
       - "alexa"
-      - "parle.*sur"
       - "dis.*bonjour"
       - "dis.*à"
       - "fire tv"
-    model: claude
+      - "volume"
+      - "chime"
+    model: gemma4
 
   - name: vault-operations
-    description: "Creating, searching, or modifying vault notes"
+    description: "Knowledge base operations"
     patterns:
       - "crée.*note"
       - "cherche.*vault"
@@ -54,70 +63,64 @@ routes:
       - "log.*event"
       - "note.*maison"
       - "sauvegarde"
-    model: claude
+      - "statut.*maison"
+      - "home status"
+    model: gemma4
 
-  - name: complex-reasoning
-    description: "Questions requiring deep thinking or multi-step reasoning"
+  - name: web-search
+    description: "Internet searches need reliable tool use"
     patterns:
-      - "pourquoi"
-      - "explique"
-      - "compare"
-      - "comment.*fonctionne"
-      - "quelle.*différence"
-      - "avantage.*inconvénient"
-      - "should I"
-      - "what if"
-      - "pros.*cons"
-    model: claude
-
-  # --- Data analysis → Ollama (local) ---
-  - name: document-analysis
-    description: "Analyzing documents, images, files sent to the bot"
-    patterns:
-      - "\\[Voice message\\]"
-      - "analyse.*document"
-      - "résume.*fichier"
-      - "lis.*document"
-      - "que.*contient"
-      - "summarize"
-      - "extract"
-    model: ollama
-    # Note: images always go to Claude (Ollama doesn't support vision)
-
-  - name: simple-data
-    description: "Simple data lookups, status checks, quick answers"
-    patterns:
-      - "quelle heure"
-      - "quel jour"
+      - "cherche.*internet"
+      - "search.*web"
       - "météo"
       - "weather"
+      - "actualité"
+      - "news"
+      - "quelle.*heure"
+      - "quel.*prix"
+      - "combien.*coûte"
+    model: gemma4
+
+  - name: home-knowledge
+    description: "Questions about the house, maintenance, recommendations"
+    patterns:
+      - "maison"
+      - "house"
+      - "maintenance"
+      - "entretien"
+      - "recommand"
+      - "température"
+      - "chauffage"
+      - "garage"
+      - "cuisine"
+      - "chambre"
+      - "sous-sol"
+      - "étage"
+    model: gemma4
+
+  # --- Mistral (fast, lightweight casual chat) ---
+  - name: casual-chat
+    description: "Greetings, small talk, simple questions"
+    patterns:
       - "bonjour"
       - "hello"
+      - "salut"
       - "merci"
       - "thanks"
-      - "salut"
       - "ok"
       - "oui"
       - "non"
-    model: ollama
-
-  - name: casual-chat
-    description: "Casual conversation, greetings, small talk"
-    patterns:
       - "comment.*va"
       - "ça va"
       - "how are"
-      - "what's up"
       - "bonne nuit"
       - "good night"
-    model: ollama
+    model: mistral
 
-# Default model when no route matches
+# Default: gemma4 (best balance of accuracy and tool use)
 default:
-  model: claude
-  description: "Unmatched messages go to Claude for safety"
+  model: gemma4
+  description: "Unmatched messages go to Gemma 4 for reliable responses"
 
-# Override: force a specific model for all messages (ignores routes)
-# Useful for testing or when one model is down
+# Override: force a specific model for all messages
 # force_model: claude
-# force_model: ollama

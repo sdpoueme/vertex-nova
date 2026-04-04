@@ -16,7 +16,8 @@ var CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 var CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY;
 var CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 var OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'mistral';
+var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4';
+var OLLAMA_FAST_MODEL = process.env.OLLAMA_FAST_MODEL || 'mistral';
 var usingFallback = false;
 var MAX_TOKENS = 4096;
 
@@ -365,7 +366,8 @@ var conversations = new Map(); // sessionId → messages[]
  * Chat via Ollama (local fallback). Simpler — no tool use, just conversation.
  * Ollama's tool support is limited, so we handle Sonos commands by pattern matching.
  */
-async function chatOllama(message, sessionId) {
+async function chatOllama(message, sessionId, modelOverride) {
+  var modelName = modelOverride || OLLAMA_MODEL;
   if (!ollamaConversations.has(sessionId)) {
     ollamaConversations.set(sessionId, []);
   }
@@ -399,7 +401,7 @@ async function chatOllama(message, sessionId) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: OLLAMA_MODEL,
+          model: modelName,
           messages: [{ role: 'system', content: ollamaSystemPrompt }].concat(messages),
           tools: ollamaTools,
           stream: false,
@@ -451,20 +453,27 @@ export async function chat(message, sessionId, image) {
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
-  // If routed to Ollama (and not an image), use Ollama
+  // If routed to Ollama models (and not an image), use Ollama
+  if ((routing.model === 'gemma4' || routing.model === 'mistral') && !image) {
+    if (usingFallback || true) { // always use Ollama for these routes
+      return chatOllama(message, sessionId, routing.model);
+    }
+  }
+
+  // If routed to ollama generically
   if (routing.model === 'ollama' && !image) {
-    return chatOllama(message, sessionId);
+    return chatOllama(message, sessionId, OLLAMA_MODEL);
   }
 
-  // If already using fallback due to API issues, use Ollama
+  // If already using fallback due to API issues, use Gemma 4
   if (usingFallback && !image) {
-    log.debug('Using Ollama fallback (API issue)');
-    return chatOllama(message, sessionId);
+    log.debug('Using Gemma 4 fallback (API issue)');
+    return chatOllama(message, sessionId, 'gemma4');
   }
 
-  // No API key and no image — must use Ollama
+  // No API key and no image — must use Gemma 4
   if (!CLAUDE_API_KEY && !image) {
-    return chatOllama(message, sessionId);
+    return chatOllama(message, sessionId, 'gemma4');
   }
 
   // Get or create conversation history
@@ -514,14 +523,14 @@ export async function chat(message, sessionId, image) {
       log.warn('Claude API unreachable, switching to Ollama: ' + err.message);
       usingFallback = true;
       setTimeout(function() { usingFallback = false; log.info('Retrying Claude API'); }, 5 * 60 * 1000);
-      return chatOllama(message, sessionId);
+      return chatOllama(message, sessionId, 'gemma4');
     }
 
     if (res.status === 429 || res.status === 529 || res.status === 402) {
       log.warn('Claude API limit hit (' + res.status + '), switching to Ollama');
       usingFallback = true;
       setTimeout(function() { usingFallback = false; log.info('Retrying Claude API'); }, 5 * 60 * 1000);
-      return chatOllama(message, sessionId);
+      return chatOllama(message, sessionId, 'gemma4');
     }
 
     if (!res.ok) {
@@ -533,7 +542,7 @@ export async function chat(message, sessionId, image) {
         conversations.delete(sessionId);
       }
       log.warn('Claude API error, trying Ollama');
-      return chatOllama(message, sessionId);
+      return chatOllama(message, sessionId, 'gemma4');
     }
 
     var data = await res.json();
