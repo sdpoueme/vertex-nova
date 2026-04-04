@@ -1,20 +1,7 @@
 # ═══════════════════════════════════════════════════════
 # Vertex Nova — Proactive Actions Configuration
 # ═══════════════════════════════════════════════════════
-#
-# Defines recurring checks and notifications for the household.
-# The scheduler runs these at intervals and uses AI to decide
-# whether to notify based on relevance and urgency.
-#
-# Notification routing by time of day:
-#   Night (10 PM – 7 AM):     Telegram only (silent)
-#   Morning (7 AM – 9 AM):    Echo Show (kitchen)
-#   Workday (9 AM – 5 PM):    Echo bureau-serge (office)
-#   Evening (5 PM – 7 PM):    Echo Show (kitchen)
-#   Prime time (7 PM – 9 PM): Telegram or Sonos Sous-sol
-#   Late evening (9 PM–10 PM): Telegram only
 
-# --- Notification routing rules ---
 routing:
   night:
     hours: [22, 23, 0, 1, 2, 3, 4, 5, 6]
@@ -40,85 +27,87 @@ routing:
     hours: [21]
     channel: telegram
 
-# --- Proactive actions ---
 actions:
   - name: breaking-news
-    description: "Check for major breaking news (war, political change, tech breakthroughs)"
+    description: "Major breaking news"
     interval_minutes: 30
+    model: claude
     prompt: >
-      Search the web for today's top breaking news. Only report if there is
-      something truly significant: a war, a major political change, a major
-      technology advancement, a natural disaster, or something that directly
-      affects Canada, Quebec, North America, Europe, or Cameroon my home country. Do NOT report routine news. If nothing major,
-      respond with just "SKIP". If something important, summarize in 2-3 sentences.
+      Utilise web_search pour chercher les nouvelles importantes du jour.
+      Cherche "top breaking news today" et "actualités importantes aujourd'hui".
+      Ne rapporte QUE les événements vraiment significatifs: guerre, changement
+      politique majeur, avancée technologique importante, catastrophe naturelle,
+      ou quelque chose qui affecte le Canada ou le Québec.
+      Si rien de majeur, réponds "SKIP".
+      Sinon fais un résumé clair en français de 3-5 phrases avec les faits essentiels.
+    notify_condition: not_skip
+    priority: high
+
+  - name: weather-alert
+    description: "Severe weather warnings"
+    interval_minutes: 60
+    model: claude
+    prompt: >
+      Utilise web_search pour chercher "alertes météo Sainte-Julie Québec"
+      et "Environnement Canada avertissements Montérégie".
+      Ne rapporte QUE les avertissements sévères (tempête, verglas, froid/chaleur extrême).
+      Si météo normale, réponds "SKIP".
+      Si alerte, résume en français en 2-3 phrases claires.
     notify_condition: not_skip
     priority: high
 
   - name: home-maintenance-check
-    description: "Proactive home maintenance recommendations based on season and house type"
+    description: "Seasonal home maintenance"
     interval_minutes: 360
+    model: gemma4
     prompt: >
-      Based on the current date and season, what home maintenance tasks should
-      be done for a Capella SHAM D house in Sainte-Julie, Quebec? Consider:
-      HVAC filter changes, gutter cleaning, snow removal, lawn care, deck
-      maintenance, window sealing,water leak detector flush, smoke detector batteries, water heater flush.
-      Check the vault for past maintenance events to avoid repeating recent ones.
-      Only suggest tasks that are actually due. If nothing is due, respond "SKIP".
+      Basé sur la date et la saison, quelles tâches d'entretien sont dues pour
+      une maison à Sainte-Julie, Québec? Filtres HVAC, gouttières, déneigement,
+      pelouse, terrasse, détecteurs de fumée, chauffe-eau.
+      Vérifie le vault pour les événements passés. Si rien n'est dû, réponds "SKIP".
+      Réponds en français, sois concis.
     notify_condition: not_skip
     priority: medium
 
   - name: email-digest
-    description: "Summarize important emails from device alerts"
+    description: "Device alert summary"
     interval_minutes: 120
+    model: gemma4
     prompt: >
-      Check the vault for any recent home device alerts logged today.
-      Summarize anything noteworthy. If there are no alerts or nothing
-      unusual, respond "SKIP".
+      Vérifie le vault pour les alertes d'appareils récentes aujourd'hui.
+      Résume ce qui est notable. Si rien d'inhabituel, réponds "SKIP".
+      Réponds en français.
     notify_condition: not_skip
     priority: low
 
   - name: friday-movies
-    description: "Movie recommendations for Friday evening"
+    description: "Friday movie recommendations"
     interval_minutes: 1440
     day_of_week: friday
     active_hours: [17, 18, 19]
+    model: claude
     prompt: >
-      Search the web for the best tv shows or movies currently available to stream
-      in Canada (Netflix, Prime Video, Disney+, Crave). Recommend 3 movies
-      that would be great for a family Friday movie night. Include genre,
-      rating, and a one-line description for each. Respond in French.
+      Utilise web_search pour chercher "meilleurs films streaming Canada 2026"
+      et "best movies Netflix Prime Video Disney+ Crave this week".
+      Recommande 3 films pour une soirée cinéma en famille. Pour chaque film:
+      titre, genre, note, et une phrase de description. Écris en français.
     notify_condition: always
     priority: medium
 
   - name: weekend-activities
-    description: "Suggest weekend activities near Sainte-Julie"
+    description: "Weekend activity suggestions"
     interval_minutes: 1440
     day_of_week: saturday
     active_hours: [8, 9]
+    model: claude
     prompt: >
-      Search the web for interesting activities, events, or outings
-      happening this weekend near Sainte-Julie, Quebec or the greater
-      Montreal area. Include family-friendly options. Suggest 2-3 options
-      with brief descriptions. Respond in French.
+      Utilise web_search pour chercher "activités weekend Montréal Rive-Sud"
+      et "événements famille Sainte-Julie cette fin de semaine".
+      Suggère 2-3 activités familiales avec brève description. Écris en français.
     notify_condition: always
     priority: medium
 
-  - name: weather-alert
-    description: "Check for severe weather warnings"
-    interval_minutes: 60
-    prompt: >
-      Search the web for current weather alerts or warnings for
-      Sainte-Julie, Quebec. Only report if there is a severe weather
-      warning (storm, freezing rain, extreme cold/heat, tornado).
-      If normal weather, respond "SKIP".
-    notify_condition: not_skip
-    priority: high
-
-# --- Notification behavior ---
 behavior:
-  # Don't notify more than this many times per hour
   max_notifications_per_hour: 4
-  # Minimum minutes between notifications (prevents spam)
   min_interval_minutes: 10
-  # High priority ignores rate limits
   high_priority_bypass: true

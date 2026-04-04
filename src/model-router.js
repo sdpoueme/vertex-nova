@@ -116,6 +116,12 @@ export function routeMessage(message, options) {
     return { model: config.force_model, route: 'force_override' };
   }
 
+  // Explicit route prefix [ROUTE:model]
+  var routePrefix = message.match(/^\[ROUTE:(\w+)\]/);
+  if (routePrefix) {
+    return { model: routePrefix[1], route: 'explicit_route' };
+  }
+
   // Images always go to Claude (vision)
   if (options && options.hasImage) {
     return { model: 'claude', route: 'image_vision' };

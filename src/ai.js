@@ -218,6 +218,13 @@ async function executeTool(name, input) {
     }
   }
 
+  // Night mode guardrail: block ALL voice devices 10 PM - 7 AM
+  var currentHour = new Date().getHours();
+  if ((currentHour >= 22 || currentHour < 7) && (name === 'echo_speak' || name === 'echo_speak_all' || name === 'sonos_speak' || name === 'sonos_speak_all')) {
+    log.info('NIGHT MODE: Blocked voice device tool ' + name + ' (10 PM - 7 AM)');
+    return 'Mode nuit actif (22h-7h). Message envoyé par texte uniquement. Contenu: ' + (input.text || '').slice(0, 200);
+  }
+
   // Sonos tools — delegate to CLI
   if (name === 'sonos_speak') {
     var cliPath = join(config.projectDir, 'scripts/sonos-cli.js');
@@ -430,10 +437,10 @@ async function chatOllama(message, sessionId, modelOverride) {
 
   if (messages.length > 20) messages.splice(0, messages.length - 20);
 
-  var ollamaSystemPrompt = "Tu es Vertex Nova, un assistant maison personnel pour la famille Poueme à Sainte-Julie, Québec. " +
-    "Réponds toujours dans la langue de l'utilisateur (français si français, anglais si anglais). " +
-    "Sois concis, chaleureux et utile. Tu connais Serge (propriétaire) et Stéphanie (sa conjointe). " +
-    "La maison est un modèle Capella SHAM D avec 3 étages et 5 chambres.";
+  var ollamaSystemPrompt = "Tu es Vertex Nova, un assistant personnel. " +
+    "RÈGLE ABSOLUE: Réponds TOUJOURS dans la langue du message de l'utilisateur. Si le message est en français, réponds en français. Si en anglais, réponds en anglais. " +
+    "Sois concis et utile. Tu as accès à des outils pour chercher sur internet (web_search), lire des notes (vault_read), créer des rappels (reminder_set), et parler sur des haut-parleurs (sonos_speak, echo_speak). " +
+    "Utilise les outils quand c'est pertinent. Ne parle PAS de la maison ou de maintenance sauf si on te le demande explicitement.";
 
   // Convert tools to Ollama format
   var ollamaTools = tools.map(function(t) {

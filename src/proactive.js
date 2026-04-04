@@ -203,7 +203,14 @@ async function runAction(action, notify) {
 
   try {
     var sessionId = 'proactive-' + action.name;
-    var response = await chat(action.prompt, sessionId);
+    // If action specifies a model, add a routing hint
+    var prompt = action.prompt;
+    if (action.model === 'claude') {
+      prompt = '[ROUTE:claude] ' + prompt;
+    } else if (action.model === 'mistral') {
+      prompt = '[ROUTE:mistral] ' + prompt;
+    }
+    var response = await chat(prompt, sessionId);
 
     // Check if we should notify
     var shouldNotify = false;
