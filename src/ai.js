@@ -428,7 +428,7 @@ async function executeTool(name, input) {
           var itemRegex = /<item>([\s\S]*?)<\/item>/g;
           var m;
           var count = 0;
-          while ((m = itemRegex.exec(xml)) !== null && count < 4) {
+          while ((m = itemRegex.exec(xml)) !== null && count < 6) {
             var item = m[1];
             var title = (item.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '';
             var pubDate = (item.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1] || '';
