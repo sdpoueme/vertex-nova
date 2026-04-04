@@ -161,22 +161,22 @@ var tools = [
   },
   {
     name: 'web_search',
-    description: 'Search the internet for current information. Use this when you do not know the answer, need current data (weather, news, prices, events), or need to verify facts.',
+    description: 'Cherche sur internet via DuckDuckGo. Utilise pour: météo, actualités, prix, événements, ou toute info que tu ne connais pas. Retourne les 5 premiers résultats avec titre, extrait et URL.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Search query' }
+        query: { type: 'string', description: 'Requête de recherche (en français ou anglais)' }
       },
       required: ['query']
     }
   },
   {
     name: 'web_fetch',
-    description: 'Fetch the content of a specific web page URL. Use after web_search to get details from a result.',
+    description: 'Télécharge le contenu texte d\'une page web. Utilise après web_search pour lire les détails d\'un résultat. Retourne le texte brut (max 2000 caractères).',
     input_schema: {
       type: 'object',
       properties: {
-        url: { type: 'string', description: 'Full URL to fetch (https://)' }
+        url: { type: 'string', description: 'URL complète (https://)' }
       },
       required: ['url']
     }
@@ -198,6 +198,39 @@ var tools = [
     name: 'reminder_list',
     description: 'List all pending reminders.',
     input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'memory_view',
+    description: 'View your memory files. Use at the start of complex tasks to recall learned patterns. Pass a path to view a specific file, or "/" to list all memory files.',
+    input_schema: {
+      type: 'object',
+      properties: { path: { type: 'string', description: 'Path to view (e.g. "/" for root, "preferences.md" for a file)' } },
+      required: ['path']
+    }
+  },
+  {
+    name: 'memory_write',
+    description: 'Save a learning, pattern, or preference to memory for future sessions. Use this to remember: user preferences, home patterns, recurring issues, successful solutions, and important context.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path (e.g. "preferences.md", "patterns/maintenance.md")' },
+        content: { type: 'string', description: 'Content to write (markdown)' }
+      },
+      required: ['path', 'content']
+    }
+  },
+  {
+    name: 'memory_append',
+    description: 'Append a new learning to an existing memory file.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string', description: 'File path' },
+        content: { type: 'string', description: 'Content to append' }
+      },
+      required: ['path', 'content']
+    }
   }
 ];
 
@@ -272,17 +305,18 @@ async function executeTool(name, input) {
 
   if (name === 'vault_search') {
     var out6 = await runCmd('grep', ['-rl', '--include=*.md', '-i', input.query, vaultPath], 10000).catch(function() { return ''; });
-    if (!out6.trim()) return 'No results found for: ' + input.query;
-    var files = out6.trim().split('\n').slice(0, 10);
+    if (!out6.trim()) return 'Aucun résultat pour: ' + input.query;
+    var files = out6.trim().split('\n').slice(0, 5); // Limit to 5 results
     var results = [];
     for (var i = 0; i < files.length; i++) {
       var rel = files[i].replace(vaultPath + '/', '');
       try {
         var content = readFileSync(files[i], 'utf8');
-        results.push('## ' + rel + '\n' + content.slice(0, 500));
+        // Only include first 300 chars to keep context concise
+        results.push('📄 ' + rel + ':\n' + content.slice(0, 300).trim());
       } catch {}
     }
-    return results.join('\n\n---\n\n');
+    return results.join('\n---\n') || 'Aucun résultat.';
   }
 
   if (name === 'vault_create') {
@@ -355,9 +389,9 @@ async function executeTool(name, input) {
         count++;
       }
 
-      if (searchResults.length === 0) return 'No results found for: ' + input.query;
+      if (searchResults.length === 0) return 'Aucun résultat pour: ' + input.query;
       return searchResults.map(function(r, i) {
-        return (i + 1) + '. ' + r.title + '\n   ' + r.snippet + '\n   ' + r.url;
+        return (i + 1) + '. ' + r.title + '\n   ' + r.snippet.slice(0, 150) + '\n   ' + r.url;
       }).join('\n\n');
     } catch (err) {
       return 'Search error: ' + err.message;
@@ -379,7 +413,7 @@ async function executeTool(name, input) {
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 3000);
+        .slice(0, 2000); // Keep concise for context window
       return clean || 'Empty page';
     } catch (err) {
       return 'Fetch error: ' + err.message;
@@ -420,6 +454,51 @@ async function executeTool(name, input) {
     } catch {
       return 'Aucun rappel trouvé.';
     }
+  }
+
+  // Memory tools — persistent cross-session learning
+  var memoryDir = join(resolve(config.vaultPath || join(config.projectDir, 'vault')), 'memories');
+
+  if (name === 'memory_view') {
+    var { readdirSync: readMemDir, readFileSync: readMem, existsSync: memExists, statSync } = await import('node:fs');
+    var { join: joinMem } = await import('node:path');
+    var { mkdirSync: mkMem } = await import('node:fs');
+    mkMem(memoryDir, { recursive: true });
+    var memPath = joinMem(memoryDir, input.path === '/' ? '' : input.path);
+    try {
+      var stat = statSync(memPath);
+      if (stat.isDirectory()) {
+        var entries = readMemDir(memPath, { recursive: true });
+        return entries.length > 0 ? 'Fichiers mémoire:\n' + entries.join('\n') : 'Mémoire vide.';
+      } else {
+        return readMem(memPath, 'utf8');
+      }
+    } catch {
+      return 'Fichier non trouvé: ' + input.path;
+    }
+  }
+
+  if (name === 'memory_write') {
+    var { writeFileSync: writeMem, mkdirSync: mkMemDir } = await import('node:fs');
+    var { join: joinMem2, dirname } = await import('node:path');
+    var memFilePath = joinMem2(memoryDir, input.path);
+    // Security: prevent path traversal
+    if (!memFilePath.startsWith(memoryDir)) return 'Erreur: chemin invalide';
+    mkMemDir(dirname(memFilePath), { recursive: true });
+    writeMem(memFilePath, input.content);
+    log.info('Memory written: ' + input.path);
+    return 'Mémorisé: ' + input.path;
+  }
+
+  if (name === 'memory_append') {
+    var { appendFileSync: appendMem, existsSync: memFileExists, mkdirSync: mkMemDir2 } = await import('node:fs');
+    var { join: joinMem3, dirname: dirMem } = await import('node:path');
+    var memAppendPath = joinMem3(memoryDir, input.path);
+    if (!memAppendPath.startsWith(memoryDir)) return 'Erreur: chemin invalide';
+    mkMemDir2(dirMem(memAppendPath), { recursive: true });
+    appendMem(memAppendPath, '\n' + input.content);
+    log.info('Memory appended: ' + input.path);
+    return 'Ajouté à: ' + input.path;
   }
 
   return 'Unknown tool: ' + name;
