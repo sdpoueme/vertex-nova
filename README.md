@@ -1,162 +1,108 @@
 # Vertex Nova
 
-Personal home assistant that connects Telegram, Sonos speakers, Echo devices, and a markdown knowledge base into a single AI-powered system. Talk to your house via text, voice, or images — get intelligent responses and hear announcements throughout the house.
-
-## How It Works
-
-```
-Telegram (text, voice, images)
-              │
-        Model Router ──── config/routing.yaml
-      ┌───────┼───────┐
-      │       │       │
-  Claude   Gemma 4  Mistral
-  (vision, (tools,  (casual
-   complex  search,  chat)
-   reason)  devices)
-      │       │
-      Tool calls
-  ┌───┼───┬───┼───┐
-  │   │   │   │   │
-Sonos Echo Vault Web Email
-(TTS) (VM) (md) (DDG) Monitor
-```
-
-## Three-Model Architecture
-
-| Model | Where | Cost | Used For |
-|-------|-------|------|----------|
-| Claude (Sonnet) | Cloud API | Pay per use | Vision, complex reasoning, fallback |
-| Gemma 4 (12B) | Local (Ollama) | Free | Device control, web search, vault, home tasks |
-| Mistral (7B) | Local (Ollama) | Free | Casual chat, greetings, small talk |
-
-Routing is configurable via `config/routing.yaml`. Images always go to Claude. Gemma 4 is the default for unmatched messages. If Claude API is down, Gemma 4 takes over automatically.
-
-## Features
-
-- Telegram — text, voice messages (whisper.cpp), image analysis (Claude vision)
-- WhatsApp — text and voice (configurable, disabled by default)
-- Sonos TTS — official Sonos Cloud API + local Piper TTS (offline, FR + EN)
-- Echo devices — announcements via Voice Monkey API (speak, speak-all)
-- Web search — DuckDuckGo search + page fetch for current information
-- Email monitor — polls Gmail for device alerts (Telus, MyQ, Honeywell), AI analyzes for anomalies
-- Proactive scheduler — breaking news, weather alerts, home maintenance, Friday movies, weekend activities
-- Smart notification routing by time of day (Echo Show mornings, office Echo workday, Sonos evenings, Telegram nights)
-- Reminders — natural language ("rappelle-moi demain à 10h"), auto-delivers via best channel at the right time
-- Knowledge base — markdown vault for home topology, devices, events, tasks (excluded from git)
-- User identity — knows who's talking, auto-detects language (FR/EN)
-- Night mode — Sonos guardrail redirects ground floor to basement 10 PM–7 AM
-- Session memory — conversations persist throughout the day
-- Auto-start — runs as macOS Launch Agent on login
+Personal home assistant — Telegram, Sonos, Echo devices, AI with persistent memory.
 
 ## Architecture
 
 ```
-src/
-├── home-agent.js          # Main entry point
-├── ai.js                  # Claude + Gemma 4 + Mistral, tool execution
-├── model-router.js        # YAML-based model routing
-├── proactive.js           # Proactive scheduler (news, weather, maintenance)
-├── reminders.js           # Reminder engine with smart delivery
-├── email-monitor.js       # Gmail polling for device alerts
-├── home-config.js         # Configuration from .env
-├── tts-server.js          # Local HTTP server for Sonos TTS
-├── channels/
-│   ├── telegram.js        # Telegram (text, voice, images)
-│   └── whatsapp.js        # WhatsApp Business API
-├── outputs/
-│   ├── voicemonkey.js     # Echo device TTS via Voice Monkey
-│   ├── sonos.js           # Sonos Cloud API client
-│   └── router.js          # Output routing
-└── log.js                 # Leveled logger
-
-config/
-├── routing.yaml           # AI model routing rules
-└── proactive.yaml         # Proactive actions and notification routing
-
-scripts/
-├── sonos-auth.js          # Sonos OAuth flow
-├── sonos-cli.js           # Sonos CLI for AI tool calls
-└── com.vertexnova.agent.plist  # macOS Launch Agent
+Message → Gemma 4 (default, free, local)
+              │
+         Good response? ── Yes → return
+              │ No
+         Escalate to Claude → return + save pattern
+              │
+         Both fail → friendly error
 ```
 
-## Setup
+| Model | Role | Cost |
+|-------|------|------|
+| Gemma 4 (12B) | Default for everything — tools, search, chat | Free (local) |
+| Claude Sonnet | Escalation — vision, complex reasoning, Gemma 4 failures | Pay per use |
 
-### Prerequisites
+Gemma 4 handles 80%+ of requests. Claude activates only for images or when Gemma 4 gives a bad response (wrong language, too short, confused). Escalation patterns are saved to memory so Gemma 4 learns over time.
 
-- Node.js 20+
-- ffmpeg (`brew install ffmpeg`)
-- Piper TTS (`pipx install piper-tts && pipx inject piper-tts pathvalidate`)
-- whisper.cpp (`brew install whisper-cpp`)
-- Ollama (`brew install ollama && brew services start ollama`)
-  - `ollama pull gemma4` (primary local model, 9.6GB)
-  - `ollama pull mistral` (fast chat model, 4.4GB)
+## Features
 
-### Install
-
-```bash
-git clone <repo> vertex-nova && cd vertex-nova
-npm install
-node scripts/sonos-auth.js    # Sonos OAuth
-cp .env.home.example .env     # Configure credentials
-npm start
-```
-
-### Auto-start on macOS
-
-```bash
-cp scripts/com.vertexnova.agent.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
-```
+- **Telegram** — text, voice (whisper.cpp), images (Claude vision)
+- **WhatsApp** — text and voice (configurable)
+- **Sonos TTS** — official Cloud API + local Piper (offline, FR/EN)
+- **Echo devices** — Voice Monkey API (speak, speak-all)
+- **Web search** — DuckDuckGo + page fetch
+- **Persistent memory** — cross-session learning in vault/memories/
+- **Reminders** — natural language, smart delivery by time of day
+- **Proactive scheduler** — news, weather, maintenance, movies, activities
+- **Email monitor** — Gmail polling for device alerts (Telus, MyQ, Honeywell)
+- **Conversation memory** — sliding window + auto-summarization
+- **Night mode** — voice devices blocked 10 PM–7 AM
+- **Auto-start** — macOS Launch Agent
 
 ## AI Tools
 
 | Tool | Description |
 |------|-------------|
 | sonos_speak | TTS on Sonos speaker |
-| sonos_speak_all | TTS on all Sonos speakers |
+| sonos_speak_all | TTS on all Sonos |
 | sonos_chime | Notification chime |
 | sonos_volume | Set volume |
-| echo_speak | TTS on Echo device (Voice Monkey) |
+| echo_speak | TTS on Echo (Voice Monkey) |
 | echo_speak_all | TTS on all Echo devices |
-| web_search | Search the internet (DuckDuckGo) |
-| web_fetch | Fetch and read a web page |
+| web_search | DuckDuckGo search |
+| web_fetch | Fetch web page content |
 | vault_read | Read vault note |
 | vault_search | Search vault |
 | vault_create | Create note |
 | vault_append | Append to note |
 | vault_list | List folder |
-| reminder_set | Set a reminder (date, time, text) |
+| reminder_set | Set a reminder |
 | reminder_list | List pending reminders |
-
-## Proactive Actions (config/proactive.yaml)
-
-| Action | Interval | Priority |
-|--------|----------|----------|
-| Breaking news | 30 min | High |
-| Weather alerts | 60 min | High |
-| Home maintenance | 6 hours | Medium |
-| Friday movies | Fridays 5-7 PM | Medium |
-| Weekend activities | Saturdays 8-9 AM | Medium |
-| Email digest | 2 hours | Low |
-
-Notifications route to the right device based on time of day. AI decides whether to notify based on relevance — routine stuff gets skipped.
+| memory_view | View learned patterns |
+| memory_write | Save new learning |
+| memory_append | Add to existing memory |
 
 ## Notification Routing
 
 | Time | Channel | Device |
 |------|---------|--------|
-| 10 PM – 7 AM | Telegram | Silent (night mode) |
+| 10 PM – 7 AM | Telegram | Silent |
 | 7 – 9 AM | Echo | Echo Show (kitchen) |
 | 9 AM – 5 PM | Echo | Bureau Serge (office) |
 | 5 – 7 PM | Echo | Echo Show (kitchen) |
 | 7 – 9 PM | Sonos | Sous-sol (basement) |
 | 9 – 10 PM | Telegram | Silent |
 
-Applies to reminders, proactive actions, and email alerts. Night guardrail enforced at all levels — voice devices never speak between 10 PM and 7 AM.
+## Setup
+
+```bash
+# Prerequisites: Node 20+, ffmpeg, Piper TTS, whisper-cpp, Ollama
+brew install ffmpeg whisper-cpp ollama
+pipx install piper-tts && pipx inject piper-tts pathvalidate
+ollama pull gemma4
+
+# Install
+git clone <repo> vertex-nova && cd vertex-nova
+npm install
+node scripts/sonos-auth.js
+cp .env.home.example .env  # Edit with credentials
+npm start
+
+# Auto-start on macOS
+cp scripts/com.vertexnova.agent.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
+```
+
+## Proactive Actions
+
+| Action | Interval | Model |
+|--------|----------|-------|
+| Breaking news | 30 min | Claude |
+| Weather alerts | 60 min | Claude |
+| Home maintenance | 6 hours | Gemma 4 |
+| Friday movies | Fridays 5-7 PM | Claude |
+| Weekend activities | Saturdays 8-9 AM | Claude |
+| Email digest | 2 hours | Gemma 4 |
 
 ## Roadmap
 
-- Alexa+ Multi-Agent SDK — voice input from Echo devices (pending SDK access)
-- Honeywell thermostat API — direct temperature monitoring and control
-- Docker — containerized deployment
+- Alexa+ Multi-Agent SDK — voice input from Echo devices
+- Honeywell thermostat API — direct temperature control
+- Docker deployment
