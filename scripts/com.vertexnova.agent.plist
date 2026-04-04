@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.vertexnova.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/node</string>
+        <string>/Users/pouemes/Projects/synapse/src/home-agent.js</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/pouemes/Projects/synapse</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/pouemes/Projects/synapse/vertex-nova.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/pouemes/Projects/synapse/vertex-nova.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/pouemes/.local/bin</string>
+    </dict>
+</dict>
+</plist>
