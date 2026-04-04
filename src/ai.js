@@ -391,52 +391,80 @@ async function executeTool(name, input) {
     return 'Annonce envoyée sur ' + successCount + '/' + devices.length + ' appareils Echo';
   }
 
-  // Google News search
+  // Google News search + Business Insider + Cameroon
   if (name === 'news_search') {
     try {
       var topic = input.topic || '';
-      var newsUrl = topic
-        ? 'https://news.google.com/rss/search?q=' + encodeURIComponent(topic) + '&hl=fr-CA&gl=CA&ceid=CA:fr'
-        : 'https://news.google.com/rss?hl=fr-CA&gl=CA&ceid=CA:fr';
+      var allItems = [];
 
-      var newsRes = await fetch(newsUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
-        redirect: 'follow',
-      });
-      if (!newsRes.ok) return 'Erreur Google News: ' + newsRes.status;
-      var xml = await newsRes.text();
+      // Google News Canada (French)
+      var feeds = [
+        { url: topic
+          ? 'https://news.google.com/rss/search?q=' + encodeURIComponent(topic) + '&hl=fr-CA&gl=CA&ceid=CA:fr'
+          : 'https://news.google.com/rss?hl=fr-CA&gl=CA&ceid=CA:fr',
+          source: 'Google News CA' },
+      ];
 
-      // Parse RSS items
-      var itemRegex = /<item>([\s\S]*?)<\/item>/g;
-      var newsItems = [];
-      var m;
-      var count = 0;
-      while ((m = itemRegex.exec(xml)) !== null && count < 8) {
-        var item = m[1];
-        var title = (item.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '';
-        var pubDate = (item.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1] || '';
-        var source = (item.match(/<source[^>]*>([\s\S]*?)<\/source>/) || [])[1] || '';
-        var desc = (item.match(/<description>([\s\S]*?)<\/description>/) || [])[1] || '';
-        // Clean HTML from description
-        desc = desc.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
-        title = title.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+      // Add Cameroon news if topic is empty or mentions Cameroon/Africa
+      if (!topic || /cameroun|cameroon|afrique|africa/i.test(topic)) {
+        feeds.push({ url: 'https://news.google.com/rss/search?q=Cameroun&hl=fr&gl=FR&ceid=FR:fr', source: 'Cameroun' });
+      }
 
-        if (title) {
-          newsItems.push({
-            title: title,
-            source: source,
-            date: pubDate,
-            summary: desc.slice(0, 200),
+      // Add Business Insider
+      if (!topic || /business|tech|économie|finance|insider/i.test(topic)) {
+        feeds.push({ url: 'https://www.businessinsider.com/rss', source: 'Business Insider' });
+      }
+
+      for (var fi = 0; fi < feeds.length; fi++) {
+        try {
+          var newsRes = await fetch(feeds[fi].url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' },
+            redirect: 'follow',
+            signal: AbortSignal.timeout(8000),
           });
-          count++;
+          if (!newsRes.ok) continue;
+          var xml = await newsRes.text();
+
+          var itemRegex = /<item>([\s\S]*?)<\/item>/g;
+          var m;
+          var count = 0;
+          while ((m = itemRegex.exec(xml)) !== null && count < 4) {
+            var item = m[1];
+            var title = (item.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '';
+            var pubDate = (item.match(/<pubDate>([\s\S]*?)<\/pubDate>/) || [])[1] || '';
+            var rssSource = (item.match(/<source[^>]*>([\s\S]*?)<\/source>/) || [])[1] || feeds[fi].source;
+            var desc = (item.match(/<description>([\s\S]*?)<\/description>/) || [])[1] || '';
+            desc = desc.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"').trim();
+            title = title.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+
+            if (title) {
+              allItems.push({ title: title, source: rssSource, date: pubDate, summary: desc.slice(0, 200), feed: feeds[fi].source });
+              count++;
+            }
+          }
+        } catch {}
+      }
+
+      if (allItems.length === 0) return 'Aucune nouvelle trouvée' + (topic ? ' pour: ' + topic : '');
+
+      // Group by feed source
+      var grouped = {};
+      for (var ni = 0; ni < allItems.length; ni++) {
+        var feed = allItems[ni].feed;
+        if (!grouped[feed]) grouped[feed] = [];
+        grouped[feed].push(allItems[ni]);
+      }
+
+      var output = [];
+      for (var g in grouped) {
+        output.push('📰 **' + g + '**');
+        for (var gi = 0; gi < grouped[g].length; gi++) {
+          var n = grouped[g][gi];
+          output.push((gi + 1) + '. **' + n.title + '**\n   _' + n.source + '_ — ' + n.date.slice(0, 16) + '\n   ' + n.summary);
         }
       }
 
-      if (newsItems.length === 0) return 'Aucune nouvelle trouvée' + (topic ? ' pour: ' + topic : '');
-
-      return newsItems.map(function(n, i) {
-        return (i + 1) + '. **' + n.title + '**\n   _' + n.source + '_ — ' + n.date.slice(0, 16) + '\n   ' + n.summary;
-      }).join('\n\n');
+      return output.join('\n\n');
     } catch (err) {
       return 'Erreur news: ' + err.message;
     }

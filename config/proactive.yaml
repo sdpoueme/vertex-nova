@@ -33,15 +33,15 @@ actions:
     interval_minutes: 30
     model: qwen3:8b
     prompt: >
-      Utilise l'outil news_search sans sujet pour obtenir les dernières nouvelles.
-      Puis utilise news_search avec le sujet "Canada" pour les nouvelles canadiennes.
-      À partir des résultats, sélectionne les 3-5 nouvelles les plus importantes.
-      Critères: conflit armé, changement politique, catastrophe, avancée technologique,
-      événement affectant le Canada/Québec, crise économique.
-      Si rien de significatif, réponds "SKIP".
-      Sinon écris un briefing en français:
-      - Pour chaque nouvelle: titre en gras, 1-2 phrases résumant les faits, source
-      - Ton informatif et factuel
+      Utilise news_search sans sujet pour les nouvelles canadiennes.
+      Puis utilise news_search avec le sujet "Cameroun" pour les nouvelles du Cameroun.
+      À partir des résultats, fais un briefing en français organisé en sections:
+      🇨🇦 **Canada & Monde** — les 3-4 nouvelles les plus importantes
+      🇨🇲 **Cameroun** — les 2-3 nouvelles principales
+      💼 **Business & Tech** — si pertinent
+      Pour chaque nouvelle: titre, 1-2 phrases de résumé, source.
+      Si rien de significatif dans une section, omets-la.
+      Si rien du tout, réponds "SKIP".
     notify_condition: not_skip
     priority: high
 
