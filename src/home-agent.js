@@ -176,7 +176,7 @@ async function main() {
           if (telegramChannel) {
             // Send to Serge's Telegram
             var { Telegraf } = await import('telegraf');
-            await telegramChannel.bot.telegram.sendMessage(787677377, '🏠 ' + response);
+            var ICONS = {'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'}; var icon = ICONS[action.name] || '🏠'; await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
           }
         }
       } catch (err) {
@@ -216,10 +216,12 @@ async function main() {
   // Proactive scheduler
   var { startProactive } = await import('./proactive.js');
   startProactive(async function(response, route, action) {
+    var ICONS = {'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'};
+    var icon = ICONS[action.name] || '🏠';
+
     try {
-      // Route notification to the right channel/device
       if (route.channel === 'telegram' && telegramChannel) {
-        await telegramChannel.bot.telegram.sendMessage(787677377, '🏠 ' + response);
+        await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
       } else if (route.channel === 'echo') {
         var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
         var vm = new VoiceMonkey(config);
@@ -233,9 +235,8 @@ async function main() {
         });
       }
 
-      // Also send to Telegram as backup for non-telegram channels
       if (route.channel !== 'telegram' && telegramChannel) {
-        await telegramChannel.bot.telegram.sendMessage(787677377, '📋 [' + action.name + '] ' + response.slice(0, 500));
+        await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response.slice(0, 500));
       }
     } catch (err) {
       log.error('Proactive notification failed:', err.message);
