@@ -21,7 +21,7 @@ var CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 var CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY;
 var CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
 var OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'gemma4';
+var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 var OLLAMA_FAST_MODEL = process.env.OLLAMA_FAST_MODEL || 'mistral';
 var usingFallback = false;
 var MAX_TOKENS = 4096;
@@ -669,7 +669,7 @@ export async function chat(message, sessionId, image) {
 
   // Default: try Gemma 4 first
   try {
-    var gemmaResponse = await chatOllama(message, sessionId, 'gemma4');
+    var gemmaResponse = await chatOllama(message, sessionId, OLLAMA_MODEL);
 
     // Check if response seems bad (too short, confused, or error-like)
     if (shouldEscalate(gemmaResponse, message)) {
@@ -733,7 +733,7 @@ async function saveEscalationPattern(message, claudeResponse) {
 async function chatClaude(message, sessionId, image) {
   if (!CLAUDE_API_KEY) {
     log.warn('No Claude API key, falling back to Gemma 4');
-    return chatOllama(message, sessionId, 'gemma4');
+    return chatOllama(message, sessionId, OLLAMA_MODEL);
   }
 
   addUserMessage(sessionId, image ? [

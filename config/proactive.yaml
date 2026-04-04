@@ -31,7 +31,7 @@ actions:
   - name: breaking-news
     description: "Major breaking news"
     interval_minutes: 30
-    model: gemma4
+    model: qwen3:8b
     prompt: >
       Utilise web_search pour chercher "top news today" puis "actualités importantes Canada".
       Analyse les résultats et ne rapporte QUE les événements vraiment significatifs.
@@ -54,7 +54,7 @@ actions:
   - name: weather-alert
     description: "Severe weather warnings"
     interval_minutes: 60
-    model: gemma4
+    model: qwen3:8b
     prompt: >
       Utilise web_search pour chercher "alertes météo Sainte-Julie Québec"
       et "Environnement Canada avertissements Montérégie".
@@ -67,7 +67,7 @@ actions:
   - name: home-maintenance-check
     description: "Seasonal home maintenance"
     interval_minutes: 360
-    model: gemma4
+    model: qwen3:8b
     prompt: >
       Basé sur la date et la saison, quelles tâches d'entretien sont dues pour
       une maison à Sainte-Julie, Québec? Filtres HVAC, gouttières, déneigement,
@@ -80,7 +80,7 @@ actions:
   - name: email-digest
     description: "Device alert summary"
     interval_minutes: 120
-    model: gemma4
+    model: qwen3:8b
     prompt: >
       Vérifie le vault pour les alertes d'appareils récentes aujourd'hui.
       Résume ce qui est notable. Si rien d'inhabituel, réponds "SKIP".
@@ -93,7 +93,7 @@ actions:
     interval_minutes: 1440
     day_of_week: friday
     active_hours: [17, 18, 19]
-    model: gemma4
+    model: qwen3:8b
     prompt: >
       Utilise web_search pour chercher "meilleurs films streaming Canada 2026"
       et "best movies Netflix Prime Video Disney+ Crave this week".
@@ -107,7 +107,7 @@ actions:
     interval_minutes: 1440
     day_of_week: saturday
     active_hours: [8, 9]
-    model: gemma4
+    model: qwen3:8b
     prompt: >
       Utilise web_search pour chercher "activités weekend Montréal Rive-Sud"
       et "événements famille Sainte-Julie cette fin de semaine".

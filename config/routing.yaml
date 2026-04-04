@@ -19,7 +19,7 @@ routes:
     model: claude
 
 default:
-  model: gemma4
+  model: qwen3:8b
 
 # Escalation: if Gemma 4 returns a bad response, retry with Claude
 # (handled in code, not here)
