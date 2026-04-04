@@ -5,7 +5,7 @@ Personal home assistant — Telegram, Sonos, Echo devices, AI with persistent me
 ## Architecture
 
 ```
-Message → Gemma 4 (default, free, local)
+Message → Qwen3 8B (default, free, local)
               │
          Good response? ── Yes → return
               │ No
@@ -16,14 +16,14 @@ Message → Gemma 4 (default, free, local)
 
 | Model | Role | Cost |
 |-------|------|------|
-| Gemma 4 (12B) | Default for everything — tools, search, chat, vision | Free (local) |
-| Claude Sonnet | Escalation — complex reasoning, Gemma 4 failures | Pay per use |
+| Qwen3 (8B) | Default for everything — tools, search, chat | Free (local) |
+| Claude Sonnet | Escalation — complex reasoning, Qwen3 failures | Pay per use |
 
-Gemma 4 handles 80%+ of requests including vision. Claude activates only when Gemma 4 gives a bad response. System runs fully offline at zero cost when Claude API is unavailable.
+Qwen3 handles 80%+ of requests. Images fall back to Gemma 4 E2B (vision) or Claude. Claude activates only when Qwen3 gives a bad response. System runs fully offline at zero cost when Claude API is unavailable.
 
 ## Features
 
-- **Telegram** — text, voice (whisper.cpp), images (Gemma 4 vision, Claude fallback)
+- **Telegram** — text, voice (whisper.cpp), images (Gemma 4 E2B vision, Claude fallback)
 - **WhatsApp** — text and voice (configurable)
 - **Sonos TTS** — official Cloud API + local Piper (offline, FR/EN)
 - **Echo devices** — Voice Monkey API (speak, speak-all)
@@ -35,7 +35,7 @@ Gemma 4 handles 80%+ of requests including vision. Claude activates only when Ge
 - **Conversation memory** — sliding window + auto-summarization
 - **Night mode** — voice devices blocked 10 PM–7 AM
 - **Auto-start** — macOS Launch Agent
-- **Fully offline capable** — all features work on Gemma 4 alone (voice, vision, tools)
+- **Fully offline capable** — all features work locally (Qwen3 + Gemma 4 E2B for vision)
 
 ## AI Tools
 
@@ -77,7 +77,7 @@ Gemma 4 handles 80%+ of requests including vision. Claude activates only when Ge
 # Prerequisites: Node 20+, ffmpeg, Piper TTS, whisper-cpp, Ollama
 brew install ffmpeg whisper-cpp ollama
 pipx install piper-tts && pipx inject piper-tts pathvalidate
-ollama pull gemma4
+ollama pull qwen3:8b
 
 # Install
 git clone <repo> vertex-nova && cd vertex-nova
@@ -95,12 +95,12 @@ launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 
 | Action | Interval | Model |
 |--------|----------|-------|
-| Breaking news | 30 min | Gemma 4 |
-| Weather alerts | 60 min | Gemma 4 |
-| Home maintenance | 6 hours | Gemma 4 |
-| Friday movies | Fridays 5-7 PM | Gemma 4 |
-| Weekend activities | Saturdays 8-9 AM | Gemma 4 |
-| Email digest | 2 hours | Gemma 4 |
+| Breaking news | 30 min | Qwen3 |
+| Weather alerts | 60 min | Qwen3 |
+| Home maintenance | 6 hours | Qwen3 |
+| Friday movies | Fridays 5-7 PM | Qwen3 |
+| Weekend activities | Saturdays 8-9 AM | Qwen3 |
+| Email digest | 2 hours | Qwen3 |
 
 ## Offline Capability
 
@@ -112,9 +112,9 @@ Everything runs locally without Claude API:
 | Voice input | whisper.cpp |
 | Voice output (Sonos) | Piper TTS + Sonos Cloud API |
 | Voice output (Echo) | Voice Monkey API |
-| Image analysis | Gemma 4 vision (Ollama) |
+| Image analysis | Gemma 4 E2B vision (Ollama) |
 | Web search | DuckDuckGo |
-| Tools | All 18 tools work locally |
+| Tools | All 18 tools work on Qwen3 |
 
 ## Choosing a Local Model
 
@@ -146,7 +146,7 @@ launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 Key tradeoffs:
 - **RAM vs speed**: Larger models need more RAM. If the model exceeds available RAM, it swaps to disk and becomes 10x slower.
 - **Quality vs latency**: 14B models reason better but take longer. For a home assistant, 8B with fast responses is usually better than 14B with 30s delays.
-- **Vision**: Only Gemma 4 models support image analysis locally. Qwen3 is text-only. Images fall back to Claude or Gemma 4 automatically.
+- **Vision**: Qwen3 is text-only. Images use Gemma 4 E2B or Claude for vision.
 
 ## Roadmap
 
