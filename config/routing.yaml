@@ -54,7 +54,7 @@ routes:
     model: gemma4
 
   - name: vault-operations
-    description: "Knowledge base operations"
+    description: "Knowledge base and reminder operations"
     patterns:
       - "crée.*note"
       - "cherche.*vault"
@@ -65,6 +65,12 @@ routes:
       - "sauvegarde"
       - "statut.*maison"
       - "home status"
+      - "rappel"
+      - "remind"
+      - "rappelle"
+      - "n'oublie pas"
+      - "don't forget"
+      - "reminder"
     model: gemma4
 
   - name: web-search

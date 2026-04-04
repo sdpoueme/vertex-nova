@@ -6,6 +6,7 @@
  * Output: Sonos TTS, vault knowledge base
  */
 import { config } from './home-config.js';
+import { join } from 'node:path';
 import { chat } from './ai.js';
 import { startTtsServer } from './tts-server.js';
 import { logger } from './log.js';
@@ -184,6 +185,33 @@ async function main() {
     });
     await emailMonitor.start();
   }
+
+  // Reminder engine
+  var { startReminders } = await import('./reminders.js');
+  var vaultPath = config.vaultPath || join(config.projectDir, 'vault');
+  startReminders(vaultPath, async function(text, route) {
+    try {
+      if (route.channel === 'telegram' && telegramChannel) {
+        await telegramChannel.bot.telegram.sendMessage(787677377, text);
+      } else if (route.channel === 'echo') {
+        var { VoiceMonkey: VMRem } = await import('./outputs/voicemonkey.js');
+        var vmRem = new VMRem(config);
+        await vmRem.speak(text.slice(0, 500), route.device);
+        // Also send to Telegram as backup
+        if (telegramChannel) await telegramChannel.bot.telegram.sendMessage(787677377, text);
+      } else if (route.channel === 'sonos') {
+        var { execFile: execRem } = await import('node:child_process');
+        var { join: joinRem } = await import('node:path');
+        var cliRem = joinRem(config.projectDir, 'scripts/sonos-cli.js');
+        execRem('node', [cliRem, 'speak', text.slice(0, 500), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
+          if (err) log.error('Reminder Sonos failed:', err.message);
+        });
+        if (telegramChannel) await telegramChannel.bot.telegram.sendMessage(787677377, text);
+      }
+    } catch (err) {
+      log.error('Reminder notification failed:', err.message);
+    }
+  });
 
   // Proactive scheduler
   var { startProactive } = await import('./proactive.js');

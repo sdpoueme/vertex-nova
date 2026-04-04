@@ -175,6 +175,24 @@ var tools = [
       },
       required: ['url']
     }
+  },
+  {
+    name: 'reminder_set',
+    description: 'Set a reminder for the user. The reminder will trigger at the specified date and time and notify via the best channel (Telegram at night, Echo during day, Sonos in evening). Use this whenever the user says "remind me", "rappelle-moi", "n\'oublie pas", or anything that implies a future reminder.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'What to remind about' },
+        date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
+        time: { type: 'string', description: 'Time in HH:MM format (24h)' }
+      },
+      required: ['text', 'date', 'time']
+    }
+  },
+  {
+    name: 'reminder_list',
+    description: 'List all pending reminders.',
+    input_schema: { type: 'object', properties: {} }
   }
 ];
 
@@ -353,6 +371,42 @@ async function executeTool(name, input) {
       return clean || 'Empty page';
     } catch (err) {
       return 'Fetch error: ' + err.message;
+    }
+  }
+
+  // Reminders
+  if (name === 'reminder_set') {
+    var { writeFileSync: writeReminder, mkdirSync: mkRemDir } = await import('node:fs');
+    var { join: joinRem } = await import('node:path');
+    var remDir = joinRem(resolve(config.vaultPath || joinRem(config.projectDir, 'vault')), 'home', 'reminders');
+    mkRemDir(remDir, { recursive: true });
+    var remId = input.date + '-' + Date.now().toString(36);
+    var remContent = '---\ndate: ' + input.date + '\ntime: "' + input.time + '"\nreminder: "' + input.text.replace(/"/g, '\\"') + '"\nstatus: pending\ntags:\n  - type/reminder\n---\n\n# Rappel\n\n' + input.text;
+    writeReminder(joinRem(remDir, remId + '.md'), remContent);
+    return 'Rappel créé pour le ' + input.date + ' à ' + input.time + ': ' + input.text;
+  }
+
+  if (name === 'reminder_list') {
+    var { readdirSync: readRemDir, readFileSync: readRem } = await import('node:fs');
+    var { join: joinRem2 } = await import('node:path');
+    var remPath = joinRem2(resolve(config.vaultPath || joinRem2(config.projectDir, 'vault')), 'home', 'reminders');
+    try {
+      var remFiles = readRemDir(remPath).filter(function(f) { return f.endsWith('.md'); });
+      var pending = [];
+      for (var ri = 0; ri < remFiles.length; ri++) {
+        var rc = readRem(joinRem2(remPath, remFiles[ri]), 'utf8');
+        if (rc.includes('status: pending')) {
+          var dateMatch = rc.match(/date:\s*(\S+)/);
+          var timeMatch = rc.match(/time:\s*"?(\S+)"?/);
+          var textMatch = rc.match(/reminder:\s*"([^"]+)"/);
+          if (dateMatch && textMatch) {
+            pending.push(dateMatch[1] + ' ' + (timeMatch ? timeMatch[1] : '') + ' — ' + textMatch[1]);
+          }
+        }
+      }
+      return pending.length > 0 ? 'Rappels en attente:\n' + pending.join('\n') : 'Aucun rappel en attente.';
+    } catch {
+      return 'Aucun rappel trouvé.';
     }
   }
 
