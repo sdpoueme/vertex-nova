@@ -658,8 +658,8 @@ export async function chat(message, sessionId, image) {
         log.warn('Claude vision failed: ' + err.message + ', trying Gemma 4');
       }
     }
-    // Gemma 4 vision via Ollama
-    return chatOllama(message, sessionId, 'gemma4', image);
+    // Gemma 4 E2B vision via Ollama (smallest vision model)
+    return chatOllama(message, sessionId, 'gemma4:e2b', image);
   }
 
   // Explicit route to Claude (from proactive scheduler)
