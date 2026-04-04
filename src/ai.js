@@ -520,7 +520,7 @@ async function withRetry(fn, maxRetries, delayMs) {
 /**
  * Chat via Ollama with tool use and conversation memory.
  */
-async function chatOllama(message, sessionId, modelOverride) {
+async function chatOllama(message, sessionId, modelOverride, image) {
   var modelName = modelOverride || OLLAMA_MODEL;
 
   addUserMessage(sessionId, message);
@@ -539,12 +539,22 @@ async function chatOllama(message, sessionId, modelOverride) {
 
   for (var i = 0; i < maxIterations; i++) {
     var data = await withRetry(async function() {
+      var ollamaMessages = [{ role: 'system', content: ollamaSystemPrompt }].concat(messages);
+
+      // Add image to the last user message if provided
+      if (image && i === 0) {
+        var lastMsg = ollamaMessages[ollamaMessages.length - 1];
+        if (lastMsg && lastMsg.role === 'user') {
+          lastMsg.images = [image.base64];
+        }
+      }
+
       var res = await fetch(OLLAMA_URL + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: modelName,
-          messages: [{ role: 'system', content: ollamaSystemPrompt }].concat(messages),
+          messages: ollamaMessages,
           tools: ollamaTools,
           stream: false,
         }),
@@ -623,9 +633,17 @@ export async function chat(message, sessionId, image) {
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
-  // Images always go to Claude (vision)
+  // Images: try Claude first, fall back to Gemma 4 (also supports vision)
   if (image) {
-    return chatClaude(message, sessionId, image);
+    if (CLAUDE_API_KEY) {
+      try {
+        return await chatClaude(message, sessionId, image);
+      } catch (err) {
+        log.warn('Claude vision failed: ' + err.message + ', trying Gemma 4');
+      }
+    }
+    // Gemma 4 vision via Ollama
+    return chatOllama(message, sessionId, 'gemma4', image);
   }
 
   // Explicit route to Claude (from proactive scheduler)

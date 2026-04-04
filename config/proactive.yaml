@@ -31,7 +31,7 @@ actions:
   - name: breaking-news
     description: "Major breaking news"
     interval_minutes: 30
-    model: claude
+    model: gemma4
     prompt: >
       Utilise web_search pour chercher les nouvelles importantes du jour.
       Cherche "top breaking news today" et "actualités importantes aujourd'hui".
@@ -46,7 +46,7 @@ actions:
   - name: weather-alert
     description: "Severe weather warnings"
     interval_minutes: 60
-    model: claude
+    model: gemma4
     prompt: >
       Utilise web_search pour chercher "alertes météo Sainte-Julie Québec"
       et "Environnement Canada avertissements Montérégie".
@@ -85,7 +85,7 @@ actions:
     interval_minutes: 1440
     day_of_week: friday
     active_hours: [17, 18, 19]
-    model: claude
+    model: gemma4
     prompt: >
       Utilise web_search pour chercher "meilleurs films streaming Canada 2026"
       et "best movies Netflix Prime Video Disney+ Crave this week".
@@ -99,7 +99,7 @@ actions:
     interval_minutes: 1440
     day_of_week: saturday
     active_hours: [8, 9]
-    model: claude
+    model: gemma4
     prompt: >
       Utilise web_search pour chercher "activités weekend Montréal Rive-Sud"
       et "événements famille Sainte-Julie cette fin de semaine".
