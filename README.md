@@ -108,13 +108,45 @@ Everything runs locally without Claude API:
 
 | Feature | Local Stack |
 |---------|------------|
-| Text chat | Gemma 4 (Ollama) |
+| Text chat | Qwen3 8B (Ollama) |
 | Voice input | whisper.cpp |
 | Voice output (Sonos) | Piper TTS + Sonos Cloud API |
 | Voice output (Echo) | Voice Monkey API |
 | Image analysis | Gemma 4 vision (Ollama) |
 | Web search | DuckDuckGo |
-| Tools | All 18 tools work on Gemma 4 |
+| Tools | All 18 tools work locally |
+
+## Choosing a Local Model
+
+The default local model is configurable via `OLLAMA_MODEL` in `.env`. The choice depends on your hardware:
+
+| Model | RAM Needed | Speed | Quality | Best For |
+|-------|-----------|-------|---------|----------|
+| `qwen3:8b` | 8GB+ | ⚡ Fast (~15s) | Good | **Recommended for 24GB Macs** — best speed/quality balance, excellent French, strong tool use |
+| `gemma4` (12B) | 16GB+ | 🐢 Slow (~30-150s) | Very good | 32GB+ Macs — better reasoning but much slower on 24GB |
+| `gemma4:e4b` | 12GB+ | 🐢 Medium (~20s) | Good | Multimodal (vision) — use for image analysis fallback |
+| `mistral` (7B) | 8GB+ | ⚡ Fast (~10s) | Decent | Lightweight chat, less accurate for French |
+| `qwen3:4b` | 6GB+ | ⚡⚡ Very fast (~8s) | OK | Low-RAM machines, speed priority over quality |
+| `qwen3:14b` | 16GB+ | 🐢 Medium (~25s) | Very good | 32GB+ Macs — stronger reasoning than 8B |
+
+To switch models:
+
+```bash
+# 1. Pull the model
+ollama pull qwen3:8b
+
+# 2. Update .env
+OLLAMA_MODEL=qwen3:8b
+
+# 3. Restart
+launchctl unload ~/Library/LaunchAgents/com.vertexnova.agent.plist
+launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
+```
+
+Key tradeoffs:
+- **RAM vs speed**: Larger models need more RAM. If the model exceeds available RAM, it swaps to disk and becomes 10x slower.
+- **Quality vs latency**: 14B models reason better but take longer. For a home assistant, 8B with fast responses is usually better than 14B with 30s delays.
+- **Vision**: Only Gemma 4 models support image analysis locally. Qwen3 is text-only. Images fall back to Claude or Gemma 4 automatically.
 
 ## Roadmap
 

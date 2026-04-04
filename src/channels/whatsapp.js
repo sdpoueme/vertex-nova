@@ -184,7 +184,7 @@ export class WhatsAppChannel extends BaseChannel {
         execFile(sttPath, [
           '--model', sttModel,
           '--no-prints', '--no-timestamps',
-          '--language', 'auto',
+          '--language', 'fr',
           '--output-txt',
           '--file', wavPath,
         ], { timeout: 120000 }, function(err) {

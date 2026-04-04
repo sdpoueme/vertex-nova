@@ -79,7 +79,7 @@ export class TelegramChannel {
         await new Promise(function(resolve, reject) {
           execFile(cfg.sttPath || 'whisper-cli', [
             '--model', cfg.sttModel, '--no-prints', '--no-timestamps',
-            '--language', 'auto', '--output-txt', '--file', wavPath,
+            '--language', 'fr', '--output-txt', '--file', wavPath,
           ], { timeout: 120000 }, function(err) {
             if (err) reject(err); else resolve();
           });

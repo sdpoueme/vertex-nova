@@ -263,6 +263,22 @@ async function executeTool(name, input) {
     return 'Mode nuit actif (22h-7h). Message envoyé par texte uniquement. Contenu: ' + (input.text || '').slice(0, 200);
   }
 
+  // Smart Sonos room default: RDC during day, Sous-sol at night
+  if (name === 'sonos_speak' && !input.room) {
+    var h = new Date().getHours();
+    input.room = (h >= 22 || h < 7) ? 'Sous-sol' : 'Rez de Chaussee';
+    log.info('Sonos auto-room: ' + input.room);
+  }
+
+  // Block sonos_speak_all — always use single speaker
+  if (name === 'sonos_speak_all') {
+    var h2 = new Date().getHours();
+    var autoRoom = (h2 >= 22 || h2 < 7) ? 'Sous-sol' : 'Rez de Chaussee';
+    log.info('Redirected speak_all to single speaker: ' + autoRoom);
+    name = 'sonos_speak';
+    input.room = autoRoom;
+  }
+
   // Sonos tools — delegate to CLI
   if (name === 'sonos_speak') {
     var cliPath = join(config.projectDir, 'scripts/sonos-cli.js');
