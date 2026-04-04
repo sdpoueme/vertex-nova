@@ -16,14 +16,14 @@ Message → Gemma 4 (default, free, local)
 
 | Model | Role | Cost |
 |-------|------|------|
-| Gemma 4 (12B) | Default for everything — tools, search, chat | Free (local) |
-| Claude Sonnet | Escalation — vision, complex reasoning, Gemma 4 failures | Pay per use |
+| Gemma 4 (12B) | Default for everything — tools, search, chat, vision | Free (local) |
+| Claude Sonnet | Escalation — complex reasoning, Gemma 4 failures | Pay per use |
 
-Gemma 4 handles 80%+ of requests. Claude activates only for images or when Gemma 4 gives a bad response (wrong language, too short, confused). Escalation patterns are saved to memory so Gemma 4 learns over time.
+Gemma 4 handles 80%+ of requests including vision. Claude activates only when Gemma 4 gives a bad response. System runs fully offline at zero cost when Claude API is unavailable.
 
 ## Features
 
-- **Telegram** — text, voice (whisper.cpp), images (Claude vision)
+- **Telegram** — text, voice (whisper.cpp), images (Gemma 4 vision, Claude fallback)
 - **WhatsApp** — text and voice (configurable)
 - **Sonos TTS** — official Cloud API + local Piper (offline, FR/EN)
 - **Echo devices** — Voice Monkey API (speak, speak-all)
@@ -35,6 +35,7 @@ Gemma 4 handles 80%+ of requests. Claude activates only for images or when Gemma
 - **Conversation memory** — sliding window + auto-summarization
 - **Night mode** — voice devices blocked 10 PM–7 AM
 - **Auto-start** — macOS Launch Agent
+- **Fully offline capable** — all features work on Gemma 4 alone (voice, vision, tools)
 
 ## AI Tools
 
@@ -94,12 +95,26 @@ launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 
 | Action | Interval | Model |
 |--------|----------|-------|
-| Breaking news | 30 min | Claude |
-| Weather alerts | 60 min | Claude |
+| Breaking news | 30 min | Gemma 4 |
+| Weather alerts | 60 min | Gemma 4 |
 | Home maintenance | 6 hours | Gemma 4 |
-| Friday movies | Fridays 5-7 PM | Claude |
-| Weekend activities | Saturdays 8-9 AM | Claude |
+| Friday movies | Fridays 5-7 PM | Gemma 4 |
+| Weekend activities | Saturdays 8-9 AM | Gemma 4 |
 | Email digest | 2 hours | Gemma 4 |
+
+## Offline Capability
+
+Everything runs locally without Claude API:
+
+| Feature | Local Stack |
+|---------|------------|
+| Text chat | Gemma 4 (Ollama) |
+| Voice input | whisper.cpp |
+| Voice output (Sonos) | Piper TTS + Sonos Cloud API |
+| Voice output (Echo) | Voice Monkey API |
+| Image analysis | Gemma 4 vision (Ollama) |
+| Web search | DuckDuckGo |
+| Tools | All 18 tools work on Gemma 4 |
 
 ## Roadmap
 
