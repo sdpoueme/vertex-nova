@@ -8,22 +8,29 @@ Personal home assistant that connects Telegram, Sonos speakers, Echo devices, an
 Telegram (text, voice, images)
               │
         Model Router ──── config/routing.yaml
-         ┌────┴────┐
-         │         │
-    Claude API   Ollama/Mistral
-    (reasoning,  (casual chat,
-     tools,       simple queries)
-     vision)
-         │
-    Tool calls
-  ┌──────┼──────┬──────┐
-  │      │      │      │
-Sonos  Vault  Echo    Web
-(TTS)  (notes) (VM)  (search)
-         │
-   Email Monitor
-   (device alerts)
+      ┌───────┼───────┐
+      │       │       │
+  Claude   Gemma 4  Mistral
+  (vision, (tools,  (casual
+   complex  search,  chat)
+   reason)  devices)
+      │       │
+      Tool calls
+  ┌───┼───┬───┼───┐
+  │   │   │   │   │
+Sonos Echo Vault Web Email
+(TTS) (VM) (md) (DDG) Monitor
 ```
+
+## Three-Model Architecture
+
+| Model | Where | Cost | Used For |
+|-------|-------|------|----------|
+| Claude (Sonnet) | Cloud API | Pay per use | Vision, complex reasoning, fallback |
+| Gemma 4 (12B) | Local (Ollama) | Free | Device control, web search, vault, home tasks |
+| Mistral (7B) | Local (Ollama) | Free | Casual chat, greetings, small talk |
+
+Routing is configurable via `config/routing.yaml`. Images always go to Claude. Gemma 4 is the default for unmatched messages. If Claude API is down, Gemma 4 takes over automatically.
 
 ## Features
 
@@ -32,11 +39,10 @@ Sonos  Vault  Echo    Web
 - Sonos TTS — official Sonos Cloud API + local Piper TTS (offline, FR + EN)
 - Echo devices — announcements via Voice Monkey API (speak, speak-all)
 - Web search — DuckDuckGo search + page fetch for current information
-- Email monitor — polls Gmail for device alerts (Telus, MyQ, Honeywell), AI analyzes for anomalies, alerts on Telegram
-- Smart model routing — Claude for reasoning/tools, Ollama for casual tasks (YAML config)
-- Ollama fallback — automatic switch to local Mistral if Claude API is unavailable
-- Both models have full tool use (Sonos, vault, Echo, web)
-- Knowledge base — markdown vault for home topology, devices, events, tasks
+- Email monitor — polls Gmail for device alerts (Telus, MyQ, Honeywell), AI analyzes for anomalies
+- Proactive scheduler — breaking news, weather alerts, home maintenance, Friday movies, weekend activities
+- Smart notification routing by time of day (Echo Show mornings, office Echo workday, Sonos evenings, Telegram nights)
+- Knowledge base — markdown vault for home topology, devices, events, tasks (excluded from git)
 - User identity — knows who's talking, auto-detects language (FR/EN)
 - Night mode — Sonos guardrail redirects ground floor to basement 10 PM–7 AM
 - Session memory — conversations persist throughout the day
@@ -47,11 +53,12 @@ Sonos  Vault  Echo    Web
 ```
 src/
 ├── home-agent.js          # Main entry point
-├── ai.js                  # Claude API + Ollama, tool execution
+├── ai.js                  # Claude + Gemma 4 + Mistral, tool execution
 ├── model-router.js        # YAML-based model routing
+├── proactive.js           # Proactive scheduler (news, weather, maintenance)
+├── email-monitor.js       # Gmail polling for device alerts
 ├── home-config.js         # Configuration from .env
 ├── tts-server.js          # Local HTTP server for Sonos TTS
-├── email-monitor.js       # Gmail polling for device alerts
 ├── channels/
 │   ├── telegram.js        # Telegram (text, voice, images)
 │   └── whatsapp.js        # WhatsApp Business API
@@ -62,19 +69,13 @@ src/
 └── log.js                 # Leveled logger
 
 config/
-└── routing.yaml           # AI model routing rules
+├── routing.yaml           # AI model routing rules
+└── proactive.yaml         # Proactive actions and notification routing
 
 scripts/
 ├── sonos-auth.js          # Sonos OAuth flow
 ├── sonos-cli.js           # Sonos CLI for AI tool calls
 └── com.vertexnova.agent.plist  # macOS Launch Agent
-
-vault/                     # Knowledge base (markdown)
-├── home/topology/         # House layout (3 floors, rooms)
-├── home/devices/          # Device inventory
-├── home/events/           # Event log
-├── people/                # User profiles
-└── daily/                 # Daily notes
 ```
 
 ## Setup
@@ -85,7 +86,9 @@ vault/                     # Knowledge base (markdown)
 - ffmpeg (`brew install ffmpeg`)
 - Piper TTS (`pipx install piper-tts && pipx inject piper-tts pathvalidate`)
 - whisper.cpp (`brew install whisper-cpp`)
-- Ollama (`brew install ollama && brew services start ollama && ollama pull mistral`)
+- Ollama (`brew install ollama && brew services start ollama`)
+  - `ollama pull gemma4` (primary local model, 9.6GB)
+  - `ollama pull mistral` (fast chat model, 4.4GB)
 
 ### Install
 
@@ -102,46 +105,6 @@ npm start
 ```bash
 cp scripts/com.vertexnova.agent.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
-```
-
-## Configuration (.env)
-
-```bash
-# Channels
-TELEGRAM_ENABLED=true
-TELEGRAM_BOT_TOKEN=your-token
-TELEGRAM_ALLOWED_USER_IDS=your-id
-
-# Sonos
-SONOS_CLIENT_ID=your-id
-SONOS_CLIENT_SECRET=your-secret
-
-# Echo (Voice Monkey)
-VOICE_MONKEY_TOKEN=your-token
-VOICE_MONKEY_DEFAULT_DEVICE=your-device
-
-# Email monitor
-EMAIL_MONITOR_ADDRESS=your-email@gmail.com
-EMAIL_MONITOR_PASSWORD=your-app-password
-
-# AI
-ANTHROPIC_API_KEY=your-key
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=mistral
-```
-
-## Model Routing (config/routing.yaml)
-
-```yaml
-routes:
-  - name: device-control
-    patterns: ["sonos", "echo", "parle.*sur", "annonce"]
-    model: claude
-  - name: casual-chat
-    patterns: ["bonjour", "merci", "salut"]
-    model: ollama
-default:
-  model: claude
 ```
 
 ## AI Tools
@@ -162,9 +125,18 @@ default:
 | vault_append | Append to note |
 | vault_list | List folder |
 
-## Night Mode
+## Proactive Actions (config/proactive.yaml)
 
-10 PM – 7 AM: Sonos commands targeting "Rez de Chaussee" are automatically redirected to "Sous-sol". Enforced at AI prompt, tool execution, and CLI levels.
+| Action | Interval | Priority |
+|--------|----------|----------|
+| Breaking news | 30 min | High |
+| Weather alerts | 60 min | High |
+| Home maintenance | 6 hours | Medium |
+| Friday movies | Fridays 5-7 PM | Medium |
+| Weekend activities | Saturdays 8-9 AM | Medium |
+| Email digest | 2 hours | Low |
+
+Notifications route to the right device based on time of day. AI decides whether to notify based on relevance — routine stuff gets skipped.
 
 ## Roadmap
 
