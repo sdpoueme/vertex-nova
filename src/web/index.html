@@ -1,129 +1,201 @@
 <!DOCTYPE html>
-<html lang="fr" class="dark">
+<html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vertex Nova</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/lucide-static@latest/font/lucide.min.css" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
-<script>tailwindcss.config={darkMode:'class',theme:{extend:{colors:{vn:{primary:'#7c3aed',dark:'#0f172a',card:'#1e293b',border:'#334155',text:'#e2e8f0',muted:'#94a3b8'}}}}}</script>
+<script>tailwindcss.config={darkMode:'class',theme:{extend:{
+  fontFamily:{sans:['Inter','system-ui','sans-serif'],mono:['JetBrains Mono','monospace']},
+  colors:{ink:{50:'#f0f1f5',100:'#d1d5e0',200:'#9ca3b8',300:'#6b7394',400:'#4a5170',500:'#2d3352',600:'#1e2240',700:'#161a32',800:'#10132a',900:'#0b0e1f',950:'#070a17'},
+  accent:{purple:'#8b5cf6',blue:'#3b82f6',green:'#22c55e',amber:'#f59e0b',red:'#ef4444'},
+  glass:{bg:'rgba(22,26,50,0.7)',border:'rgba(99,102,141,0.2)'}},
+  spacing:{1:'4px',2:'8px',3:'12px',4:'16px',5:'20px',6:'24px',8:'32px',10:'40px',12:'48px'},
+}}}</script>
 <style>
-.msg-user { background: #7c3aed; }
-.msg-bot { background: #1e293b; border: 1px solid #334155; }
-.recording { animation: pulse 1.5s infinite; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', system-ui, sans-serif; background: #070a17; color: #d1d5e0; }
+.glass-panel { background: rgba(22,26,50,0.7); backdrop-filter: blur(12px); border: 1px solid rgba(99,102,141,0.2); }
+.msg-user { background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%); }
+.msg-agent { background: rgba(22,26,50,0.9); border: 1px solid rgba(99,102,141,0.3); }
+.msg-system { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+.state-thinking { color: #8b5cf6; }
+.state-success { color: #22c55e; }
+.state-confirm { color: #f59e0b; }
+.recording { animation: pulse 1.5s ease-in-out infinite; background: #ef4444 !important; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+.reasoning-toggle { cursor: pointer; user-select: none; }
+.reasoning-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+.reasoning-content.open { max-height: 500px; }
+.scroll-anchor { position: sticky; bottom: 0; }
+.new-msg-float { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); z-index: 10; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: #8b5cf6; box-shadow: 0 0 0 2px rgba(139,92,246,0.2); }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(99,102,141,0.3); border-radius: 3px; }
 </style>
 </head>
-<body class="bg-vn-dark text-vn-text min-h-screen">
+<body>
 
 <!-- Top Nav -->
-<nav class="bg-vn-card border-b border-vn-border px-6 py-3 flex items-center justify-between">
+<nav class="glass-panel px-6 py-3 flex items-center justify-between sticky top-0 z-50">
   <div class="flex items-center gap-3">
-    <span class="text-xl">⚡</span>
-    <span class="text-lg font-semibold text-white">Vertex Nova</span>
+    <span class="text-2xl">⚡</span>
+    <span class="text-lg font-semibold text-white tracking-tight">Vertex Nova</span>
+    <span class="text-xs text-ink-200 font-mono ml-2">v1.0</span>
   </div>
-  <div id="statusBar" class="flex gap-3 text-sm"></div>
+  <div id="statusBar" class="flex items-center gap-4 text-xs font-mono text-ink-200"></div>
 </nav>
 
-<!-- Tabs -->
-<div class="border-b border-vn-border bg-vn-card">
-  <div class="max-w-7xl mx-auto px-6 flex gap-1">
-    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-vn-primary text-white" onclick="showTab('chat',this)">💬 Chat</button>
-    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-vn-muted hover:text-white" onclick="showTab('config',this)">⚙️ Configuration</button>
-    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-vn-muted hover:text-white" onclick="showTab('logs',this)">📋 Logs</button>
-  </div>
+<!-- Main Layout -->
+<div class="flex h-[calc(100vh-52px)]">
+
+<!-- Left: Tabs -->
+<div class="w-14 glass-panel flex flex-col items-center py-4 gap-2">
+  <button class="tab-btn w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-accent-purple/20 text-accent-purple" onclick="showTab('chat',this)" title="Chat">💬</button>
+  <button class="tab-btn w-10 h-10 rounded-lg flex items-center justify-center text-lg text-ink-300 hover:bg-ink-700" onclick="showTab('config',this)" title="Config">⚙️</button>
+  <button class="tab-btn w-10 h-10 rounded-lg flex items-center justify-center text-lg text-ink-300 hover:bg-ink-700" onclick="showTab('logs',this)" title="Logs">📋</button>
 </div>
 
-<div class="max-w-7xl mx-auto p-6">
+<!-- Center: Main Content -->
+<div class="flex-1 flex">
+<div class="flex-1 overflow-hidden">
 
 <!-- Chat Panel -->
-<div class="panel" id="panel-chat">
-  <div class="bg-vn-card rounded-lg border border-vn-border">
-    <div class="p-4 border-b border-vn-border flex gap-2">
-      <button id="btnMic" onclick="toggleRecording()" class="px-3 py-1.5 bg-vn-dark border border-vn-border rounded-md text-sm hover:bg-slate-700">🎤 Audio</button>
-      <button onclick="document.getElementById('imgInput').click()" class="px-3 py-1.5 bg-vn-dark border border-vn-border rounded-md text-sm hover:bg-slate-700">📷 Image</button>
+<div class="panel h-full flex flex-col" id="panel-chat">
+  <div class="px-6 py-3 border-b border-glass-border flex items-center gap-3">
+    <span class="text-sm font-medium text-white">Chat</span>
+    <div class="flex gap-2 ml-auto">
+      <button id="btnMic" onclick="toggleRecording()" class="px-3 py-1.5 rounded-md text-xs font-medium bg-ink-700 border border-glass-border text-ink-200 hover:bg-ink-600 transition">🎤 Audio</button>
+      <button onclick="document.getElementById('imgInput').click()" class="px-3 py-1.5 rounded-md text-xs font-medium bg-ink-700 border border-glass-border text-ink-200 hover:bg-ink-600 transition">📷 Image</button>
       <input type="file" id="imgInput" accept="image/*" class="hidden" onchange="handleImage(event)">
     </div>
-    <div id="chatMessages" class="h-96 overflow-y-auto p-4 space-y-3"></div>
-    <div class="p-4 border-t border-vn-border flex gap-2">
-      <input type="text" id="chatInput" placeholder="Écrivez un message..." onkeydown="if(event.key==='Enter')sendMessage()"
-        class="flex-1 px-4 py-2.5 bg-vn-dark border border-vn-border rounded-lg text-white placeholder-vn-muted focus:outline-none focus:border-vn-primary">
-      <button onclick="sendMessage()" class="px-6 py-2.5 bg-vn-primary hover:bg-purple-700 text-white rounded-lg font-medium">Envoyer</button>
+  </div>
+  <div id="chatMessages" class="flex-1 overflow-y-auto p-6 space-y-4 relative"></div>
+  <div class="px-6 py-4 border-t border-glass-border">
+    <div class="flex gap-3">
+      <input type="text" id="chatInput" placeholder="Écrivez un message ou tapez / pour les commandes..." onkeydown="if(event.key==='Enter')sendMessage()"
+        class="flex-1 px-4 py-3 bg-ink-800 border border-glass-border rounded-lg text-white text-sm placeholder-ink-300 font-sans">
+      <button onclick="sendMessage()" class="px-6 py-3 bg-accent-purple hover:bg-purple-600 text-white rounded-lg text-sm font-medium transition">Envoyer</button>
     </div>
   </div>
 </div>
 
 <!-- Config Panel -->
-<div class="panel hidden" id="panel-config">
-  <div class="flex gap-4 mb-4">
-    <select id="configFile" onchange="loadConfig()" class="px-3 py-2 bg-vn-card border border-vn-border rounded-lg text-white">
+<div class="panel h-full flex flex-col hidden" id="panel-config">
+  <div class="px-6 py-3 border-b border-glass-border flex items-center gap-3">
+    <select id="configFile" onchange="loadConfig()" class="px-3 py-1.5 bg-ink-800 border border-glass-border rounded-md text-white text-sm">
       <option value="config/routing.yaml">🔀 Routing</option>
       <option value="config/proactive.yaml">⏰ Actions proactives</option>
       <option value="agent.md">🤖 Agent prompt</option>
     </select>
-    <button onclick="saveConfig()" class="px-4 py-2 bg-vn-primary hover:bg-purple-700 text-white rounded-lg text-sm font-medium">💾 Sauvegarder</button>
-    <button onclick="reloadConfig()" class="px-4 py-2 bg-vn-card border border-vn-border hover:bg-slate-700 text-vn-muted rounded-lg text-sm">🔄 Recharger</button>
+    <div class="ml-auto flex gap-2">
+      <button onclick="saveConfig()" class="px-4 py-1.5 bg-accent-purple hover:bg-purple-600 text-white rounded-md text-xs font-medium transition">💾 Sauvegarder</button>
+      <button onclick="reloadConfig()" class="px-4 py-1.5 bg-ink-700 border border-glass-border text-ink-200 rounded-md text-xs hover:bg-ink-600 transition">🔄 Recharger</button>
+    </div>
   </div>
-  <div class="grid grid-cols-2 gap-4">
-    <!-- Forms -->
-    <div class="bg-vn-card rounded-lg border border-vn-border p-5 overflow-y-auto max-h-[600px]" id="configForms"></div>
-    <!-- YAML -->
-    <div>
-      <textarea id="configEditor" class="w-full h-[580px] bg-vn-card border border-vn-border rounded-lg p-4 text-sm font-mono text-vn-text focus:outline-none focus:border-vn-primary resize-none"></textarea>
+  <div class="flex-1 grid grid-cols-2 gap-0 overflow-hidden">
+    <div class="overflow-y-auto p-6 border-r border-glass-border" id="configForms"></div>
+    <div class="p-2">
+      <textarea id="configEditor" class="w-full h-full bg-ink-900 border-0 rounded-lg p-4 text-xs font-mono text-ink-100 resize-none focus:ring-0"></textarea>
     </div>
   </div>
 </div>
 
 <!-- Logs Panel -->
-<div class="panel hidden" id="panel-logs">
-  <div class="mb-3">
-    <button onclick="loadLogs()" class="px-4 py-2 bg-vn-card border border-vn-border hover:bg-slate-700 text-vn-muted rounded-lg text-sm">🔄 Rafraîchir</button>
+<div class="panel h-full flex flex-col hidden" id="panel-logs">
+  <div class="px-6 py-3 border-b border-glass-border flex items-center">
+    <span class="text-sm font-medium text-white">Logs</span>
+    <button onclick="loadLogs()" class="ml-auto px-3 py-1.5 bg-ink-700 border border-glass-border text-ink-200 rounded-md text-xs hover:bg-ink-600 transition">🔄 Rafraîchir</button>
   </div>
-  <div id="logViewer" class="h-[500px] overflow-y-auto bg-black rounded-lg p-4 font-mono text-xs text-slate-500 whitespace-pre-wrap"></div>
+  <div id="logViewer" class="flex-1 overflow-y-auto p-4 font-mono text-xs text-ink-300 whitespace-pre-wrap bg-ink-950"></div>
 </div>
 
+</div>
+
+<!-- Right Sidebar: Context -->
+<div class="w-64 glass-panel overflow-y-auto p-4 space-y-4 hidden lg:block">
+  <div>
+    <h4 class="text-xs font-semibold text-ink-300 uppercase tracking-wider mb-2">Modèle actif</h4>
+    <div id="sideModel" class="text-sm text-white font-mono">—</div>
+  </div>
+  <div>
+    <h4 class="text-xs font-semibold text-ink-300 uppercase tracking-wider mb-2">Mémoire</h4>
+    <div id="sideMemory" class="text-sm text-ink-200 font-mono">—</div>
+  </div>
+  <div>
+    <h4 class="text-xs font-semibold text-ink-300 uppercase tracking-wider mb-2">Canaux</h4>
+    <div id="sideChannels" class="space-y-1"></div>
+  </div>
+  <div>
+    <h4 class="text-xs font-semibold text-ink-300 uppercase tracking-wider mb-2">Uptime</h4>
+    <div id="sideUptime" class="text-sm text-ink-200 font-mono">—</div>
+  </div>
+</div>
+
+</div>
 </div>
 
 <script>
-var API='',pendingImage=null,mediaRecorder=null,audioChunks=[];
+var API='',pendingImage=null,mediaRecorder=null,audioChunks=[],userScrolled=false;
 
 function showTab(name,btn){
-  document.querySelectorAll('.tab-btn').forEach(function(t){t.classList.remove('border-vn-primary','text-white');t.classList.add('border-transparent','text-vn-muted');});
-  btn.classList.add('border-vn-primary','text-white');btn.classList.remove('border-transparent','text-vn-muted');
+  document.querySelectorAll('.tab-btn').forEach(function(t){t.className='tab-btn w-10 h-10 rounded-lg flex items-center justify-center text-lg text-ink-300 hover:bg-ink-700';});
+  btn.className='tab-btn w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-accent-purple/20 text-accent-purple';
   document.querySelectorAll('.panel').forEach(function(p){p.classList.add('hidden');});
   document.getElementById('panel-'+name).classList.remove('hidden');
   if(name==='config')loadConfig();if(name==='logs')loadLogs();
 }
 
-function addMsg(role,text){
+function addMsg(role,text,reasoning){
+  var c=document.getElementById('chatMessages');
   var d=document.createElement('div');
-  d.className='p-3 rounded-lg max-w-[80%] text-sm '+(role==='user'?'msg-user ml-auto':'msg-bot');
-  d.textContent=text;
-  var c=document.getElementById('chatMessages');c.appendChild(d);c.scrollTop=c.scrollHeight;
+  d.className='rounded-lg px-4 py-3 max-w-[85%] text-sm leading-relaxed '+(role==='user'?'msg-user ml-auto text-white':role==='system'?'msg-system':'msg-agent');
+  if(role==='assistant'&&reasoning){
+    d.innerHTML='<div class="reasoning-toggle text-xs text-accent-purple mb-2 flex items-center gap-1" onclick="this.nextElementSibling.classList.toggle(\'open\')">▶ Raisonnement</div><div class="reasoning-content font-mono text-xs text-ink-300 mb-2 pl-3 border-l border-accent-purple/30">'+reasoning+'</div><div>'+text+'</div>';
+  } else { d.textContent=text; }
+  c.appendChild(d);
+  if(!userScrolled)c.scrollTop=c.scrollHeight;
 }
+
+function showThinking(){
+  var d=document.createElement('div');d.id='thinking';
+  d.className='msg-agent rounded-lg px-4 py-3 max-w-[85%] text-sm state-thinking flex items-center gap-2';
+  d.innerHTML='<span class="inline-block w-2 h-2 rounded-full bg-accent-purple animate-pulse"></span><span class="inline-block w-2 h-2 rounded-full bg-accent-purple animate-pulse" style="animation-delay:0.2s"></span><span class="inline-block w-2 h-2 rounded-full bg-accent-purple animate-pulse" style="animation-delay:0.4s"></span><span class="ml-2 text-xs">Réflexion en cours...</span>';
+  document.getElementById('chatMessages').appendChild(d);
+}
+function hideThinking(){var t=document.getElementById('thinking');if(t)t.remove();}
+
+document.getElementById('chatMessages').addEventListener('scroll',function(){
+  var el=this;userScrolled=el.scrollTop<el.scrollHeight-el.clientHeight-50;
+});
 
 async function sendMessage(){
   var input=document.getElementById('chatInput'),text=input.value.trim();
   if(!text&&!pendingImage)return;input.value='';addMsg('user',text||'[Image]');
   var body={message:text||"Analyse cette image"};
   if(pendingImage){body.image=pendingImage;pendingImage=null;}
+  showThinking();
   try{var r=await fetch(API+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  var d=await r.json();addMsg('assistant',d.response||d.error||'Pas de réponse');}
-  catch(e){addMsg('assistant','Erreur: '+e.message);}
+  hideThinking();var d=await r.json();addMsg('assistant',d.response||d.error||'Pas de réponse');}
+  catch(e){hideThinking();addMsg('assistant','Erreur: '+e.message);}
 }
 
 function handleImage(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();
-r.onload=function(ev){pendingImage={base64:ev.target.result.split(',')[1],mediaType:f.type||'image/jpeg'};addMsg('user','📷 '+f.name);};r.readAsDataURL(f);}
+r.onload=function(ev){pendingImage={base64:ev.target.result.split(',')[1],mediaType:f.type||'image/jpeg'};addMsg('system','📷 Image chargée: '+f.name);};r.readAsDataURL(f);}
 
 async function toggleRecording(){
   var btn=document.getElementById('btnMic');
-  if(mediaRecorder&&mediaRecorder.state==='recording'){mediaRecorder.stop();btn.classList.remove('recording','bg-red-600');btn.textContent='🎤 Audio';return;}
+  if(mediaRecorder&&mediaRecorder.state==='recording'){mediaRecorder.stop();btn.classList.remove('recording');btn.textContent='🎤 Audio';return;}
   try{var s=await navigator.mediaDevices.getUserMedia({audio:true});mediaRecorder=new MediaRecorder(s);audioChunks=[];
   mediaRecorder.ondataavailable=function(e){audioChunks.push(e.data);};
-  mediaRecorder.onstop=async function(){s.getTracks().forEach(function(t){t.stop();});addMsg('user','🎤 Audio...');
+  mediaRecorder.onstop=async function(){s.getTracks().forEach(function(t){t.stop();});addMsg('system','🎤 Transcription...');showThinking();
   try{var r=await fetch(API+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'[Audio from dashboard]'})});
-  var d=await r.json();addMsg('assistant',d.response||'Pas de réponse');}catch(e){addMsg('assistant','Erreur: '+e.message);}};
-  mediaRecorder.start();btn.classList.add('recording','bg-red-600');btn.textContent='⏹ Stop';
-  }catch(e){addMsg('assistant','Erreur micro: '+e.message);}
+  hideThinking();var d=await r.json();addMsg('assistant',d.response||'Pas de réponse');}catch(e){hideThinking();addMsg('assistant','Erreur: '+e.message);}};
+  mediaRecorder.start();btn.classList.add('recording');btn.textContent='⏹ Stop';
+  }catch(e){addMsg('system','Erreur micro: '+e.message);}
 }
 
 async function loadConfig(){
@@ -137,7 +209,7 @@ function buildForms(file,yaml){
   var c=document.getElementById('configForms');
   if(file==='config/routing.yaml'){buildRoutingForm(c,yaml);}
   else if(file==='config/proactive.yaml'){buildProactiveForm(c,yaml);}
-  else{c.innerHTML='<h3 class="text-lg font-semibold text-white mb-2">🤖 Agent Prompt</h3><p class="text-vn-muted text-sm">Éditez le prompt directement dans l\'éditeur YAML à droite.</p>';}
+  else{c.innerHTML='<h3 class="text-base font-semibold text-white mb-3">🤖 Agent Prompt</h3><p class="text-sm text-ink-300">Éditez le prompt dans l\'éditeur à droite.</p>';}
 }
 
 function buildRoutingForm(c,yaml){
@@ -147,11 +219,13 @@ function buildRoutingForm(c,yaml){
   if(cur&&l.match(/^\s+model:\s*(.+)/))cur.model=l.match(/^\s+model:\s*(.+)/)[1].trim();
   if(cur&&l.match(/^\s+-\s+"(.+)"/))cur.patterns.push(l.match(/^\s+-\s+"(.+)"/)[1]);
   if(l.match(/^default:/)&&i+1<lines.length){var dm=lines[i+1].match(/model:\s*(.+)/);if(dm)def=dm[1].trim();}}
-  var h='<h3 class="text-lg font-semibold text-white mb-4">🔀 Routes</h3>';
-  h+='<div class="mb-4"><label class="block text-xs text-vn-muted mb-1">Modèle par défaut</label><select class="w-full px-3 py-2 bg-vn-dark border border-vn-border rounded-md text-white text-sm">';
-  ['qwen3:8b','claude','gemma4:e2b'].forEach(function(m){h+='<option'+(def===m?' selected':'')+'>'+m+'</option>';});
-  h+='</select></div>';
-  routes.forEach(function(r){h+='<div class="bg-vn-dark rounded-lg p-3 mb-2 border border-vn-border"><div class="flex justify-between items-center"><span class="font-medium text-white text-sm">'+r.name+'</span><span class="text-xs px-2 py-0.5 rounded-full '+(r.model==='claude'?'bg-blue-900 text-blue-300':'bg-green-900 text-green-300')+'">'+r.model+'</span></div><div class="text-xs text-vn-muted mt-1">'+r.patterns.join(' · ')+'</div></div>';});
+  var h='<h3 class="text-base font-semibold text-white mb-4">Routes</h3>';
+  h+='<label class="block text-xs font-medium text-ink-300 uppercase tracking-wider mb-1">Modèle par défaut</label>';
+  h+='<select class="w-full px-3 py-2 bg-ink-800 border border-glass-border rounded-lg text-white text-sm mb-4">';
+  ['qwen3:8b','claude','gemma4:e2b'].forEach(function(m){h+='<option'+(def===m?' selected':'')+'>'+m+'</option>';});h+='</select>';
+  routes.forEach(function(r){
+    var badge=r.model==='claude'?'bg-blue-500/20 text-blue-400':'bg-green-500/20 text-green-400';
+    h+='<div class="bg-ink-800/50 rounded-lg p-3 mb-2 border border-glass-border"><div class="flex justify-between items-center"><span class="text-sm font-medium text-white">'+r.name+'</span><span class="text-xs px-2 py-0.5 rounded-full font-mono '+badge+'">'+r.model+'</span></div><div class="text-xs text-ink-400 mt-1 font-mono">'+r.patterns.join(' · ')+'</div></div>';});
   c.innerHTML=h;
 }
 
@@ -162,45 +236,53 @@ function buildProactiveForm(c,yaml){
   if(cur){var kv=l.match(/^\s{4}(\w+):\s*(.+)/);if(kv&&!inP){if(kv[1]==='interval_minutes')cur.interval=kv[2].trim();if(kv[1]==='model')cur.model=kv[2].trim();if(kv[1]==='priority')cur.priority=kv[2].trim();if(kv[1]==='prompt')inP=true;}}}
   if(cur)actions.push(cur);
   var icons={'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'};
-  var h='<h3 class="text-lg font-semibold text-white mb-4">⏰ Actions</h3>';
+  var h='<h3 class="text-base font-semibold text-white mb-4">Actions proactives</h3>';
   actions.forEach(function(a){
-  h+='<div class="bg-vn-dark rounded-lg p-4 mb-3 border border-vn-border">';
-  h+='<div class="font-medium text-white mb-3">'+(icons[a.name]||'📋')+' '+a.name+'</div>';
-  h+='<div class="grid grid-cols-3 gap-3">';
-  h+='<div><label class="block text-xs text-vn-muted mb-1">Intervalle (min)</label><input type="number" value="'+a.interval+'" class="w-full px-2 py-1.5 bg-vn-card border border-vn-border rounded text-sm text-white"></div>';
-  h+='<div><label class="block text-xs text-vn-muted mb-1">Modèle</label><select class="w-full px-2 py-1.5 bg-vn-card border border-vn-border rounded text-sm text-white">';
-  ['qwen3:8b','claude','gemma4:e2b'].forEach(function(m){h+='<option'+(a.model===m?' selected':'')+'>'+m+'</option>';});
-  h+='</select></div>';
-  h+='<div><label class="block text-xs text-vn-muted mb-1">Priorité</label><select class="w-full px-2 py-1.5 bg-vn-card border border-vn-border rounded text-sm text-white">';
-  ['high','medium','low'].forEach(function(p){h+='<option'+(a.priority===p?' selected':'')+'>'+p+'</option>';});
-  h+='</select></div></div></div>';});
-  h+='<div class="mt-4 pt-4 border-t border-vn-border"><h4 class="text-xs text-vn-muted uppercase tracking-wider mb-3">Comportement</h4>';
-  h+='<div class="grid grid-cols-2 gap-3">';
-  h+='<div><label class="block text-xs text-vn-muted mb-1">Max notif/heure</label><input type="number" value="4" class="w-full px-2 py-1.5 bg-vn-dark border border-vn-border rounded text-sm text-white"></div>';
-  h+='<div><label class="block text-xs text-vn-muted mb-1">Min intervalle (min)</label><input type="number" value="10" class="w-full px-2 py-1.5 bg-vn-dark border border-vn-border rounded text-sm text-white"></div>';
-  h+='</div><label class="flex items-center gap-2 mt-3 text-sm text-vn-text"><input type="checkbox" checked class="rounded"> Haute priorité ignore les limites</label></div>';
+    h+='<div class="bg-ink-800/50 rounded-lg p-4 mb-3 border border-glass-border">';
+    h+='<div class="text-sm font-medium text-white mb-3">'+(icons[a.name]||'📋')+' '+a.name+'</div>';
+    h+='<div class="grid grid-cols-3 gap-3">';
+    h+='<div><label class="block text-xs text-ink-400 mb-1">Intervalle</label><input type="number" value="'+a.interval+'" class="w-full px-2 py-1.5 bg-ink-900 border border-glass-border rounded text-xs text-white font-mono"></div>';
+    h+='<div><label class="block text-xs text-ink-400 mb-1">Modèle</label><select class="w-full px-2 py-1.5 bg-ink-900 border border-glass-border rounded text-xs text-white">';
+    ['qwen3:8b','claude','gemma4:e2b'].forEach(function(m){h+='<option'+(a.model===m?' selected':'')+'>'+m+'</option>';});
+    h+='</select></div>';
+    h+='<div><label class="block text-xs text-ink-400 mb-1">Priorité</label><select class="w-full px-2 py-1.5 bg-ink-900 border border-glass-border rounded text-xs text-white">';
+    ['high','medium','low'].forEach(function(p){h+='<option'+(a.priority===p?' selected':'')+'>'+p+'</option>';});
+    h+='</select></div></div></div>';});
+  h+='<div class="mt-4 pt-4 border-t border-glass-border"><h4 class="text-xs font-semibold text-ink-400 uppercase tracking-wider mb-3">Limites</h4>';
+  h+='<div class="grid grid-cols-2 gap-3"><div><label class="block text-xs text-ink-400 mb-1">Max/heure</label><input type="number" value="4" class="w-full px-2 py-1.5 bg-ink-900 border border-glass-border rounded text-xs text-white font-mono"></div>';
+  h+='<div><label class="block text-xs text-ink-400 mb-1">Min intervalle</label><input type="number" value="10" class="w-full px-2 py-1.5 bg-ink-900 border border-glass-border rounded text-xs text-white font-mono"></div></div>';
+  h+='<label class="flex items-center gap-2 mt-3 text-xs text-ink-200"><input type="checkbox" checked class="rounded accent-accent-purple"> Haute priorité bypass</label></div>';
   c.innerHTML=h;
 }
 
 async function saveConfig(){var f=document.getElementById('configFile').value,ct=document.getElementById('configEditor').value;
 try{var r=await fetch(API+'/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:f,content:ct})});
-var d=await r.json();alert(d.saved?'✅ Sauvegardé!':'Erreur: '+d.error);}catch(e){alert('Erreur: '+e.message);}}
+var d=await r.json();addMsg('system',d.saved?'✅ Configuration sauvegardée':'❌ '+d.error);}catch(e){addMsg('system','❌ '+e.message);}}
 
 async function reloadConfig(){try{var r=await fetch(API+'/api/reload',{method:'POST'});var d=await r.json();
-alert(d.reloaded?'✅ Configuration rechargée!':'Erreur: '+d.error);}catch(e){alert('Erreur: '+e.message);}}
+addMsg('system',d.reloaded?'✅ Moteur rechargé':'❌ '+d.error);}catch(e){addMsg('system','❌ '+e.message);}}
 
 async function loadLogs(){try{var r=await fetch(API+'/api/logs');var d=await r.json();
 var v=document.getElementById('logViewer');v.textContent=d.logs;v.scrollTop=v.scrollHeight;}
 catch(e){document.getElementById('logViewer').textContent='Erreur: '+e.message;}}
 
 async function loadStatus(){try{var r=await fetch(API+'/api/status');var d=await r.json();
+var dot=function(ok){return '<span class="inline-block w-1.5 h-1.5 rounded-full '+(ok?'bg-accent-green':'bg-accent-red')+'"></span>';};
 document.getElementById('statusBar').innerHTML=
-'<span class="flex items-center gap-1.5 text-xs"><span class="w-2 h-2 rounded-full bg-green-500"></span>'+Math.round(d.uptime/60)+'min</span>'+
-'<span class="text-xs text-vn-muted">🤖 '+d.model+'</span>'+
-'<span class="flex items-center gap-1.5 text-xs"><span class="w-2 h-2 rounded-full '+(d.ollama?'bg-green-500':'bg-red-500')+'"></span>Ollama</span>'+
-'<span class="flex items-center gap-1.5 text-xs"><span class="w-2 h-2 rounded-full '+(d.telegram?'bg-green-500':'bg-yellow-500')+'"></span>Telegram</span>'+
-'<span class="text-xs text-vn-muted">💾 '+d.memory+'</span>';}catch(e){}}
-loadStatus();setInterval(loadStatus,30000);
+  dot(true)+' <span class="text-ink-100">'+Math.round(d.uptime/60)+'m</span>'+
+  '<span class="text-ink-400">|</span><span class="font-mono text-ink-200">'+d.model+'</span>'+
+  '<span class="text-ink-400">|</span>'+dot(d.ollama)+' Ollama'+
+  '<span class="text-ink-400">|</span>'+dot(d.telegram)+' Telegram'+
+  '<span class="text-ink-400">|</span><span class="text-ink-400">'+d.memory+'</span>';
+document.getElementById('sideModel').textContent=d.model;
+document.getElementById('sideMemory').textContent=d.memory;
+document.getElementById('sideUptime').textContent=Math.round(d.uptime/60)+' minutes';
+document.getElementById('sideChannels').innerHTML=
+  '<div class="flex items-center gap-2 text-xs">'+dot(d.telegram)+' <span>Telegram</span></div>'+
+  '<div class="flex items-center gap-2 text-xs">'+dot(d.ollama)+' <span>Ollama</span></div>'+
+  '<div class="flex items-center gap-2 text-xs">'+dot(d.sonos)+' <span>Sonos</span></div>';
+}catch(e){}}
+loadStatus();setInterval(loadStatus,15000);
 </script>
 </body>
 </html>
