@@ -112,13 +112,17 @@ function ModelsPanel({ api }) {
   const [models, setModels] = useState({});
   const [ollamaModels, setOllamaModels] = useState([]);
   const [alert, setAlert] = useState(null);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetch(api + '/api/models').then(r => r.json()).then(setModels).catch(() => {});
     fetch(api + '/api/ollama-models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {});
   }, [api]);
 
+  useEffect(() => { load(); }, [load]);
+
   const save = async (key, val) => {
+    setSaving(true);
     try {
       await fetch(api + '/api/models', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -127,55 +131,94 @@ function ModelsPanel({ api }) {
       setModels(m => ({ ...m, [key.toLowerCase()]: val }));
       setAlert({ type: 'success', text: key + ' mis à jour' });
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
+    setSaving(false);
   };
 
-  const ollamaOptions = ollamaModels.map(m => ({
-    value: m.name, label: m.name + ' (' + Math.round(m.size / 1e9 * 10) / 10 + ' GB)',
+  // Build Ollama model options: discovered + well-known fallbacks
+  const knownOllamaModels = [
+    { value: 'qwen3:8b', label: 'Qwen3 8B — rapide, bon français, outils' },
+    { value: 'qwen3:4b', label: 'Qwen3 4B — très rapide, qualité OK' },
+    { value: 'qwen3:14b', label: 'Qwen3 14B — meilleur raisonnement, lent' },
+    { value: 'gemma4:e2b', label: 'Gemma 4 E2B — vision, multimodal' },
+    { value: 'gemma4', label: 'Gemma 4 12B — bon raisonnement, lent' },
+    { value: 'mistral', label: 'Mistral 7B — léger, français moyen' },
+    { value: 'llama3.1:8b', label: 'Llama 3.1 8B — polyvalent' },
+  ];
+  // Merge discovered models (mark which are installed)
+  const installedNames = new Set(ollamaModels.map(m => m.name));
+  const ollamaOptions = knownOllamaModels.map(m => ({
+    ...m,
+    label: m.label + (installedNames.has(m.value) ? ' ✅' : ' (non installé)'),
   }));
+  // Add any discovered models not in the known list
+  for (const m of ollamaModels) {
+    if (!knownOllamaModels.find(k => k.value === m.name)) {
+      ollamaOptions.push({ value: m.name, label: m.name + ' (' + Math.round(m.size / 1e9 * 10) / 10 + ' GB) ✅' });
+    }
+  }
+
+  const claudeOptions = [
+    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (recommandé)' },
+    { value: 'claude-haiku-4-20250514', label: 'Claude Haiku 4 (rapide, économique)' },
+    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (ancien)' },
+  ];
+
+  const findOption = (options, value) => options.find(o => o.value === value) || { value: value || '', label: value || '...' };
 
   return (
     <SpaceBetween size="l">
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
+
       <Container header={<Header variant="h3">Modèles IA</Header>}>
-        <ColumnLayout columns={2}>
-          <FormField label="Modèle principal (Ollama)" description="Utilisé pour 80%+ des requêtes">
-            <Select
-              selectedOption={ollamaOptions.find(o => o.value === models.ollama_model) || { value: models.ollama_model || '', label: models.ollama_model || '...' }}
-              onChange={({ detail }) => save('OLLAMA_MODEL', detail.selectedOption.value)}
-              options={ollamaOptions.length ? ollamaOptions : [{ value: models.ollama_model || 'qwen3:8b', label: models.ollama_model || 'qwen3:8b' }]}
-            />
-          </FormField>
-          <FormField label="Modèle Claude" description="Escalation et vision">
-            <Select
-              selectedOption={{ value: models.claude_model || '', label: models.claude_model || '...' }}
-              onChange={({ detail }) => save('CLAUDE_MODEL', detail.selectedOption.value)}
-              options={[
-                { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4' },
-                { value: 'claude-haiku-4-20250514', label: 'Claude Haiku 4' },
-                { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-              ]}
-            />
-          </FormField>
-        </ColumnLayout>
+        <SpaceBetween size="m">
+          <ColumnLayout columns={2}>
+            <FormField label="Modèle principal (Ollama)" description="Utilisé pour 80%+ des requêtes. Les modèles avec ✅ sont installés.">
+              <Select
+                selectedOption={findOption(ollamaOptions, models.ollama_model)}
+                onChange={({ detail }) => save('OLLAMA_MODEL', detail.selectedOption.value)}
+                options={ollamaOptions}
+              />
+            </FormField>
+            <FormField label="Modèle Claude (escalation)" description="Utilisé pour vision, raisonnement complexe, et quand Ollama échoue.">
+              <Select
+                selectedOption={findOption(claudeOptions, models.claude_model)}
+                onChange={({ detail }) => save('CLAUDE_MODEL', detail.selectedOption.value)}
+                options={claudeOptions}
+              />
+            </FormField>
+          </ColumnLayout>
+          <Box variant="small" color="text-body-secondary">
+            Clé API Claude: {models.has_claude_key ? '✅ Configurée' : '❌ Non configurée (modifier dans .env)'}
+          </Box>
+        </SpaceBetween>
       </Container>
+
       <Container header={<Header variant="h3">Appareils</Header>}>
-        <ColumnLayout columns={2}>
+        <ColumnLayout columns={3}>
           <FormField label="Sonos — pièce par défaut">
             <Select
-              selectedOption={{ value: models.sonos_default_room || '', label: models.sonos_default_room || '...' }}
+              selectedOption={findOption([
+                { value: 'Rez de Chaussee', label: 'Rez de Chaussée (salon)' },
+                { value: 'Sous-sol', label: 'Sous-sol' },
+              ], models.sonos_default_room)}
               onChange={({ detail }) => save('SONOS_DEFAULT_ROOM', detail.selectedOption.value)}
               options={[
-                { value: 'Rez de Chaussee', label: 'Rez de Chaussée' },
+                { value: 'Rez de Chaussee', label: 'Rez de Chaussée (salon)' },
                 { value: 'Sous-sol', label: 'Sous-sol' },
               ]}
             />
           </FormField>
-          <FormField label="Sonos — volume TTS">
+          <FormField label="Sonos — volume TTS (0-100)">
             <Input type="number" value={String(models.sonos_tts_volume || 30)} onChange={({ detail }) => save('SONOS_TTS_VOLUME', detail.value)} />
           </FormField>
           <FormField label="Echo — appareil par défaut">
             <Select
-              selectedOption={{ value: models.voice_monkey_default_device || '', label: models.voice_monkey_default_device || '...' }}
+              selectedOption={findOption([
+                { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
+                { value: 'bureau-serge', label: 'Bureau Serge' },
+                { value: 'garage', label: 'Garage' },
+              ], models.voice_monkey_default_device)}
               onChange={({ detail }) => save('VOICE_MONKEY_DEFAULT_DEVICE', detail.selectedOption.value)}
               options={[
                 { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
@@ -186,18 +229,41 @@ function ModelsPanel({ api }) {
           </FormField>
         </ColumnLayout>
       </Container>
-      <Container header={<Header variant="h3">Canaux</Header>}>
-        <ColumnLayout columns={2}>
-          <FormField label="Telegram">
-            <Toggle checked={models.telegram_enabled || false} disabled>Activé</Toggle>
-          </FormField>
-          <FormField label="WhatsApp">
-            <Toggle checked={models.whatsapp_enabled || false} disabled>Activé</Toggle>
-          </FormField>
-        </ColumnLayout>
-        <Box variant="small" color="text-body-secondary" margin={{ top: 's' }}>
-          Les canaux se configurent dans le fichier .env (redémarrage requis).
-        </Box>
+
+      <Container header={<Header variant="h3">Canaux de communication</Header>}>
+        <SpaceBetween size="m">
+          <ColumnLayout columns={2}>
+            <Container header={<Header variant="h4">Telegram</Header>}>
+              <SpaceBetween size="s">
+                <Toggle checked={models.telegram_enabled || false} onChange={({ detail }) => save('TELEGRAM_ENABLED', detail.checked ? 'true' : 'false')}>
+                  {models.telegram_enabled ? 'Activé' : 'Désactivé'}
+                </Toggle>
+                <FormField label="Bot token" description="Masqué pour sécurité">
+                  <Input value={models.telegram_bot_token || ''} disabled />
+                </FormField>
+                <FormField label="User IDs autorisés">
+                  <Input value={models.telegram_allowed_user_ids || ''} onChange={({ detail }) => save('TELEGRAM_ALLOWED_USER_IDS', detail.value)} placeholder="787677377" />
+                </FormField>
+              </SpaceBetween>
+            </Container>
+            <Container header={<Header variant="h4">WhatsApp</Header>}>
+              <SpaceBetween size="s">
+                <Toggle checked={models.whatsapp_enabled || false} onChange={({ detail }) => save('WHATSAPP_ENABLED', detail.checked ? 'true' : 'false')}>
+                  {models.whatsapp_enabled ? 'Activé' : 'Désactivé'}
+                </Toggle>
+                <FormField label="Phone ID">
+                  <Input value={models.whatsapp_phone_id || ''} onChange={({ detail }) => save('WHATSAPP_PHONE_ID', detail.value)} />
+                </FormField>
+                <FormField label="Webhook port">
+                  <Input type="number" value={models.whatsapp_webhook_port || '3001'} onChange={({ detail }) => save('WHATSAPP_WEBHOOK_PORT', detail.value)} />
+                </FormField>
+              </SpaceBetween>
+            </Container>
+          </ColumnLayout>
+          <Alert type="info">
+            Les changements de canaux sont sauvegardés dans .env mais nécessitent un redémarrage de l'agent pour prendre effet.
+          </Alert>
+        </SpaceBetween>
       </Container>
     </SpaceBetween>
   );
@@ -207,7 +273,17 @@ function RoutingPanel({ api }) {
   const [yaml, setYaml] = useState('');
   const [parsed, setParsed] = useState({ routes: [], defaultModel: 'qwen3:8b' });
   const [alert, setAlert] = useState(null);
-  const [yamlDirty, setYamlDirty] = useState(false);
+
+  const modelOptions = [
+    { value: 'qwen3:8b', label: 'Qwen3 8B (local, rapide)' },
+    { value: 'qwen3:4b', label: 'Qwen3 4B (très rapide)' },
+    { value: 'qwen3:14b', label: 'Qwen3 14B (meilleur raisonnement)' },
+    { value: 'claude', label: 'Claude (API, escalation)' },
+    { value: 'gemma4:e2b', label: 'Gemma 4 E2B (vision)' },
+    { value: 'gemma4', label: 'Gemma 4 12B' },
+    { value: 'mistral', label: 'Mistral 7B' },
+  ];
+  const findModel = (val) => modelOptions.find(o => o.value === val) || { value: val, label: val };
 
   const load = useCallback(async () => {
     try {
@@ -231,7 +307,6 @@ function RoutingPanel({ api }) {
   // YAML → Form sync
   const updateFromYaml = (newYaml) => {
     setYaml(newYaml);
-    setYamlDirty(true);
     try {
       const newParsed = parseRoutingYaml(newYaml);
       setParsed(newParsed);
@@ -275,13 +350,9 @@ function RoutingPanel({ api }) {
           <SpaceBetween size="m">
             <FormField label="Modèle par défaut">
               <Select
-                selectedOption={{ value: parsed.defaultModel, label: parsed.defaultModel }}
+                selectedOption={findModel(parsed.defaultModel)}
                 onChange={({ detail }) => updateFromForm({ ...parsed, defaultModel: detail.selectedOption.value })}
-                options={[
-                  { value: 'qwen3:8b', label: 'Qwen3 8B (local)' },
-                  { value: 'claude', label: 'Claude (API)' },
-                  { value: 'gemma4:e2b', label: 'Gemma 4 E2B (vision)' },
-                ]}
+                options={modelOptions}
               />
             </FormField>
             {parsed.routes.map((r, i) => (
@@ -289,13 +360,9 @@ function RoutingPanel({ api }) {
                 <SpaceBetween size="xs">
                   <FormField label="Modèle">
                     <Select
-                      selectedOption={{ value: r.model, label: r.model }}
+                      selectedOption={findModel(r.model)}
                       onChange={({ detail }) => setRouteModel(i, detail.selectedOption.value)}
-                      options={[
-                        { value: 'qwen3:8b', label: 'Qwen3 8B' },
-                        { value: 'claude', label: 'Claude' },
-                        { value: 'gemma4:e2b', label: 'Gemma 4 E2B' },
-                      ]}
+                      options={modelOptions}
                     />
                   </FormField>
                   <FormField label="Patterns">
@@ -371,6 +438,13 @@ function ProactivePanel({ api }) {
   };
 
   const ICONS = { 'breaking-news': '🌍', 'weather-alert': '🌪️', 'home-maintenance-check': '🔧', 'email-digest': '📬', 'friday-movies': '🎬', 'weekend-activities': '🎯' };
+  const proactiveModelOptions = [
+    { value: 'qwen3:8b', label: 'Qwen3 8B' },
+    { value: 'claude', label: 'Claude' },
+    { value: 'gemma4:e2b', label: 'Gemma 4 E2B' },
+    { value: 'mistral', label: 'Mistral 7B' },
+  ];
+  const findPModel = (val) => proactiveModelOptions.find(o => o.value === val) || { value: val, label: val };
 
   return (
     <SpaceBetween size="l">
@@ -391,17 +465,14 @@ function ProactivePanel({ api }) {
                     </FormField>
                     <FormField label="Modèle">
                       <Select
-                        selectedOption={{ value: a.model, label: a.model }}
+                        selectedOption={findPModel(a.model)}
                         onChange={({ detail }) => updateAction(i, 'model', detail.selectedOption.value)}
-                        options={[
-                          { value: 'qwen3:8b', label: 'Qwen3 8B' },
-                          { value: 'claude', label: 'Claude' },
-                        ]}
+                        options={proactiveModelOptions}
                       />
                     </FormField>
                     <FormField label="Priorité">
                       <Select
-                        selectedOption={{ value: a.priority, label: a.priority }}
+                        selectedOption={{ 'high': { value: 'high', label: 'Haute' }, 'medium': { value: 'medium', label: 'Moyenne' }, 'low': { value: 'low', label: 'Basse' } }[a.priority] || { value: a.priority, label: a.priority }}
                         onChange={({ detail }) => updateAction(i, 'priority', detail.selectedOption.value)}
                         options={[
                           { value: 'high', label: 'Haute' },

@@ -122,17 +122,26 @@ export function startDashboard(config, port) {
         sonos_tts_volume: Number(process.env.SONOS_TTS_VOLUME) || 30,
         voice_monkey_default_device: process.env.VOICE_MONKEY_DEFAULT_DEVICE || 'vertexnovaspeaker',
         telegram_enabled: (process.env.TELEGRAM_ENABLED || 'false') === 'true',
+        telegram_bot_token: process.env.TELEGRAM_BOT_TOKEN ? '***' + process.env.TELEGRAM_BOT_TOKEN.slice(-6) : '',
+        telegram_allowed_user_ids: process.env.TELEGRAM_ALLOWED_USER_IDS || '',
         whatsapp_enabled: (process.env.WHATSAPP_ENABLED || 'false') === 'true',
+        whatsapp_phone_id: process.env.WHATSAPP_PHONE_ID || '',
+        whatsapp_webhook_port: process.env.WHATSAPP_WEBHOOK_PORT || '3001',
       });
       return;
     }
 
-    // --- API: Update env var (runtime only, does not persist to .env file) ---
+    // --- API: Update env vars (runtime + persists to .env) ---
     if (path === '/api/models' && req.method === 'PUT') {
       var modelsBody = await readBody(req);
       try {
         var modelsData = JSON.parse(modelsBody);
-        var allowed_keys = ['OLLAMA_MODEL', 'OLLAMA_FAST_MODEL', 'CLAUDE_MODEL', 'SONOS_DEFAULT_ROOM', 'SONOS_TTS_VOLUME', 'VOICE_MONKEY_DEFAULT_DEVICE'];
+        var allowed_keys = [
+          'OLLAMA_MODEL', 'OLLAMA_FAST_MODEL', 'CLAUDE_MODEL',
+          'SONOS_DEFAULT_ROOM', 'SONOS_TTS_VOLUME', 'VOICE_MONKEY_DEFAULT_DEVICE',
+          'TELEGRAM_ENABLED', 'TELEGRAM_ALLOWED_USER_IDS',
+          'WHATSAPP_ENABLED', 'WHATSAPP_PHONE_ID', 'WHATSAPP_WEBHOOK_PORT',
+        ];
         var updated = [];
         for (var k of allowed_keys) {
           if (modelsData[k] !== undefined) {
@@ -140,7 +149,26 @@ export function startDashboard(config, port) {
             updated.push(k);
           }
         }
-        json(res, 200, { updated: updated });
+        // Persist to .env file
+        if (updated.length > 0) {
+          try {
+            var envPath = join(projectDir, '.env');
+            var envContent = readFileSync(envPath, 'utf8');
+            for (var uk of updated) {
+              var envVal = String(modelsData[uk]);
+              var envRegex = new RegExp('^' + uk + '=.*$', 'm');
+              if (envRegex.test(envContent)) {
+                envContent = envContent.replace(envRegex, uk + '=' + envVal);
+              } else {
+                envContent += '\n' + uk + '=' + envVal;
+              }
+            }
+            writeFileSync(envPath, envContent);
+          } catch (envErr) {
+            log.warn('Could not persist to .env: ' + envErr.message);
+          }
+        }
+        json(res, 200, { updated: updated, note: 'Channel changes require restart' });
       } catch (err) {
         json(res, 500, { error: err.message });
       }
