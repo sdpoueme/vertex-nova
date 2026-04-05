@@ -149,6 +149,25 @@ Key tradeoffs:
 - **Quality vs latency**: 14B models reason better but take longer. For a home assistant, 8B with fast responses is usually better than 14B with 30s delays.
 - **Vision**: Qwen3 is text-only. Images use Gemma 4 E2B or Claude for vision.
 
+## Web Dashboard
+
+A React + Cloudscape management interface runs bundled with the agent on port 3080.
+
+Access from any device on your local network: `http://<mac-ip>:3080`
+
+| Panel | Description |
+|-------|-------------|
+| Chat | Text chat with the agent (same AI pipeline as Telegram) |
+| Configuration | Edit routing.yaml, proactive.yaml, agent.md — save and reload without restart |
+| Logs | Live view of the last 100 log lines |
+| Status | Ollama health, memory usage, active channels |
+
+The dashboard is pre-built in `web/dist/` and served by the agent's HTTP server. To rebuild after changes:
+
+```bash
+cd web && npm run build
+```
+
 ## Roadmap
 
 - Alexa+ Multi-Agent SDK — voice input from Echo devices

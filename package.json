@@ -7,7 +7,8 @@
     "start": "node src/home-agent.js",
     "dev": "node --watch src/home-agent.js",
     "dev:debug": "LOG_LEVEL=debug node --watch src/home-agent.js",
-    "sonos:auth": "node scripts/sonos-auth.js"
+    "sonos:auth": "node scripts/sonos-auth.js",
+    "build:web": "cd web && npm run build"
   },
   "dependencies": {
     "telegraf": "^4.16.3"
