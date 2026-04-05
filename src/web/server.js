@@ -17,6 +17,21 @@ import { logger } from '../log.js';
 
 var log = logger('web');
 
+// Recent interactions log — shared across channels
+var recentInteractions = [];
+var MAX_INTERACTIONS = 50;
+
+export function logInteraction(channel, direction, text, hasImage) {
+  recentInteractions.push({
+    ts: Date.now(),
+    channel: channel,
+    direction: direction, // 'in' or 'out'
+    text: (text || '').slice(0, 300),
+    hasImage: !!hasImage,
+  });
+  if (recentInteractions.length > MAX_INTERACTIONS) recentInteractions.shift();
+}
+
 export function startDashboard(config, port) {
   var projectDir = config.projectDir;
 
@@ -56,13 +71,51 @@ export function startDashboard(config, port) {
       }
     }
 
+    // --- API: Transcribe voice (web dashboard) ---
+    if (path === '/api/transcribe' && req.method === 'POST') {
+      var tBody = await readBody(req);
+      try {
+        var tData = JSON.parse(tBody);
+        var { writeFileSync: writeTmp, unlinkSync: unlinkTmp, mkdirSync: mkTmp } = await import('node:fs');
+        var { join: joinTmp } = await import('node:path');
+        var { execFile: execTmp } = await import('node:child_process');
+        var { randomUUID } = await import('node:crypto');
+        var tmpDir = joinTmp(process.env.TMPDIR || '/tmp', 'vertex-nova-web-audio');
+        mkTmp(tmpDir, { recursive: true });
+        var id = randomUUID().slice(0, 12);
+        var webmPath = joinTmp(tmpDir, id + '.webm');
+        var wavPath = joinTmp(tmpDir, id + '.wav');
+        writeTmp(webmPath, Buffer.from(tData.audio, 'base64'));
+        // Convert webm → wav
+        await new Promise(function(resolve, reject) {
+          execTmp('ffmpeg', ['-i', webmPath, '-ar', '16000', '-ac', '1', '-y', wavPath], { timeout: 30000 }, function(err) { if (err) reject(err); else resolve(); });
+        });
+        // Transcribe with whisper
+        var sttPath = config.sttPath || 'whisper-cli';
+        var sttModel = config.sttModel || '';
+        if (!sttModel) { json(res, 200, { error: 'STT non configuré (STT_MODEL manquant)' }); return; }
+        await new Promise(function(resolve, reject) {
+          execTmp(sttPath, ['--model', sttModel, '--no-prints', '--no-timestamps', '--language', 'fr', '--output-txt', '--file', wavPath], { timeout: 120000 }, function(err) { if (err) reject(err); else resolve(); });
+        });
+        var { readFileSync: readTmp } = await import('node:fs');
+        var text = readTmp(wavPath + '.txt', 'utf8').trim();
+        try { unlinkTmp(webmPath); } catch {} try { unlinkTmp(wavPath); } catch {} try { unlinkTmp(wavPath + '.txt'); } catch {}
+        json(res, 200, { text: text });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
     // --- API: Chat ---
     if (path === '/api/chat' && req.method === 'POST') {
       var body = await readBody(req);
       try {
         var data = JSON.parse(body);
         var sessionId = 'web-dashboard-' + new Date().toISOString().slice(0, 10);
+        logInteraction('web', 'in', data.message, !!data.image);
         var response = await chat(data.message, sessionId, data.image || null);
+        logInteraction('web', 'out', response);
         json(res, 200, { response: response });
       } catch (err) {
         json(res, 500, { error: err.message });
@@ -189,6 +242,12 @@ export function startDashboard(config, port) {
       } catch {
         json(res, 200, { models: [] });
       }
+      return;
+    }
+
+    // --- API: Recent interactions ---
+    if (path === '/api/history' && req.method === 'GET') {
+      json(res, 200, { interactions: recentInteractions.slice(-30).reverse() });
       return;
     }
 

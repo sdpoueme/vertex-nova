@@ -39,6 +39,12 @@ async function handleMessage(msg) {
 
   if (!text) return;
 
+  // Log interaction for dashboard
+  try {
+    var { logInteraction } = await import('./web/server.js');
+    logInteraction(channel, 'in', text, !!msg.image);
+  } catch {}
+
   try {
     var sessionId = getSessionId(userId);
 
@@ -55,6 +61,12 @@ async function handleMessage(msg) {
     var response = await chat(stamped, sessionId, msg.image || null);
     var elapsed = ((Date.now() - start) / 1000).toFixed(1);
     log.info('Response in ' + elapsed + 's (' + response.length + ' chars)');
+
+    // Log outgoing interaction
+    try {
+      var { logInteraction: logOut } = await import('./web/server.js');
+      logOut(channel, 'out', response);
+    } catch {}
 
     if (channel === 'telegram' && telegramChannel) {
       log.debug('Sending to Telegram: ' + response.slice(0, 200));
