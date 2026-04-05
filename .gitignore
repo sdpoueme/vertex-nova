@@ -9,3 +9,4 @@ node_modules/
 agent.md
 .sonos-tokens.json
 vault/
+web/node_modules/

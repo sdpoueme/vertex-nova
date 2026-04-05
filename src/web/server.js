@@ -32,10 +32,28 @@ export function startDashboard(config, port) {
 
     // --- Static files ---
     if (path === '/' || path === '/index.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      var htmlPath = join(import.meta.dirname, 'index.html');
-      res.end(readFileSync(htmlPath, 'utf8'));
+      // Try serving built React app
+      var distPath = join(import.meta.dirname, '..', '..', 'web', 'dist', 'index.html');
+      if (existsSync(distPath)) {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(readFileSync(distPath, 'utf8'));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><body><h1>Run: cd web && npm run build</h1><p>Or use: cd web && npm run dev (port 3080)</p></body></html>');
+      }
       return;
+    }
+
+    // Serve static assets from web/dist
+    if (path.match(/\.(js|css|svg|png|ico|woff|woff2|ttf)$/)) {
+      var assetPath = join(import.meta.dirname, '..', '..', 'web', 'dist', path);
+      if (existsSync(assetPath)) {
+        var types = { '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+        var ext = path.match(/\.[^.]+$/)[0];
+        res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
+        res.end(readFileSync(assetPath));
+        return;
+      }
     }
 
     // --- API: Chat ---
