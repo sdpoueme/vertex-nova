@@ -82,6 +82,21 @@ async function main() {
     ttsServer = startTtsServer(config.ttsServerPort);
   }
 
+  // Proactive Sonos token refresh — keeps tokens fresh so TTS never fails
+  if (config.sonosEnabled) {
+    var { refreshSonosTokens } = await import('./outputs/sonos-refresh.js');
+    // Refresh immediately on startup
+    refreshSonosTokens(config).then(function(ok) {
+      log.info('Sonos token refresh on startup: ' + (ok ? 'OK' : 'FAILED'));
+    });
+    // Then every 12 hours
+    setInterval(function() {
+      refreshSonosTokens(config).then(function(ok) {
+        log.info('Sonos token refresh (scheduled): ' + (ok ? 'OK' : 'FAILED'));
+      });
+    }, 12 * 60 * 60 * 1000);
+  }
+
   // Telegram
   if (config.telegramEnabled) {
     var { TelegramChannel } = await import('./channels/telegram.js');

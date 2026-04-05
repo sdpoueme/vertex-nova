@@ -82,7 +82,10 @@ async function refreshTokens() {
 async function getToken() {
   var tokens = loadTokens();
   var elapsed = (Date.now() - tokens.obtained_at) / 1000;
-  if (elapsed >= (tokens.expires_in - 60)) tokens = await refreshTokens();
+  if (elapsed >= (tokens.expires_in - 300)) {
+    // Refresh 5 minutes before expiry (was 60s, too tight)
+    tokens = await refreshTokens();
+  }
   return tokens.access_token;
 }
 

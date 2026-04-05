@@ -101,7 +101,7 @@ export class SonosOutput {
     const tokens = this._loadTokens();
     if (!tokens) return true;
     const elapsed = (Date.now() - tokens.obtained_at) / 1000;
-    return elapsed >= (tokens.expires_in - 60); // refresh 60s before expiry
+    return elapsed >= (tokens.expires_in - 300); // refresh 5 min before expiry
   }
 
   async _getAccessToken() {

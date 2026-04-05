@@ -110,6 +110,60 @@ export function startDashboard(config, port) {
       return;
     }
 
+    // --- API: Get models config ---
+    if (path === '/api/models' && req.method === 'GET') {
+      json(res, 200, {
+        ollama_model: process.env.OLLAMA_MODEL || 'qwen3:8b',
+        ollama_fast_model: process.env.OLLAMA_FAST_MODEL || 'mistral',
+        claude_model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+        ollama_url: process.env.OLLAMA_URL || 'http://localhost:11434',
+        has_claude_key: !!process.env.ANTHROPIC_API_KEY,
+        sonos_default_room: process.env.SONOS_DEFAULT_ROOM || 'Rez de Chaussee',
+        sonos_tts_volume: Number(process.env.SONOS_TTS_VOLUME) || 30,
+        voice_monkey_default_device: process.env.VOICE_MONKEY_DEFAULT_DEVICE || 'vertexnovaspeaker',
+        telegram_enabled: (process.env.TELEGRAM_ENABLED || 'false') === 'true',
+        whatsapp_enabled: (process.env.WHATSAPP_ENABLED || 'false') === 'true',
+      });
+      return;
+    }
+
+    // --- API: Update env var (runtime only, does not persist to .env file) ---
+    if (path === '/api/models' && req.method === 'PUT') {
+      var modelsBody = await readBody(req);
+      try {
+        var modelsData = JSON.parse(modelsBody);
+        var allowed_keys = ['OLLAMA_MODEL', 'OLLAMA_FAST_MODEL', 'CLAUDE_MODEL', 'SONOS_DEFAULT_ROOM', 'SONOS_TTS_VOLUME', 'VOICE_MONKEY_DEFAULT_DEVICE'];
+        var updated = [];
+        for (var k of allowed_keys) {
+          if (modelsData[k] !== undefined) {
+            process.env[k] = String(modelsData[k]);
+            updated.push(k);
+          }
+        }
+        json(res, 200, { updated: updated });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: List available Ollama models ---
+    if (path === '/api/ollama-models' && req.method === 'GET') {
+      try {
+        var ollamaRes2 = await fetch((process.env.OLLAMA_URL || 'http://localhost:11434') + '/api/tags');
+        if (ollamaRes2.ok) {
+          var ollamaData = await ollamaRes2.json();
+          var models = (ollamaData.models || []).map(function(m) { return { name: m.name, size: m.size }; });
+          json(res, 200, { models: models });
+        } else {
+          json(res, 200, { models: [] });
+        }
+      } catch {
+        json(res, 200, { models: [] });
+      }
+      return;
+    }
+
     // --- API: Logs ---
     if (path === '/api/logs' && req.method === 'GET') {
       try {
