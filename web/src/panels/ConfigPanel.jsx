@@ -12,6 +12,7 @@ import Input from '@cloudscape-design/components/input';
 import Toggle from '@cloudscape-design/components/toggle';
 import Alert from '@cloudscape-design/components/alert';
 import Box from '@cloudscape-design/components/box';
+import Spinner from '@cloudscape-design/components/spinner';
 
 // --- Minimal YAML helpers for our config shapes ---
 function parseRoutingYaml(text) {
@@ -109,10 +110,9 @@ function buildProactiveYaml(data) {
 // ============================================================
 
 function ModelsPanel({ api }) {
-  const [models, setModels] = useState({});
+  const [models, setModels] = useState(null);
   const [ollamaModels, setOllamaModels] = useState([]);
   const [alert, setAlert] = useState(null);
-  const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     fetch(api + '/api/models').then(r => r.json()).then(setModels).catch(() => {});
@@ -122,19 +122,21 @@ function ModelsPanel({ api }) {
   useEffect(() => { load(); }, [load]);
 
   const save = async (key, val) => {
-    setSaving(true);
     try {
       await fetch(api + '/api/models', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ [key]: val }),
       });
-      setModels(m => ({ ...m, [key.toLowerCase()]: val }));
       setAlert({ type: 'success', text: key + ' mis à jour' });
+      // Reload all values from server to stay in sync
+      load();
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
-    setSaving(false);
   };
 
-  // Build Ollama model options: discovered + well-known fallbacks
+  if (!models) return <Spinner size="large" />;
+
+  // Build Ollama model options
+  const installedNames = new Set(ollamaModels.map(m => m.name));
   const knownOllamaModels = [
     { value: 'qwen3:8b', label: 'Qwen3 8B — rapide, bon français, outils' },
     { value: 'qwen3:4b', label: 'Qwen3 4B — très rapide, qualité OK' },
@@ -144,17 +146,19 @@ function ModelsPanel({ api }) {
     { value: 'mistral', label: 'Mistral 7B — léger, français moyen' },
     { value: 'llama3.1:8b', label: 'Llama 3.1 8B — polyvalent' },
   ];
-  // Merge discovered models (mark which are installed)
-  const installedNames = new Set(ollamaModels.map(m => m.name));
   const ollamaOptions = knownOllamaModels.map(m => ({
-    ...m,
-    label: m.label + (installedNames.has(m.value) ? ' ✅' : ' (non installé)'),
+    value: m.value,
+    label: m.label + (installedNames.has(m.value) ? ' ✅' : ''),
   }));
-  // Add any discovered models not in the known list
   for (const m of ollamaModels) {
     if (!knownOllamaModels.find(k => k.value === m.name)) {
       ollamaOptions.push({ value: m.name, label: m.name + ' (' + Math.round(m.size / 1e9 * 10) / 10 + ' GB) ✅' });
     }
+  }
+  // Ensure current model is always in the list
+  const currentOllama = models.ollama_model || 'qwen3:8b';
+  if (!ollamaOptions.find(o => o.value === currentOllama)) {
+    ollamaOptions.unshift({ value: currentOllama, label: currentOllama + ' (actuel)' });
   }
 
   const claudeOptions = [
@@ -163,8 +167,35 @@ function ModelsPanel({ api }) {
     { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
     { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (ancien)' },
   ];
+  const currentClaude = models.claude_model || 'claude-sonnet-4-20250514';
+  if (!claudeOptions.find(o => o.value === currentClaude)) {
+    claudeOptions.unshift({ value: currentClaude, label: currentClaude + ' (actuel)' });
+  }
 
-  const findOption = (options, value) => options.find(o => o.value === value) || { value: value || '', label: value || '...' };
+  const sonosOptions = [
+    { value: 'Rez de Chaussee', label: 'Rez de Chaussée (salon)' },
+    { value: 'Sous-sol', label: 'Sous-sol' },
+  ];
+  const currentSonos = models.sonos_default_room || '';
+  if (currentSonos && !sonosOptions.find(o => o.value === currentSonos)) {
+    sonosOptions.unshift({ value: currentSonos, label: currentSonos + ' (actuel)' });
+  }
+
+  const echoOptions = [
+    { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
+    { value: 'bureau-serge', label: 'Bureau Serge' },
+    { value: 'garage', label: 'Garage' },
+  ];
+  const currentEcho = models.voice_monkey_default_device || '';
+  if (currentEcho && !echoOptions.find(o => o.value === currentEcho)) {
+    echoOptions.unshift({ value: currentEcho, label: currentEcho + ' (actuel)' });
+  }
+
+  // Helper: find option by value, guaranteed to return a matching object from the options array
+  const pick = (options, value) => {
+    const found = options.find(o => o.value === value);
+    return found || options[0] || { value: '', label: '—' };
+  };
 
   return (
     <SpaceBetween size="l">
@@ -175,14 +206,14 @@ function ModelsPanel({ api }) {
           <ColumnLayout columns={2}>
             <FormField label="Modèle principal (Ollama)" description="Utilisé pour 80%+ des requêtes. Les modèles avec ✅ sont installés.">
               <Select
-                selectedOption={findOption(ollamaOptions, models.ollama_model)}
+                selectedOption={pick(ollamaOptions, currentOllama)}
                 onChange={({ detail }) => save('OLLAMA_MODEL', detail.selectedOption.value)}
                 options={ollamaOptions}
               />
             </FormField>
             <FormField label="Modèle Claude (escalation)" description="Utilisé pour vision, raisonnement complexe, et quand Ollama échoue.">
               <Select
-                selectedOption={findOption(claudeOptions, models.claude_model)}
+                selectedOption={pick(claudeOptions, currentClaude)}
                 onChange={({ detail }) => save('CLAUDE_MODEL', detail.selectedOption.value)}
                 options={claudeOptions}
               />
@@ -198,15 +229,9 @@ function ModelsPanel({ api }) {
         <ColumnLayout columns={3}>
           <FormField label="Sonos — pièce par défaut">
             <Select
-              selectedOption={findOption([
-                { value: 'Rez de Chaussee', label: 'Rez de Chaussée (salon)' },
-                { value: 'Sous-sol', label: 'Sous-sol' },
-              ], models.sonos_default_room)}
+              selectedOption={pick(sonosOptions, currentSonos)}
               onChange={({ detail }) => save('SONOS_DEFAULT_ROOM', detail.selectedOption.value)}
-              options={[
-                { value: 'Rez de Chaussee', label: 'Rez de Chaussée (salon)' },
-                { value: 'Sous-sol', label: 'Sous-sol' },
-              ]}
+              options={sonosOptions}
             />
           </FormField>
           <FormField label="Sonos — volume TTS (0-100)">
@@ -214,17 +239,9 @@ function ModelsPanel({ api }) {
           </FormField>
           <FormField label="Echo — appareil par défaut">
             <Select
-              selectedOption={findOption([
-                { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
-                { value: 'bureau-serge', label: 'Bureau Serge' },
-                { value: 'garage', label: 'Garage' },
-              ], models.voice_monkey_default_device)}
+              selectedOption={pick(echoOptions, currentEcho)}
               onChange={({ detail }) => save('VOICE_MONKEY_DEFAULT_DEVICE', detail.selectedOption.value)}
-              options={[
-                { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
-                { value: 'bureau-serge', label: 'Bureau Serge' },
-                { value: 'garage', label: 'Garage' },
-              ]}
+              options={echoOptions}
             />
           </FormField>
         </ColumnLayout>
@@ -235,7 +252,7 @@ function ModelsPanel({ api }) {
           <ColumnLayout columns={2}>
             <Container header={<Header variant="h4">Telegram</Header>}>
               <SpaceBetween size="s">
-                <Toggle checked={models.telegram_enabled || false} onChange={({ detail }) => save('TELEGRAM_ENABLED', detail.checked ? 'true' : 'false')}>
+                <Toggle checked={models.telegram_enabled === true} onChange={({ detail }) => save('TELEGRAM_ENABLED', detail.checked ? 'true' : 'false')}>
                   {models.telegram_enabled ? 'Activé' : 'Désactivé'}
                 </Toggle>
                 <FormField label="Bot token" description="Masqué pour sécurité">
@@ -248,7 +265,7 @@ function ModelsPanel({ api }) {
             </Container>
             <Container header={<Header variant="h4">WhatsApp</Header>}>
               <SpaceBetween size="s">
-                <Toggle checked={models.whatsapp_enabled || false} onChange={({ detail }) => save('WHATSAPP_ENABLED', detail.checked ? 'true' : 'false')}>
+                <Toggle checked={models.whatsapp_enabled === true} onChange={({ detail }) => save('WHATSAPP_ENABLED', detail.checked ? 'true' : 'false')}>
                   {models.whatsapp_enabled ? 'Activé' : 'Désactivé'}
                 </Toggle>
                 <FormField label="Phone ID">
