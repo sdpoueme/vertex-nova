@@ -1,400 +1,206 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" class="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vertex Nova — Dashboard</title>
+<title>Vertex Nova</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwindcss.config={darkMode:'class',theme:{extend:{colors:{vn:{primary:'#7c3aed',dark:'#0f172a',card:'#1e293b',border:'#334155',text:'#e2e8f0',muted:'#94a3b8'}}}}}</script>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; }
-.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-h1 { color: #7c3aed; margin-bottom: 20px; font-size: 24px; }
-.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
-.tab { padding: 10px 20px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; cursor: pointer; color: #aaa; }
-.tab.active { background: #7c3aed; color: white; border-color: #7c3aed; }
-.panel { display: none; }
-.panel.active { display: block; }
-
-/* Chat */
-.chat-messages { height: 400px; overflow-y: auto; background: #1a1a2e; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-.msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; max-width: 80%; }
-.msg.user { background: #7c3aed; margin-left: auto; }
-.msg.assistant { background: #2a2a3e; }
-.chat-input { display: flex; gap: 8px; }
-.chat-input input { flex: 1; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: white; font-size: 16px; }
-.chat-input button { padding: 12px 24px; background: #7c3aed; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 16px; }
-.chat-input button:hover { background: #6d28d9; }
-.chat-controls { display: flex; gap: 8px; margin-bottom: 8px; }
-.btn-icon { padding: 8px 16px; background: #2a2a3e; border: 1px solid #444; border-radius: 8px; cursor: pointer; color: #aaa; }
-.btn-icon:hover { background: #3a3a4e; }
-.btn-icon.recording { background: #dc2626; color: white; }
-
-/* Editor */
-.config-split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.config-forms { background: #1a1a2e; border-radius: 8px; padding: 16px; overflow-y: auto; max-height: 600px; }
-.config-forms h3 { color: #7c3aed; margin-bottom: 12px; font-size: 16px; }
-.form-group { margin-bottom: 14px; }
-.form-group label { display: block; color: #aaa; font-size: 13px; margin-bottom: 4px; }
-.form-group input, .form-group select { width: 100%; padding: 8px; background: #0f0f1a; border: 1px solid #333; border-radius: 6px; color: white; font-size: 14px; }
-.form-group input[type="checkbox"] { width: auto; margin-right: 8px; }
-.form-group .checkbox-label { display: flex; align-items: center; color: #e0e0e0; font-size: 14px; }
-.form-section { border-top: 1px solid #333; padding-top: 12px; margin-top: 12px; }
-.form-section h4 { color: #aaa; font-size: 13px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-.route-item { background: #0f0f1a; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
-.route-item .route-name { color: #7c3aed; font-weight: bold; font-size: 14px; }
-.route-item .route-model { color: #22c55e; font-size: 13px; }
-.action-item { background: #0f0f1a; border-radius: 6px; padding: 10px; margin-bottom: 8px; }
-.action-item .action-name { color: #eab308; font-weight: bold; }
-.editor-select { margin-bottom: 12px; }
-.editor-select select { padding: 8px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: white; }
-textarea.editor { width: 100%; height: 560px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px; color: #e0e0e0; font-family: 'SF Mono', monospace; font-size: 13px; resize: vertical; }
-.editor-actions { margin-top: 12px; display: flex; gap: 8px; }
-.btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
-.btn-primary { background: #7c3aed; color: white; }
-.btn-secondary { background: #2a2a3e; color: #aaa; border: 1px solid #444; }
-.btn-danger { background: #dc2626; color: white; }
-.status-bar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
-.status-item { padding: 8px 16px; background: #1a1a2e; border-radius: 8px; font-size: 13px; }
-.status-item .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-.dot.green { background: #22c55e; }
-.dot.red { background: #ef4444; }
-.dot.yellow { background: #eab308; }
-
-/* Logs */
-.log-viewer { height: 500px; overflow-y: auto; background: #0a0a0a; border-radius: 8px; padding: 16px; font-family: 'SF Mono', monospace; font-size: 12px; white-space: pre-wrap; color: #888; }
+.msg-user { background: #7c3aed; }
+.msg-bot { background: #1e293b; border: 1px solid #334155; }
+.recording { animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 </style>
 </head>
-<body>
-<div class="container">
-  <h1>⚡ Vertex Nova</h1>
-  <div class="status-bar" id="statusBar"></div>
-  <div class="tabs">
-    <div class="tab active" onclick="showTab('chat')">💬 Chat</div>
-    <div class="tab" onclick="showTab('config')">⚙️ Configuration</div>
-    <div class="tab" onclick="showTab('logs')">📋 Logs</div>
-  </div>
+<body class="bg-vn-dark text-vn-text min-h-screen">
 
-  <!-- Chat Panel -->
-  <div class="panel active" id="panel-chat">
-    <div class="chat-controls">
-      <button class="btn-icon" id="btnMic" onclick="toggleRecording()">🎤 Audio</button>
-      <button class="btn-icon" onclick="document.getElementById('imgInput').click()">📷 Image</button>
-      <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="handleImage(event)">
-    </div>
-    <div class="chat-messages" id="chatMessages"></div>
-    <div class="chat-input">
-      <input type="text" id="chatInput" placeholder="Écrivez un message..." onkeydown="if(event.key==='Enter')sendMessage()">
-      <button onclick="sendMessage()">Envoyer</button>
-    </div>
+<!-- Top Nav -->
+<nav class="bg-vn-card border-b border-vn-border px-6 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <span class="text-xl">⚡</span>
+    <span class="text-lg font-semibold text-white">Vertex Nova</span>
   </div>
+  <div id="statusBar" class="flex gap-3 text-sm"></div>
+</nav>
 
-  <!-- Config Panel -->
-  <div class="panel" id="panel-config">
-    <div class="editor-select">
-      <select id="configFile" onchange="loadConfig()">
-        <option value="config/routing.yaml">🔀 routing.yaml</option>
-        <option value="config/proactive.yaml">⏰ proactive.yaml</option>
-        <option value="agent.md">🤖 agent.md</option>
-      </select>
-    </div>
-    <div class="config-split">
-      <!-- Forms (left) -->
-      <div class="config-forms" id="configForms">
-        <h3>Chargement...</h3>
-      </div>
-      <!-- YAML editor (right) -->
-      <div>
-        <textarea class="editor" id="configEditor"></textarea>
-      </div>
-    </div>
-    <div class="editor-actions">
-      <button class="btn btn-primary" onclick="saveConfig()">💾 Sauvegarder</button>
-      <button class="btn btn-secondary" onclick="reloadConfig()">🔄 Recharger le moteur</button>
-      <button class="btn btn-secondary" onclick="formToYaml()">📝 Formulaire → YAML</button>
-    </div>
-  </div>
-
-  <!-- Logs Panel -->
-  <div class="panel" id="panel-logs">
-    <div style="margin-bottom:12px">
-      <button class="btn btn-secondary" onclick="loadLogs()">🔄 Rafraîchir</button>
-    </div>
-    <div class="log-viewer" id="logViewer"></div>
+<!-- Tabs -->
+<div class="border-b border-vn-border bg-vn-card">
+  <div class="max-w-7xl mx-auto px-6 flex gap-1">
+    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-vn-primary text-white" onclick="showTab('chat',this)">💬 Chat</button>
+    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-vn-muted hover:text-white" onclick="showTab('config',this)">⚙️ Configuration</button>
+    <button class="tab-btn px-4 py-3 text-sm font-medium border-b-2 border-transparent text-vn-muted hover:text-white" onclick="showTab('logs',this)">📋 Logs</button>
   </div>
 </div>
 
+<div class="max-w-7xl mx-auto p-6">
+
+<!-- Chat Panel -->
+<div class="panel" id="panel-chat">
+  <div class="bg-vn-card rounded-lg border border-vn-border">
+    <div class="p-4 border-b border-vn-border flex gap-2">
+      <button id="btnMic" onclick="toggleRecording()" class="px-3 py-1.5 bg-vn-dark border border-vn-border rounded-md text-sm hover:bg-slate-700">🎤 Audio</button>
+      <button onclick="document.getElementById('imgInput').click()" class="px-3 py-1.5 bg-vn-dark border border-vn-border rounded-md text-sm hover:bg-slate-700">📷 Image</button>
+      <input type="file" id="imgInput" accept="image/*" class="hidden" onchange="handleImage(event)">
+    </div>
+    <div id="chatMessages" class="h-96 overflow-y-auto p-4 space-y-3"></div>
+    <div class="p-4 border-t border-vn-border flex gap-2">
+      <input type="text" id="chatInput" placeholder="Écrivez un message..." onkeydown="if(event.key==='Enter')sendMessage()"
+        class="flex-1 px-4 py-2.5 bg-vn-dark border border-vn-border rounded-lg text-white placeholder-vn-muted focus:outline-none focus:border-vn-primary">
+      <button onclick="sendMessage()" class="px-6 py-2.5 bg-vn-primary hover:bg-purple-700 text-white rounded-lg font-medium">Envoyer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Config Panel -->
+<div class="panel hidden" id="panel-config">
+  <div class="flex gap-4 mb-4">
+    <select id="configFile" onchange="loadConfig()" class="px-3 py-2 bg-vn-card border border-vn-border rounded-lg text-white">
+      <option value="config/routing.yaml">🔀 Routing</option>
+      <option value="config/proactive.yaml">⏰ Actions proactives</option>
+      <option value="agent.md">🤖 Agent prompt</option>
+    </select>
+    <button onclick="saveConfig()" class="px-4 py-2 bg-vn-primary hover:bg-purple-700 text-white rounded-lg text-sm font-medium">💾 Sauvegarder</button>
+    <button onclick="reloadConfig()" class="px-4 py-2 bg-vn-card border border-vn-border hover:bg-slate-700 text-vn-muted rounded-lg text-sm">🔄 Recharger</button>
+  </div>
+  <div class="grid grid-cols-2 gap-4">
+    <!-- Forms -->
+    <div class="bg-vn-card rounded-lg border border-vn-border p-5 overflow-y-auto max-h-[600px]" id="configForms"></div>
+    <!-- YAML -->
+    <div>
+      <textarea id="configEditor" class="w-full h-[580px] bg-vn-card border border-vn-border rounded-lg p-4 text-sm font-mono text-vn-text focus:outline-none focus:border-vn-primary resize-none"></textarea>
+    </div>
+  </div>
+</div>
+
+<!-- Logs Panel -->
+<div class="panel hidden" id="panel-logs">
+  <div class="mb-3">
+    <button onclick="loadLogs()" class="px-4 py-2 bg-vn-card border border-vn-border hover:bg-slate-700 text-vn-muted rounded-lg text-sm">🔄 Rafraîchir</button>
+  </div>
+  <div id="logViewer" class="h-[500px] overflow-y-auto bg-black rounded-lg p-4 font-mono text-xs text-slate-500 whitespace-pre-wrap"></div>
+</div>
+
+</div>
+
 <script>
-var API = '';
-var pendingImage = null;
-var mediaRecorder = null;
-var audioChunks = [];
+var API='',pendingImage=null,mediaRecorder=null,audioChunks=[];
 
-function showTab(name) {
-  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-  document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
-  event.target.classList.add('active');
-  document.getElementById('panel-' + name).classList.add('active');
-  if (name === 'config') loadConfig();
-  if (name === 'logs') loadLogs();
+function showTab(name,btn){
+  document.querySelectorAll('.tab-btn').forEach(function(t){t.classList.remove('border-vn-primary','text-white');t.classList.add('border-transparent','text-vn-muted');});
+  btn.classList.add('border-vn-primary','text-white');btn.classList.remove('border-transparent','text-vn-muted');
+  document.querySelectorAll('.panel').forEach(function(p){p.classList.add('hidden');});
+  document.getElementById('panel-'+name).classList.remove('hidden');
+  if(name==='config')loadConfig();if(name==='logs')loadLogs();
 }
 
-// --- Chat ---
-function addMsg(role, text) {
-  var div = document.createElement('div');
-  div.className = 'msg ' + role;
-  div.textContent = text;
-  var container = document.getElementById('chatMessages');
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+function addMsg(role,text){
+  var d=document.createElement('div');
+  d.className='p-3 rounded-lg max-w-[80%] text-sm '+(role==='user'?'msg-user ml-auto':'msg-bot');
+  d.textContent=text;
+  var c=document.getElementById('chatMessages');c.appendChild(d);c.scrollTop=c.scrollHeight;
 }
 
-async function sendMessage() {
-  var input = document.getElementById('chatInput');
-  var text = input.value.trim();
-  if (!text && !pendingImage) return;
-  input.value = '';
-  addMsg('user', text || '[Image]');
-
-  var body = { message: text || "Analyse cette image" };
-  if (pendingImage) { body.image = pendingImage; pendingImage = null; }
-
-  try {
-    var res = await fetch(API + '/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    var data = await res.json();
-    addMsg('assistant', data.response || data.error || 'Pas de réponse');
-  } catch (err) {
-    addMsg('assistant', 'Erreur: ' + err.message);
-  }
+async function sendMessage(){
+  var input=document.getElementById('chatInput'),text=input.value.trim();
+  if(!text&&!pendingImage)return;input.value='';addMsg('user',text||'[Image]');
+  var body={message:text||"Analyse cette image"};
+  if(pendingImage){body.image=pendingImage;pendingImage=null;}
+  try{var r=await fetch(API+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  var d=await r.json();addMsg('assistant',d.response||d.error||'Pas de réponse');}
+  catch(e){addMsg('assistant','Erreur: '+e.message);}
 }
 
-function handleImage(event) {
-  var file = event.target.files[0];
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    var base64 = e.target.result.split(',')[1];
-    var mediaType = file.type || 'image/jpeg';
-    pendingImage = { base64: base64, mediaType: mediaType };
-    addMsg('user', '📷 Image chargée: ' + file.name);
-  };
-  reader.readAsDataURL(file);
+function handleImage(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();
+r.onload=function(ev){pendingImage={base64:ev.target.result.split(',')[1],mediaType:f.type||'image/jpeg'};addMsg('user','📷 '+f.name);};r.readAsDataURL(f);}
+
+async function toggleRecording(){
+  var btn=document.getElementById('btnMic');
+  if(mediaRecorder&&mediaRecorder.state==='recording'){mediaRecorder.stop();btn.classList.remove('recording','bg-red-600');btn.textContent='🎤 Audio';return;}
+  try{var s=await navigator.mediaDevices.getUserMedia({audio:true});mediaRecorder=new MediaRecorder(s);audioChunks=[];
+  mediaRecorder.ondataavailable=function(e){audioChunks.push(e.data);};
+  mediaRecorder.onstop=async function(){s.getTracks().forEach(function(t){t.stop();});addMsg('user','🎤 Audio...');
+  try{var r=await fetch(API+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'[Audio from dashboard]'})});
+  var d=await r.json();addMsg('assistant',d.response||'Pas de réponse');}catch(e){addMsg('assistant','Erreur: '+e.message);}};
+  mediaRecorder.start();btn.classList.add('recording','bg-red-600');btn.textContent='⏹ Stop';
+  }catch(e){addMsg('assistant','Erreur micro: '+e.message);}
 }
 
-// --- Audio Recording ---
-async function toggleRecording() {
-  var btn = document.getElementById('btnMic');
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-    btn.classList.remove('recording');
-    btn.textContent = '🎤 Audio';
-    return;
-  }
-  try {
-    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
-    mediaRecorder.ondataavailable = function(e) { audioChunks.push(e.data); };
-    mediaRecorder.onstop = async function() {
-      stream.getTracks().forEach(function(t) { t.stop(); });
-      var blob = new Blob(audioChunks, { type: 'audio/webm' });
-      addMsg('user', '🎤 Message audio envoyé...');
-      // Convert to base64 and send as text (transcription happens server-side)
-      var reader = new FileReader();
-      reader.onload = async function() {
-        try {
-          var res = await fetch(API + '/api/chat', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: '[Audio message from web dashboard]' }),
-          });
-          var data = await res.json();
-          addMsg('assistant', data.response || 'Pas de réponse');
-        } catch (err) { addMsg('assistant', 'Erreur: ' + err.message); }
-      };
-      reader.readAsDataURL(blob);
-    };
-    mediaRecorder.start();
-    btn.classList.add('recording');
-    btn.textContent = '⏹️ Arrêter';
-  } catch (err) {
-    addMsg('assistant', 'Erreur micro: ' + err.message);
-  }
+async function loadConfig(){
+  var file=document.getElementById('configFile').value;
+  try{var r=await fetch(API+'/api/config?file='+encodeURIComponent(file));var d=await r.json();
+  document.getElementById('configEditor').value=d.content||d.error;buildForms(file,d.content||'');}
+  catch(e){document.getElementById('configEditor').value='Erreur: '+e.message;}
 }
 
-// --- Config Editor ---
-async function loadConfig() {
-  var file = document.getElementById('configFile').value;
-  try {
-    var res = await fetch(API + '/api/config?file=' + encodeURIComponent(file));
-    var data = await res.json();
-    var content = data.content || data.error;
-    document.getElementById('configEditor').value = content;
-    buildForms(file, content);
-  } catch (err) {
-    document.getElementById('configEditor').value = 'Erreur: ' + err.message;
-  }
+function buildForms(file,yaml){
+  var c=document.getElementById('configForms');
+  if(file==='config/routing.yaml'){buildRoutingForm(c,yaml);}
+  else if(file==='config/proactive.yaml'){buildProactiveForm(c,yaml);}
+  else{c.innerHTML='<h3 class="text-lg font-semibold text-white mb-2">🤖 Agent Prompt</h3><p class="text-vn-muted text-sm">Éditez le prompt directement dans l\'éditeur YAML à droite.</p>';}
 }
 
-function buildForms(file, content) {
-  var container = document.getElementById('configForms');
-
-  if (file === 'config/routing.yaml') {
-    buildRoutingForm(container, content);
-  } else if (file === 'config/proactive.yaml') {
-    buildProactiveForm(container, content);
-  } else {
-    container.innerHTML = '<h3>🤖 Agent Prompt</h3><p style="color:#888">Éditez directement dans le YAML à droite.</p>';
-  }
+function buildRoutingForm(c,yaml){
+  var routes=[],def='qwen3:8b',lines=yaml.split('\n'),cur=null;
+  for(var i=0;i<lines.length;i++){var l=lines[i];
+  var nm=l.match(/^\s+-\s+name:\s*(.+)/);if(nm){cur={name:nm[1].trim(),patterns:[],model:''};routes.push(cur);}
+  if(cur&&l.match(/^\s+model:\s*(.+)/))cur.model=l.match(/^\s+model:\s*(.+)/)[1].trim();
+  if(cur&&l.match(/^\s+-\s+"(.+)"/))cur.patterns.push(l.match(/^\s+-\s+"(.+)"/)[1]);
+  if(l.match(/^default:/)&&i+1<lines.length){var dm=lines[i+1].match(/model:\s*(.+)/);if(dm)def=dm[1].trim();}}
+  var h='<h3 class="text-lg font-semibold text-white mb-4">🔀 Routes</h3>';
+  h+='<div class="mb-4"><label class="block text-xs text-vn-muted mb-1">Modèle par défaut</label><select class="w-full px-3 py-2 bg-vn-dark border border-vn-border rounded-md text-white text-sm">';
+  ['qwen3:8b','claude','gemma4:e2b'].forEach(function(m){h+='<option'+(def===m?' selected':'')+'>'+m+'</option>';});
+  h+='</select></div>';
+  routes.forEach(function(r){h+='<div class="bg-vn-dark rounded-lg p-3 mb-2 border border-vn-border"><div class="flex justify-between items-center"><span class="font-medium text-white text-sm">'+r.name+'</span><span class="text-xs px-2 py-0.5 rounded-full '+(r.model==='claude'?'bg-blue-900 text-blue-300':'bg-green-900 text-green-300')+'">'+r.model+'</span></div><div class="text-xs text-vn-muted mt-1">'+r.patterns.join(' · ')+'</div></div>';});
+  c.innerHTML=h;
 }
 
-function buildRoutingForm(container, yaml) {
-  var routes = [];
-  var defaultModel = 'qwen3:8b';
-  var lines = yaml.split('\n');
-  var current = null;
-
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    var nameMatch = line.match(/^\s+-\s+name:\s*(.+)/);
-    if (nameMatch) { current = { name: nameMatch[1].trim(), patterns: [], model: '' }; routes.push(current); }
-    if (current && line.match(/^\s+model:\s*(.+)/)) current.model = line.match(/^\s+model:\s*(.+)/)[1].trim();
-    if (current && line.match(/^\s+-\s+"(.+)"/)) current.patterns.push(line.match(/^\s+-\s+"(.+)"/)[1]);
-    if (line.match(/^default:/) && i + 1 < lines.length) {
-      var dm = lines[i+1].match(/model:\s*(.+)/);
-      if (dm) defaultModel = dm[1].trim();
-    }
-  }
-
-  var html = '<h3>🔀 Routes</h3>';
-  html += '<div class="form-group"><label>Modèle par défaut</label>';
-  html += '<select id="form-default-model"><option ' + (defaultModel === 'qwen3:8b' ? 'selected' : '') + '>qwen3:8b</option><option ' + (defaultModel === 'claude' ? 'selected' : '') + '>claude</option><option ' + (defaultModel === 'gemma4:e2b' ? 'selected' : '') + '>gemma4:e2b</option></select></div>';
-
-  for (var r = 0; r < routes.length; r++) {
-    html += '<div class="route-item">';
-    html += '<div class="route-name">' + routes[r].name + '</div>';
-    html += '<div class="route-model">→ ' + routes[r].model + '</div>';
-    html += '<div style="color:#666;font-size:12px;margin-top:4px">Patterns: ' + routes[r].patterns.join(', ') + '</div>';
-    html += '</div>';
-  }
-
-  container.innerHTML = html;
+function buildProactiveForm(c,yaml){
+  var actions=[],lines=yaml.split('\n'),cur=null,inP=false;
+  for(var i=0;i<lines.length;i++){var l=lines[i];
+  var nm=l.match(/^\s+-\s+name:\s*(.+)/);if(nm){if(cur)actions.push(cur);cur={name:nm[1].trim(),interval:'',model:'',priority:''};inP=false;}
+  if(cur){var kv=l.match(/^\s{4}(\w+):\s*(.+)/);if(kv&&!inP){if(kv[1]==='interval_minutes')cur.interval=kv[2].trim();if(kv[1]==='model')cur.model=kv[2].trim();if(kv[1]==='priority')cur.priority=kv[2].trim();if(kv[1]==='prompt')inP=true;}}}
+  if(cur)actions.push(cur);
+  var icons={'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'};
+  var h='<h3 class="text-lg font-semibold text-white mb-4">⏰ Actions</h3>';
+  actions.forEach(function(a){
+  h+='<div class="bg-vn-dark rounded-lg p-4 mb-3 border border-vn-border">';
+  h+='<div class="font-medium text-white mb-3">'+(icons[a.name]||'📋')+' '+a.name+'</div>';
+  h+='<div class="grid grid-cols-3 gap-3">';
+  h+='<div><label class="block text-xs text-vn-muted mb-1">Intervalle (min)</label><input type="number" value="'+a.interval+'" class="w-full px-2 py-1.5 bg-vn-card border border-vn-border rounded text-sm text-white"></div>';
+  h+='<div><label class="block text-xs text-vn-muted mb-1">Modèle</label><select class="w-full px-2 py-1.5 bg-vn-card border border-vn-border rounded text-sm text-white">';
+  ['qwen3:8b','claude','gemma4:e2b'].forEach(function(m){h+='<option'+(a.model===m?' selected':'')+'>'+m+'</option>';});
+  h+='</select></div>';
+  h+='<div><label class="block text-xs text-vn-muted mb-1">Priorité</label><select class="w-full px-2 py-1.5 bg-vn-card border border-vn-border rounded text-sm text-white">';
+  ['high','medium','low'].forEach(function(p){h+='<option'+(a.priority===p?' selected':'')+'>'+p+'</option>';});
+  h+='</select></div></div></div>';});
+  h+='<div class="mt-4 pt-4 border-t border-vn-border"><h4 class="text-xs text-vn-muted uppercase tracking-wider mb-3">Comportement</h4>';
+  h+='<div class="grid grid-cols-2 gap-3">';
+  h+='<div><label class="block text-xs text-vn-muted mb-1">Max notif/heure</label><input type="number" value="4" class="w-full px-2 py-1.5 bg-vn-dark border border-vn-border rounded text-sm text-white"></div>';
+  h+='<div><label class="block text-xs text-vn-muted mb-1">Min intervalle (min)</label><input type="number" value="10" class="w-full px-2 py-1.5 bg-vn-dark border border-vn-border rounded text-sm text-white"></div>';
+  h+='</div><label class="flex items-center gap-2 mt-3 text-sm text-vn-text"><input type="checkbox" checked class="rounded"> Haute priorité ignore les limites</label></div>';
+  c.innerHTML=h;
 }
 
-function buildProactiveForm(container, yaml) {
-  var actions = [];
-  var lines = yaml.split('\n');
-  var current = null;
-  var inPrompt = false;
+async function saveConfig(){var f=document.getElementById('configFile').value,ct=document.getElementById('configEditor').value;
+try{var r=await fetch(API+'/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:f,content:ct})});
+var d=await r.json();alert(d.saved?'✅ Sauvegardé!':'Erreur: '+d.error);}catch(e){alert('Erreur: '+e.message);}}
 
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    var nameMatch = line.match(/^\s+-\s+name:\s*(.+)/);
-    if (nameMatch) {
-      if (current) actions.push(current);
-      current = { name: nameMatch[1].trim(), interval: '', model: '', priority: '', enabled: true };
-      inPrompt = false;
-    }
-    if (current) {
-      var kv = line.match(/^\s{4}(\w+):\s*(.+)/);
-      if (kv && !inPrompt) {
-        if (kv[1] === 'interval_minutes') current.interval = kv[2].trim();
-        if (kv[1] === 'model') current.model = kv[2].trim();
-        if (kv[1] === 'priority') current.priority = kv[2].trim();
-        if (kv[1] === 'prompt') inPrompt = true;
-      }
-    }
-  }
-  if (current) actions.push(current);
+async function reloadConfig(){try{var r=await fetch(API+'/api/reload',{method:'POST'});var d=await r.json();
+alert(d.reloaded?'✅ Configuration rechargée!':'Erreur: '+d.error);}catch(e){alert('Erreur: '+e.message);}}
 
-  var html = '<h3>⏰ Actions Proactives</h3>';
-  for (var a = 0; a < actions.length; a++) {
-    var act = actions[a];
-    var icons = {'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'};
-    html += '<div class="action-item">';
-    html += '<div class="action-name">' + (icons[act.name] || '📋') + ' ' + act.name + '</div>';
-    html += '<div class="form-group" style="margin-top:8px"><label>Intervalle (min)</label><input type="number" value="' + act.interval + '" data-action="' + act.name + '" data-field="interval"></div>';
-    html += '<div class="form-group"><label>Modèle</label><select data-action="' + act.name + '" data-field="model">';
-    html += '<option ' + (act.model === 'qwen3:8b' ? 'selected' : '') + '>qwen3:8b</option>';
-    html += '<option ' + (act.model === 'claude' ? 'selected' : '') + '>claude</option>';
-    html += '<option ' + (act.model === 'gemma4:e2b' ? 'selected' : '') + '>gemma4:e2b</option>';
-    html += '</select></div>';
-    html += '<div class="form-group"><label>Priorité</label><select data-action="' + act.name + '" data-field="priority">';
-    html += '<option ' + (act.priority === 'high' ? 'selected' : '') + '>high</option>';
-    html += '<option ' + (act.priority === 'medium' ? 'selected' : '') + '>medium</option>';
-    html += '<option ' + (act.priority === 'low' ? 'selected' : '') + '>low</option>';
-    html += '</select></div>';
-    html += '</div>';
-  }
+async function loadLogs(){try{var r=await fetch(API+'/api/logs');var d=await r.json();
+var v=document.getElementById('logViewer');v.textContent=d.logs;v.scrollTop=v.scrollHeight;}
+catch(e){document.getElementById('logViewer').textContent='Erreur: '+e.message;}}
 
-  html += '<div class="form-section"><h4>Comportement</h4>';
-  html += '<div class="form-group"><label>Max notifications/heure</label><input type="number" id="form-max-notif" value="4"></div>';
-  html += '<div class="form-group"><label>Intervalle min (minutes)</label><input type="number" id="form-min-interval" value="10"></div>';
-  html += '<div class="form-group"><label class="checkbox-label"><input type="checkbox" id="form-high-bypass" checked> Haute priorité ignore les limites</label></div>';
-  html += '</div>';
-
-  container.innerHTML = html;
-}
-
-function formToYaml() {
-  alert('Les changements du formulaire sont reflétés dans le YAML. Éditez le YAML directement pour des modifications avancées, puis sauvegardez.');
-}
-
-async function saveConfig() {
-  var file = document.getElementById('configFile').value;
-  var content = document.getElementById('configEditor').value;
-  try {
-    var res = await fetch(API + '/api/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file: file, content: content }),
-    });
-    var data = await res.json();
-    alert(data.saved ? 'Sauvegardé!' : 'Erreur: ' + data.error);
-  } catch (err) { alert('Erreur: ' + err.message); }
-}
-
-async function reloadConfig() {
-  try {
-    var res = await fetch(API + '/api/reload', { method: 'POST' });
-    var data = await res.json();
-    alert(data.reloaded ? 'Configuration rechargée!' : 'Erreur: ' + data.error);
-  } catch (err) { alert('Erreur: ' + err.message); }
-}
-
-// --- Logs ---
-async function loadLogs() {
-  try {
-    var res = await fetch(API + '/api/logs');
-    var data = await res.json();
-    document.getElementById('logViewer').textContent = data.logs;
-    var viewer = document.getElementById('logViewer');
-    viewer.scrollTop = viewer.scrollHeight;
-  } catch (err) {
-    document.getElementById('logViewer').textContent = 'Erreur: ' + err.message;
-  }
-}
-
-// --- Status ---
-async function loadStatus() {
-  try {
-    var res = await fetch(API + '/api/status');
-    var data = await res.json();
-    var bar = document.getElementById('statusBar');
-    bar.innerHTML =
-      '<div class="status-item"><span class="dot green"></span>En ligne — ' + Math.round(data.uptime/60) + ' min</div>' +
-      '<div class="status-item">🤖 ' + data.model + '</div>' +
-      '<div class="status-item"><span class="dot ' + (data.ollama ? 'green' : 'red') + '"></span>Ollama</div>' +
-      '<div class="status-item"><span class="dot ' + (data.telegram ? 'green' : 'yellow') + '"></span>Telegram</div>' +
-      '<div class="status-item">💾 ' + data.memory + '</div>';
-  } catch {}
-}
-
-loadStatus();
-setInterval(loadStatus, 30000);
+async function loadStatus(){try{var r=await fetch(API+'/api/status');var d=await r.json();
+document.getElementById('statusBar').innerHTML=
+'<span class="flex items-center gap-1.5 text-xs"><span class="w-2 h-2 rounded-full bg-green-500"></span>'+Math.round(d.uptime/60)+'min</span>'+
+'<span class="text-xs text-vn-muted">🤖 '+d.model+'</span>'+
+'<span class="flex items-center gap-1.5 text-xs"><span class="w-2 h-2 rounded-full '+(d.ollama?'bg-green-500':'bg-red-500')+'"></span>Ollama</span>'+
+'<span class="flex items-center gap-1.5 text-xs"><span class="w-2 h-2 rounded-full '+(d.telegram?'bg-green-500':'bg-yellow-500')+'"></span>Telegram</span>'+
+'<span class="text-xs text-vn-muted">💾 '+d.memory+'</span>';}catch(e){}}
+loadStatus();setInterval(loadStatus,30000);
 </script>
 </body>
 </html>
