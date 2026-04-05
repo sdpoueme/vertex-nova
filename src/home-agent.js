@@ -249,6 +249,11 @@ async function main() {
     config.whatsappEnabled ? 'WhatsApp' : null,
   ].filter(Boolean).join(', '));
 
+  // Web dashboard
+  var { startDashboard } = await import('./web/server.js');
+  var dashboardPort = Number(process.env.DASHBOARD_PORT) || 3080;
+  startDashboard(config, dashboardPort);
+
   function shutdown(signal) {
     log.info(signal + ' received, shutting down...');
     if (ttsServer) ttsServer.close();

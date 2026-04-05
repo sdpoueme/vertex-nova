@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vertex Nova — Dashboard</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f0f0f; color: #e0e0e0; }
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+h1 { color: #7c3aed; margin-bottom: 20px; font-size: 24px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.tab { padding: 10px 20px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; cursor: pointer; color: #aaa; }
+.tab.active { background: #7c3aed; color: white; border-color: #7c3aed; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Chat */
+.chat-messages { height: 400px; overflow-y: auto; background: #1a1a2e; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.msg { margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; max-width: 80%; }
+.msg.user { background: #7c3aed; margin-left: auto; }
+.msg.assistant { background: #2a2a3e; }
+.chat-input { display: flex; gap: 8px; }
+.chat-input input { flex: 1; padding: 12px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: white; font-size: 16px; }
+.chat-input button { padding: 12px 24px; background: #7c3aed; border: none; border-radius: 8px; color: white; cursor: pointer; font-size: 16px; }
+.chat-input button:hover { background: #6d28d9; }
+.chat-controls { display: flex; gap: 8px; margin-bottom: 8px; }
+.btn-icon { padding: 8px 16px; background: #2a2a3e; border: 1px solid #444; border-radius: 8px; cursor: pointer; color: #aaa; }
+.btn-icon:hover { background: #3a3a4e; }
+.btn-icon.recording { background: #dc2626; color: white; }
+
+/* Editor */
+.editor-select { margin-bottom: 12px; }
+.editor-select select { padding: 8px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; color: white; }
+textarea.editor { width: 100%; height: 500px; background: #1a1a2e; border: 1px solid #333; border-radius: 8px; padding: 16px; color: #e0e0e0; font-family: 'SF Mono', monospace; font-size: 14px; resize: vertical; }
+.editor-actions { margin-top: 12px; display: flex; gap: 8px; }
+.btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.btn-primary { background: #7c3aed; color: white; }
+.btn-secondary { background: #2a2a3e; color: #aaa; border: 1px solid #444; }
+.btn-danger { background: #dc2626; color: white; }
+.status-bar { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.status-item { padding: 8px 16px; background: #1a1a2e; border-radius: 8px; font-size: 13px; }
+.status-item .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.dot.green { background: #22c55e; }
+.dot.red { background: #ef4444; }
+.dot.yellow { background: #eab308; }
+
+/* Logs */
+.log-viewer { height: 500px; overflow-y: auto; background: #0a0a0a; border-radius: 8px; padding: 16px; font-family: 'SF Mono', monospace; font-size: 12px; white-space: pre-wrap; color: #888; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>⚡ Vertex Nova</h1>
+  <div class="status-bar" id="statusBar"></div>
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('chat')">💬 Chat</div>
+    <div class="tab" onclick="showTab('config')">⚙️ Configuration</div>
+    <div class="tab" onclick="showTab('logs')">📋 Logs</div>
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="panel active" id="panel-chat">
+    <div class="chat-controls">
+      <button class="btn-icon" id="btnMic" onclick="toggleRecording()">🎤 Audio</button>
+      <button class="btn-icon" onclick="document.getElementById('imgInput').click()">📷 Image</button>
+      <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="handleImage(event)">
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input">
+      <input type="text" id="chatInput" placeholder="Écrivez un message..." onkeydown="if(event.key==='Enter')sendMessage()">
+      <button onclick="sendMessage()">Envoyer</button>
+    </div>
+  </div>
+
+  <!-- Config Panel -->
+  <div class="panel" id="panel-config">
+    <div class="editor-select">
+      <select id="configFile" onchange="loadConfig()">
+        <option value="config/routing.yaml">routing.yaml</option>
+        <option value="config/proactive.yaml">proactive.yaml</option>
+        <option value="agent.md">agent.md</option>
+      </select>
+    </div>
+    <textarea class="editor" id="configEditor"></textarea>
+    <div class="editor-actions">
+      <button class="btn btn-primary" onclick="saveConfig()">💾 Sauvegarder</button>
+      <button class="btn btn-secondary" onclick="reloadConfig()">🔄 Recharger le moteur</button>
+    </div>
+  </div>
+
+  <!-- Logs Panel -->
+  <div class="panel" id="panel-logs">
+    <div style="margin-bottom:12px">
+      <button class="btn btn-secondary" onclick="loadLogs()">🔄 Rafraîchir</button>
+    </div>
+    <div class="log-viewer" id="logViewer"></div>
+  </div>
+</div>
+
+<script>
+var API = '';
+var pendingImage = null;
+var mediaRecorder = null;
+var audioChunks = [];
+
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
+  event.target.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'config') loadConfig();
+  if (name === 'logs') loadLogs();
+}
+
+// --- Chat ---
+function addMsg(role, text) {
+  var div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.textContent = text;
+  var container = document.getElementById('chatMessages');
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+}
+
+async function sendMessage() {
+  var input = document.getElementById('chatInput');
+  var text = input.value.trim();
+  if (!text && !pendingImage) return;
+  input.value = '';
+  addMsg('user', text || '[Image]');
+
+  var body = { message: text || "Analyse cette image" };
+  if (pendingImage) { body.image = pendingImage; pendingImage = null; }
+
+  try {
+    var res = await fetch(API + '/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    var data = await res.json();
+    addMsg('assistant', data.response || data.error || 'Pas de réponse');
+  } catch (err) {
+    addMsg('assistant', 'Erreur: ' + err.message);
+  }
+}
+
+function handleImage(event) {
+  var file = event.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var base64 = e.target.result.split(',')[1];
+    var mediaType = file.type || 'image/jpeg';
+    pendingImage = { base64: base64, mediaType: mediaType };
+    addMsg('user', '📷 Image chargée: ' + file.name);
+  };
+  reader.readAsDataURL(file);
+}
+
+// --- Audio Recording ---
+async function toggleRecording() {
+  var btn = document.getElementById('btnMic');
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    btn.classList.remove('recording');
+    btn.textContent = '🎤 Audio';
+    return;
+  }
+  try {
+    var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+    mediaRecorder.ondataavailable = function(e) { audioChunks.push(e.data); };
+    mediaRecorder.onstop = async function() {
+      stream.getTracks().forEach(function(t) { t.stop(); });
+      var blob = new Blob(audioChunks, { type: 'audio/webm' });
+      addMsg('user', '🎤 Message audio envoyé...');
+      // Convert to base64 and send as text (transcription happens server-side)
+      var reader = new FileReader();
+      reader.onload = async function() {
+        try {
+          var res = await fetch(API + '/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: '[Audio message from web dashboard]' }),
+          });
+          var data = await res.json();
+          addMsg('assistant', data.response || 'Pas de réponse');
+        } catch (err) { addMsg('assistant', 'Erreur: ' + err.message); }
+      };
+      reader.readAsDataURL(blob);
+    };
+    mediaRecorder.start();
+    btn.classList.add('recording');
+    btn.textContent = '⏹️ Arrêter';
+  } catch (err) {
+    addMsg('assistant', 'Erreur micro: ' + err.message);
+  }
+}
+
+// --- Config Editor ---
+async function loadConfig() {
+  var file = document.getElementById('configFile').value;
+  try {
+    var res = await fetch(API + '/api/config?file=' + encodeURIComponent(file));
+    var data = await res.json();
+    document.getElementById('configEditor').value = data.content || data.error;
+  } catch (err) {
+    document.getElementById('configEditor').value = 'Erreur: ' + err.message;
+  }
+}
+
+async function saveConfig() {
+  var file = document.getElementById('configFile').value;
+  var content = document.getElementById('configEditor').value;
+  try {
+    var res = await fetch(API + '/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file: file, content: content }),
+    });
+    var data = await res.json();
+    alert(data.saved ? 'Sauvegardé!' : 'Erreur: ' + data.error);
+  } catch (err) { alert('Erreur: ' + err.message); }
+}
+
+async function reloadConfig() {
+  try {
+    var res = await fetch(API + '/api/reload', { method: 'POST' });
+    var data = await res.json();
+    alert(data.reloaded ? 'Configuration rechargée!' : 'Erreur: ' + data.error);
+  } catch (err) { alert('Erreur: ' + err.message); }
+}
+
+// --- Logs ---
+async function loadLogs() {
+  try {
+    var res = await fetch(API + '/api/logs');
+    var data = await res.json();
+    document.getElementById('logViewer').textContent = data.logs;
+    var viewer = document.getElementById('logViewer');
+    viewer.scrollTop = viewer.scrollHeight;
+  } catch (err) {
+    document.getElementById('logViewer').textContent = 'Erreur: ' + err.message;
+  }
+}
+
+// --- Status ---
+async function loadStatus() {
+  try {
+    var res = await fetch(API + '/api/status');
+    var data = await res.json();
+    var bar = document.getElementById('statusBar');
+    bar.innerHTML =
+      '<div class="status-item"><span class="dot green"></span>En ligne — ' + Math.round(data.uptime/60) + ' min</div>' +
+      '<div class="status-item">🤖 ' + data.model + '</div>' +
+      '<div class="status-item"><span class="dot ' + (data.ollama ? 'green' : 'red') + '"></span>Ollama</div>' +
+      '<div class="status-item"><span class="dot ' + (data.telegram ? 'green' : 'yellow') + '"></span>Telegram</div>' +
+      '<div class="status-item">💾 ' + data.memory + '</div>';
+  } catch {}
+}
+
+loadStatus();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>
