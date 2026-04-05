@@ -1,0 +1,15 @@
+[Unit]
+Description=Vertex Nova Home Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/vertex-nova
+ExecStart=/usr/bin/node src/home-agent.js
+Restart=always
+RestartSec=10
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/%i/.local/bin
+
+[Install]
+WantedBy=multi-user.target

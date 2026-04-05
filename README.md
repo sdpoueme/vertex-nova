@@ -1,128 +1,166 @@
 # Vertex Nova
 
-Personal home assistant — Telegram, Sonos, Echo devices, AI with persistent memory.
-
-## Architecture
+A self-hosted, multi-channel home assistant powered by local AI models with cloud escalation. Runs on your Mac or PC, talks through Telegram, Sonos, Echo devices, and a web dashboard.
 
 ```
-Message → Qwen3 8B (default, free, local)
+You ──→ Telegram / WhatsApp / Web Dashboard
               │
-         Good response? ── Yes → return
+         Qwen3 8B (local, free, fast)
+              │
+         Good response? ── Yes → reply
               │ No
-         Escalate to Claude → return + save pattern
+         Escalate to Claude → reply + learn
               │
-         Both fail → friendly error
+         Both fail → friendly error in French
 ```
 
-| Model | Role | Cost |
-|-------|------|------|
-| Qwen3 (8B) | Default for everything — tools, search, chat | Free (local) |
-| Claude Sonnet | Escalation — complex reasoning, Qwen3 failures | Pay per use |
+## Why Vertex Nova?
 
-Qwen3 handles 80%+ of requests. Images fall back to Gemma 4 E2B (vision) or Claude. Claude activates only when Qwen3 gives a bad response. System runs fully offline at zero cost when Claude API is unavailable.
+- Runs 80%+ of requests locally at zero cost (Ollama + Qwen3)
+- Speaks French and English natively
+- Controls Sonos and Echo devices with voice
+- Learns your preferences across sessions
+- Proactively sends news, weather alerts, and reminders
+- Indexes family knowledge bases for genealogy/history questions
+- Works fully offline when Claude API is unavailable
+
+## Quick Start
+
+```bash
+# Automated install (macOS or Linux)
+curl -fsSL https://raw.githubusercontent.com/sdpoueme/vertex-nova/main/install.sh | bash
+
+# Or manual
+git clone https://github.com/sdpoueme/vertex-nova.git && cd vertex-nova
+cp .env.home.example .env   # Edit with your credentials
+npm install
+npm start
+```
+
+The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whisper-cpp) and walks you through configuration.
 
 ## Features
 
-- **Telegram** — text, voice (whisper.cpp), images (Gemma 4 E2B vision, Claude fallback)
-- **WhatsApp** — text and voice (configurable)
-- **Sonos TTS** — official Cloud API + local Piper (offline, FR/EN)
-- **Echo devices** — Voice Monkey API (speak, speak-all)
-- **Web search** — DuckDuckGo + page fetch
-- **Persistent memory** — cross-session learning in vault/memories/
-- **Reminders** — natural language, smart delivery by time of day
-- **Proactive scheduler** — news, weather, maintenance, movies, activities
-- **Email monitor** — Gmail polling for device alerts (Telus, MyQ, Honeywell)
-- **Conversation memory** — sliding window + auto-summarization
-- **Night mode** — voice devices blocked 10 PM–7 AM
-- **Auto-start** — macOS Launch Agent
-- **Fully offline capable** — all features work locally (Qwen3 + Gemma 4 E2B for vision)
+| Feature | Description |
+|---------|-------------|
+| Telegram | Text, voice (whisper.cpp), images (vision) |
+| WhatsApp | Text and voice (configurable) |
+| Web Dashboard | Chat, config editor, logs, knowledge bases — port 3080 |
+| Sonos TTS | Official Cloud API + local Piper (offline FR/EN) |
+| Echo Devices | Voice Monkey API (speak on Echo Show, Echo Dot) |
+| News | Google News (Canada + Cameroun + Business Insider) |
+| Web Search | DuckDuckGo + page content fetch |
+| Memory | Persistent cross-session learning in vault |
+| Reminders | Natural language, smart delivery by time of day |
+| Proactive | Scheduled news, weather, maintenance, movies |
+| Email Monitor | Gmail polling for device alerts |
+| Knowledge Bases | Git-synced repos indexed for RAG search |
+| Night Mode | Voice devices blocked 10 PM – 7 AM |
+| Conversation | Sliding window + auto-summarization |
+
+## Architecture
+
+### AI Models
+
+| Model | Role | Cost | When Used |
+|-------|------|------|-----------|
+| Qwen3 8B | Default — chat, tools, search | Free (local) | 80%+ of requests |
+| Gemma 4 E2B | Vision — image analysis | Free (local) | When images are sent |
+| Claude Sonnet | Escalation — complex reasoning | Pay per use | Qwen3 failures, vision fallback |
+
+### Tools (21 total)
+
+| Tool | Description |
+|------|-------------|
+| `sonos_speak` | TTS on a Sonos speaker |
+| `sonos_chime` | Notification chime |
+| `sonos_volume` | Set speaker volume |
+| `sonos_rooms` | List available speakers |
+| `echo_speak` | TTS on Echo device (Voice Monkey) |
+| `echo_speak_all` | TTS on all Echo devices |
+| `news_search` | Google News (multi-source) |
+| `web_search` | DuckDuckGo search |
+| `web_fetch` | Fetch web page content |
+| `vault_read` | Read a vault note |
+| `vault_search` | Full-text search across vault |
+| `vault_create` | Create a new note |
+| `vault_append` | Append to existing note |
+| `vault_list` | List folder contents |
+| `reminder_set` | Set a timed reminder |
+| `reminder_list` | List pending reminders |
+| `memory_view` | View learned patterns |
+| `memory_write` | Save new learning |
+| `memory_append` | Add to existing memory |
+| `kb_search` | Search family knowledge bases |
+| `kb_list` | List configured knowledge bases |
+
+### Notification Routing
+
+| Time | Channel | Device |
+|------|---------|--------|
+| 10 PM – 7 AM | Telegram | Text only (silent) |
+| 7 – 9 AM | Echo | Echo Show (kitchen) |
+| 9 AM – 5 PM | Echo | Office speaker |
+| 5 – 7 PM | Echo | Echo Show (kitchen) |
+| 7 – 9 PM | Sonos | Basement speaker |
+| 9 – 10 PM | Telegram | Text only |
+
+## Web Dashboard
+
+Access from any device on your network: `http://<your-ip>:3080`
+
+| Panel | Features |
+|-------|----------|
+| Chat | Text, image upload, voice recording, recent interactions from all channels |
+| Configuration | Model switching, channel toggles, routing rules, proactive actions — forms + synced YAML |
+| Knowledge Bases | View, sync, and configure family knowledge base repos |
+| Logs | Live tail of the last 100 log lines |
 
 ## Knowledge Bases (RAG)
 
-Family knowledge bases are git repos synced into `vault/kb/` and indexed for retrieval-augmented generation. The agent can search across all KBs when answering questions about family, genealogy, or history.
-
-Configure in `config/knowledgebases.yaml`:
+Family knowledge bases are git repos synced into `vault/kb/` and indexed for search. Configure in `config/knowledgebases.yaml`:
 
 ```yaml
 knowledgebases:
-  - name: emmanuel-poueme
-    description: "Biographie et généalogie d'Emmanuel Poueme"
-    repo: https://github.com/sdpoueme/emmanuelpoueme.git
+  - name: family-history
+    description: "Family genealogy and biographies"
+    repo: https://github.com/user/family-repo.git
     branch: main
     sync_interval_hours: 24
     file_types: [".html", ".json", ".md"]
     enabled: true
 ```
 
-Repos are cloned on startup, re-synced on schedule, and content is chunked + indexed in memory for fast search. Supports HTML, JSON (structured family data), and Markdown. Manageable from the web dashboard.
-
-## AI Tools
-
-| Tool | Description |
-|------|-------------|
-| sonos_speak | TTS on Sonos speaker |
-| sonos_speak_all | TTS on all Sonos |
-| sonos_chime | Notification chime |
-| sonos_volume | Set volume |
-| echo_speak | TTS on Echo (Voice Monkey) |
-| echo_speak_all | TTS on all Echo devices |
-| news_search | Google News (Canada + Cameroun + Business Insider) |
-| web_search | DuckDuckGo search |
-| web_fetch | Fetch web page content |
-| vault_read | Read vault note |
-| vault_search | Search vault |
-| vault_create | Create note |
-| vault_append | Append to note |
-| vault_list | List folder |
-| reminder_set | Set a reminder |
-| reminder_list | List pending reminders |
-| memory_view | View learned patterns |
-| memory_write | Save new learning |
-| memory_append | Add to existing memory |
-| kb_search | Search family knowledge bases (RAG) |
-| kb_list | List configured knowledge bases |
-
-## Notification Routing
-
-| Time | Channel | Device |
-|------|---------|--------|
-| 10 PM – 7 AM | Telegram | Silent |
-| 7 – 9 AM | Echo | Echo Show (kitchen) |
-| 9 AM – 5 PM | Echo | Bureau Serge (office) |
-| 5 – 7 PM | Echo | Echo Show (kitchen) |
-| 7 – 9 PM | Sonos | Sous-sol (basement) |
-| 9 – 10 PM | Telegram | Silent |
-
-## Setup
-
-```bash
-# Prerequisites: Node 20+, ffmpeg, Piper TTS, whisper-cpp, Ollama
-brew install ffmpeg whisper-cpp ollama
-pipx install piper-tts && pipx inject piper-tts pathvalidate
-ollama pull qwen3:8b
-
-# Install
-git clone <repo> vertex-nova && cd vertex-nova
-npm install
-node scripts/sonos-auth.js
-cp .env.home.example .env  # Edit with credentials
-npm start
-
-# Auto-start on macOS
-cp scripts/com.vertexnova.agent.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
-```
+Supports HTML (strips tags), JSON (understands genealogy structures), and Markdown. Content is chunked and indexed in memory for fast retrieval.
 
 ## Proactive Actions
 
-| Action | Interval | Model | Notes |
-|--------|----------|-------|-------|
-| Breaking news | 30 min | Qwen3 | 🇨🇦 Canada, 🇨🇲 Cameroun, 💼 Business |
-| Weather alerts | 60 min | Qwen3 |
-| Home maintenance | 6 hours | Qwen3 |
-| Friday movies | Fridays 5-7 PM | Qwen3 |
-| Weekend activities | Saturdays 8-9 AM | Qwen3 |
-| Email digest | 2 hours | Qwen3 |
+| Action | Interval | Description |
+|--------|----------|-------------|
+| 🌍 Breaking News | 30 min | Canada, Cameroun, Business Insider |
+| 🌪️ Weather Alerts | 60 min | Severe weather only |
+| 🔧 Home Maintenance | 6 hours | Seasonal tasks based on date |
+| 📬 Email Digest | 2 hours | Device alert summary |
+| 🎬 Friday Movies | Fridays 5-7 PM | Streaming recommendations |
+| 🎯 Weekend Activities | Saturdays 8-9 AM | Local family activities |
+
+Configure in `config/proactive.yaml` or via the web dashboard.
+
+## Choosing a Local Model
+
+| Model | RAM | Speed | Quality | Best For |
+|-------|-----|-------|---------|----------|
+| `qwen3:8b` | 8 GB+ | ⚡ ~15s | Good | **Recommended** — best balance |
+| `qwen3:4b` | 6 GB+ | ⚡⚡ ~8s | OK | Low-RAM, speed priority |
+| `qwen3:14b` | 16 GB+ | 🐢 ~25s | Very good | 32 GB+ machines |
+| `gemma4:e2b` | 12 GB+ | 🐢 ~20s | Good | Vision / image analysis |
+| `mistral` (7B) | 8 GB+ | ⚡ ~10s | Decent | Lightweight alternative |
+
+Switch models in the web dashboard (Configuration → Models) or in `.env`:
+
+```bash
+OLLAMA_MODEL=qwen3:8b
+```
 
 ## Offline Capability
 
@@ -132,65 +170,111 @@ Everything runs locally without Claude API:
 |---------|------------|
 | Text chat | Qwen3 8B (Ollama) |
 | Voice input | whisper.cpp |
-| Voice output (Sonos) | Piper TTS + Sonos Cloud API |
-| Voice output (Echo) | Voice Monkey API |
-| Image analysis | Gemma 4 E2B vision (Ollama) |
+| Voice output | Piper TTS → Sonos / Echo |
+| Image analysis | Gemma 4 E2B (Ollama) |
 | Web search | DuckDuckGo |
-| Tools | All 18 tools work on Qwen3 |
+| All 21 tools | Work on Qwen3 |
 
-## Choosing a Local Model
+## Manual Installation
 
-The default local model is configurable via `OLLAMA_MODEL` in `.env`. The choice depends on your hardware:
+### Prerequisites
 
-| Model | RAM Needed | Speed | Quality | Best For |
-|-------|-----------|-------|---------|----------|
-| `qwen3:8b` | 8GB+ | ⚡ Fast (~15s) | Good | **Recommended for 24GB Macs** — best speed/quality balance, excellent French, strong tool use |
-| `gemma4` (12B) | 16GB+ | 🐢 Slow (~30-150s) | Very good | 32GB+ Macs — better reasoning but much slower on 24GB |
-| `gemma4:e4b` | 12GB+ | 🐢 Medium (~20s) | Good | Multimodal (vision) — use for image analysis fallback |
-| `mistral` (7B) | 8GB+ | ⚡ Fast (~10s) | Decent | Lightweight chat, less accurate for French |
-| `qwen3:4b` | 6GB+ | ⚡⚡ Very fast (~8s) | OK | Low-RAM machines, speed priority over quality |
-| `qwen3:14b` | 16GB+ | 🐢 Medium (~25s) | Very good | 32GB+ Macs — stronger reasoning than 8B |
+| Dependency | macOS | Linux (Ubuntu/Debian) | Windows |
+|-----------|-------|----------------------|---------|
+| Node.js 20+ | `brew install node` | `curl -fsSL https://deb.nodesource.com/setup_20.x \| sudo bash && sudo apt install nodejs` | [nodejs.org](https://nodejs.org) |
+| Ollama | `brew install ollama` | `curl -fsSL https://ollama.com/install.sh \| sh` | [ollama.com](https://ollama.com/download) |
+| ffmpeg | `brew install ffmpeg` | `sudo apt install ffmpeg` | `winget install ffmpeg` |
+| Piper TTS | `pipx install piper-tts` | `pipx install piper-tts` | `pip install piper-tts` |
+| whisper.cpp | `brew install whisper-cpp` | Build from source | Build from source |
 
-To switch models:
+### Step-by-step
 
 ```bash
-# 1. Pull the model
+# 1. Clone
+git clone https://github.com/sdpoueme/vertex-nova.git
+cd vertex-nova
+
+# 2. Install Node dependencies
+npm install
+
+# 3. Pull AI models
 ollama pull qwen3:8b
+ollama pull gemma4:e2b    # Optional: for image analysis
 
-# 2. Update .env
-OLLAMA_MODEL=qwen3:8b
+# 4. Download Piper TTS voices
+mkdir -p ~/.piper/models
+# English
+curl -L -o ~/.piper/models/en_US-amy-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx
+curl -L -o ~/.piper/models/en_US-amy-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json
+# French
+curl -L -o ~/.piper/models/fr_FR-siwis-medium.onnx \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx
+curl -L -o ~/.piper/models/fr_FR-siwis-medium.onnx.json \
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json
 
-# 3. Restart
-launchctl unload ~/Library/LaunchAgents/com.vertexnova.agent.plist
+# 5. Configure
+cp .env.home.example .env
+# Edit .env with your Telegram bot token, Sonos credentials, etc.
+
+# 6. Create your agent persona
+cp agent.example.md agent.md
+# Edit agent.md with your household info
+
+# 7. (Optional) Sonos OAuth setup
+node scripts/sonos-auth.js
+
+# 8. Start
+npm start
+# Dashboard available at http://localhost:3080
+```
+
+### Auto-start on macOS
+
+```bash
+cp scripts/com.vertexnova.agent.plist ~/Library/LaunchAgents/
 launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 ```
 
-Key tradeoffs:
-- **RAM vs speed**: Larger models need more RAM. If the model exceeds available RAM, it swaps to disk and becomes 10x slower.
-- **Quality vs latency**: 14B models reason better but take longer. For a home assistant, 8B with fast responses is usually better than 14B with 30s delays.
-- **Vision**: Qwen3 is text-only. Images use Gemma 4 E2B or Claude for vision.
-
-## Web Dashboard
-
-A React + Cloudscape management interface runs bundled with the agent on port 3080.
-
-Access from any device on your local network: `http://<mac-ip>:3080`
-
-| Panel | Description |
-|-------|-------------|
-| Chat | Text chat with the agent (same AI pipeline as Telegram) |
-| Configuration | Edit routing.yaml, proactive.yaml, agent.md — save and reload without restart |
-| Logs | Live view of the last 100 log lines |
-| Status | Ollama health, memory usage, active channels |
-
-The dashboard is pre-built in `web/dist/` and served by the agent's HTTP server. To rebuild after changes:
+### Auto-start on Linux (systemd)
 
 ```bash
-cd web && npm run build
+sudo tee /etc/systemd/system/vertex-nova.service << EOF
+[Unit]
+Description=Vertex Nova Home Assistant
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$(pwd)
+ExecStart=/usr/bin/node src/home-agent.js
+Restart=always
+RestartSec=10
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl enable vertex-nova
+sudo systemctl start vertex-nova
 ```
+
+## Configuration Files
+
+| File | Purpose | Editable from Dashboard |
+|------|---------|------------------------|
+| `.env` | Credentials, API keys, toggles | Partially (models, channels) |
+| `agent.md` | Agent persona and rules | Yes |
+| `config/routing.yaml` | Model routing rules | Yes |
+| `config/proactive.yaml` | Scheduled actions | Yes |
+| `config/knowledgebases.yaml` | Family knowledge bases | Yes |
 
 ## Roadmap
 
 - Alexa+ Multi-Agent SDK — voice input from Echo devices
 - Honeywell thermostat API — direct temperature control
 - Docker deployment
+- Home Assistant integration
