@@ -6,6 +6,7 @@ import StatusIndicator from '@cloudscape-design/components/status-indicator';
 import ChatPanel from './panels/ChatPanel';
 import ConfigPanel from './panels/ConfigPanel';
 import LogsPanel from './panels/LogsPanel';
+import KnowledgeBasePanel from './panels/KnowledgeBasePanel';
 
 const API = '';
 
@@ -37,6 +38,7 @@ export default function App() {
             items={[
               { type: 'link', text: 'Chat', href: '#/chat' },
               { type: 'link', text: 'Configuration', href: '#/config' },
+              { type: 'link', text: 'Connaissances', href: '#/kb' },
               { type: 'link', text: 'Logs', href: '#/logs' },
               { type: 'divider' },
               { type: 'link', text: 'Statut', href: '#/status', info: (
@@ -51,6 +53,7 @@ export default function App() {
         content={
           activePanel === 'chat' ? <ChatPanel api={API} /> :
           activePanel === 'config' ? <ConfigPanel api={API} /> :
+          activePanel === 'kb' ? <KnowledgeBasePanel api={API} /> :
           activePanel === 'logs' ? <LogsPanel api={API} /> :
           <div>Statut: {JSON.stringify(status, null, 2)}</div>
         }

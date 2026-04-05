@@ -241,6 +241,22 @@ var tools = [
       },
       required: ['path', 'content']
     }
+  },
+  {
+    name: 'kb_search',
+    description: 'Cherche dans les bases de connaissances familiales (biographies, généalogie, documents). Utilise pour toute question sur la famille, les ancêtres, l\'histoire familiale, Emmanuel Poueme, la généalogie.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Requête de recherche (ex: "Emmanuel Poueme carrière", "généalogie Balengou")' }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'kb_list',
+    description: 'Liste les bases de connaissances familiales disponibles et leur statut.',
+    input_schema: { type: 'object', properties: {} }
   }
 ];
 
@@ -604,6 +620,25 @@ async function executeTool(name, input) {
     appendMem(memAppendPath, '\n' + input.content);
     log.info('Memory appended: ' + input.path);
     return 'Ajouté à: ' + input.path;
+  }
+
+  // Knowledge base tools
+  if (name === 'kb_search') {
+    var { searchKb } = await import('./knowledgebase.js');
+    var results = searchKb(input.query, 5);
+    if (results.length === 0) return 'Aucun résultat dans les bases de connaissances pour: ' + input.query;
+    return results.map(function(r, i) {
+      return (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + r.score + ')\n' + r.text.slice(0, 400);
+    }).join('\n\n---\n\n');
+  }
+
+  if (name === 'kb_list') {
+    var { listKbs } = await import('./knowledgebase.js');
+    var kbs = listKbs();
+    if (kbs.length === 0) return 'Aucune base de connaissances configurée.';
+    return kbs.map(function(kb) {
+      return '📚 ' + kb.name + (kb.enabled ? ' ✅' : ' ❌') + '\n   ' + kb.description + '\n   ' + (kb.synced ? kb.chunks + ' chunks indexés' : 'Non synchronisé') + '\n   Repo: ' + kb.repo;
+    }).join('\n\n');
   }
 
   return 'Unknown tool: ' + name;

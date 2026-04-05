@@ -1,0 +1,25 @@
+# ═══════════════════════════════════════════════════════
+# Vertex Nova — Family Knowledge Bases
+# ═══════════════════════════════════════════════════════
+#
+# Each knowledge base is a git repo synced to vault/kb/<name>/
+# Content is indexed for RAG (Retrieval-Augmented Generation).
+# The agent can search across all KBs using the kb_search tool.
+
+knowledgebases:
+  - name: emmanuel-poueme
+    description: "Biographie et généalogie d'Emmanuel Poueme — famille Poueme"
+    repo: https://github.com/sdpoueme/emmanuelpoueme.git
+    branch: main
+    sync_interval_hours: 24
+    file_types: [".html", ".json", ".md"]
+    enabled: true
+
+# Add more family knowledge bases:
+#  - name: family-recipes
+#    description: "Recettes de famille"
+#    repo: https://github.com/user/recipes.git
+#    branch: main
+#    sync_interval_hours: 48
+#    file_types: [".md", ".txt"]
+#    enabled: true

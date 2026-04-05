@@ -37,6 +37,25 @@ Qwen3 handles 80%+ of requests. Images fall back to Gemma 4 E2B (vision) or Clau
 - **Auto-start** — macOS Launch Agent
 - **Fully offline capable** — all features work locally (Qwen3 + Gemma 4 E2B for vision)
 
+## Knowledge Bases (RAG)
+
+Family knowledge bases are git repos synced into `vault/kb/` and indexed for retrieval-augmented generation. The agent can search across all KBs when answering questions about family, genealogy, or history.
+
+Configure in `config/knowledgebases.yaml`:
+
+```yaml
+knowledgebases:
+  - name: emmanuel-poueme
+    description: "Biographie et généalogie d'Emmanuel Poueme"
+    repo: https://github.com/sdpoueme/emmanuelpoueme.git
+    branch: main
+    sync_interval_hours: 24
+    file_types: [".html", ".json", ".md"]
+    enabled: true
+```
+
+Repos are cloned on startup, re-synced on schedule, and content is chunked + indexed in memory for fast search. Supports HTML, JSON (structured family data), and Markdown. Manageable from the web dashboard.
+
 ## AI Tools
 
 | Tool | Description |
@@ -60,6 +79,8 @@ Qwen3 handles 80%+ of requests. Images fall back to Gemma 4 E2B (vision) or Clau
 | memory_view | View learned patterns |
 | memory_write | Save new learning |
 | memory_append | Add to existing memory |
+| kb_search | Search family knowledge bases (RAG) |
+| kb_list | List configured knowledge bases |
 
 ## Notification Routing
 

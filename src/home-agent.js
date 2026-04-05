@@ -204,6 +204,11 @@ async function main() {
   // Reminder engine
   var { startReminders } = await import('./reminders.js');
   var vaultPath = config.vaultPath || join(config.projectDir, 'vault');
+
+  // Knowledge bases — sync repos and build RAG index
+  var { startKnowledgeBases } = await import('./knowledgebase.js');
+  await startKnowledgeBases(config.projectDir, vaultPath);
+
   startReminders(vaultPath, async function(text, route) {
     try {
       if (route.channel === 'telegram' && telegramChannel) {

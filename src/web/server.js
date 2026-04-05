@@ -73,7 +73,7 @@ export function startDashboard(config, port) {
     // --- API: Get config file ---
     if (path === '/api/config' && req.method === 'GET') {
       var file = url.searchParams.get('file');
-      var allowed = ['config/routing.yaml', 'config/proactive.yaml', 'agent.md'];
+      var allowed = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'agent.md'];
       if (!allowed.includes(file)) { json(res, 400, { error: 'File not allowed' }); return; }
       try {
         var content = readFileSync(join(projectDir, file), 'utf8');
@@ -89,7 +89,7 @@ export function startDashboard(config, port) {
       var body2 = await readBody(req);
       try {
         var data2 = JSON.parse(body2);
-        var allowed2 = ['config/routing.yaml', 'config/proactive.yaml', 'agent.md'];
+        var allowed2 = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'agent.md'];
         if (!allowed2.includes(data2.file)) { json(res, 400, { error: 'File not allowed' }); return; }
         writeFileSync(join(projectDir, data2.file), data2.content);
         json(res, 200, { saved: true, file: data2.file });
@@ -160,6 +160,54 @@ export function startDashboard(config, port) {
         }
       } catch {
         json(res, 200, { models: [] });
+      }
+      return;
+    }
+
+    // --- API: Knowledge bases ---
+    if (path === '/api/knowledgebases' && req.method === 'GET') {
+      try {
+        var { listKbs } = await import('../knowledgebase.js');
+        json(res, 200, { knowledgebases: listKbs() });
+      } catch (err) {
+        json(res, 200, { knowledgebases: [] });
+      }
+      return;
+    }
+
+    if (path === '/api/knowledgebases/config' && req.method === 'GET') {
+      try {
+        var kbContent = readFileSync(join(projectDir, 'config/knowledgebases.yaml'), 'utf8');
+        json(res, 200, { content: kbContent });
+      } catch {
+        json(res, 200, { content: '' });
+      }
+      return;
+    }
+
+    if (path === '/api/knowledgebases/config' && req.method === 'PUT') {
+      var kbBody = await readBody(req);
+      try {
+        var kbData = JSON.parse(kbBody);
+        writeFileSync(join(projectDir, 'config/knowledgebases.yaml'), kbData.content);
+        var { reloadKbConfig } = await import('../knowledgebase.js');
+        reloadKbConfig(projectDir);
+        json(res, 200, { saved: true });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/knowledgebases/sync' && req.method === 'POST') {
+      var syncBody = await readBody(req);
+      try {
+        var syncData = JSON.parse(syncBody);
+        var { resyncKb } = await import('../knowledgebase.js');
+        var result = await resyncKb(syncData.name);
+        json(res, 200, { result: result });
+      } catch (err) {
+        json(res, 500, { error: err.message });
       }
       return;
     }
