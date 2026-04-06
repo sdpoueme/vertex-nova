@@ -255,7 +255,26 @@ export function startDashboard(config, port) {
     if (path === '/api/knowledgebases' && req.method === 'GET') {
       try {
         var { listKbs } = await import('../knowledgebase.js');
-        json(res, 200, { knowledgebases: listKbs() });
+        var kbList = listKbs();
+        // If in-memory list is empty, parse directly from config file
+        if (kbList.length === 0) {
+          var kbConfigPath = join(projectDir, 'config', 'knowledgebases.yaml');
+          if (existsSync(kbConfigPath)) {
+            var kbYaml = readFileSync(kbConfigPath, 'utf8');
+            var kbBlocks = kbYaml.split(/^\s+-\s+name:/m);
+            kbList = [];
+            for (var bi = 1; bi < kbBlocks.length; bi++) {
+              var blk = '  - name:' + kbBlocks[bi];
+              var kbName = (blk.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+              var kbDesc = (blk.match(/description:\s*"([^"]*)"/) || [])[1]?.trim() || '';
+              var kbRepo = (blk.match(/repo:\s*(.+)/) || [])[1]?.trim() || '';
+              var kbEnabled = (blk.match(/enabled:\s*(.+)/) || [])[1]?.trim() !== 'false';
+              var kbSynced = existsSync(join(projectDir, 'vault', 'kb', kbName, '.git'));
+              if (kbName) kbList.push({ name: kbName, description: kbDesc, repo: kbRepo, enabled: kbEnabled, synced: kbSynced, chunks: 0 });
+            }
+          }
+        }
+        json(res, 200, { knowledgebases: kbList });
       } catch (err) {
         log.warn('KB list error: ' + err.message);
         json(res, 200, { knowledgebases: [] });
