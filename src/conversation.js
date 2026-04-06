@@ -61,14 +61,14 @@ export function addToolResult(sessionId, content) {
   var conv = getConversation(sessionId);
   // Trim large tool results to prevent context bloat
   if (typeof content === 'object' && content.content) {
-    if (typeof content.content === 'string' && content.content.length > 1500) {
-      content = Object.assign({}, content, { content: content.content.slice(0, 1500) + '\n...[tronqué]' });
+    if (typeof content.content === 'string' && content.content.length > 4000) {
+      content = Object.assign({}, content, { content: content.content.slice(0, 4000) + '\n...[tronqué]' });
     }
     if (Array.isArray(content.content)) {
       content = Object.assign({}, content, {
         content: content.content.map(function(c) {
-          if (typeof c.content === 'string' && c.content.length > 1500) {
-            return Object.assign({}, c, { content: c.content.slice(0, 1500) + '\n...[tronqué]' });
+          if (typeof c.content === 'string' && c.content.length > 4000) {
+            return Object.assign({}, c, { content: c.content.slice(0, 4000) + '\n...[tronqué]' });
           }
           return c;
         })

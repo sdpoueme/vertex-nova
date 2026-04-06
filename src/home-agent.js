@@ -257,18 +257,19 @@ async function main() {
       } else if (route.channel === 'echo') {
         var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
         var vm = new VoiceMonkey(config);
-        await vm.speak(response.slice(0, 500), route.device);
+        await vm.speak(response.slice(0, 800), route.device);
       } else if (route.channel === 'sonos') {
         var { execFile } = await import('node:child_process');
         var { join: joinPath } = await import('node:path');
         var cliPath = joinPath(config.projectDir, 'scripts/sonos-cli.js');
-        execFile('node', [cliPath, 'speak', response.slice(0, 500), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
+        execFile('node', [cliPath, 'speak', response.slice(0, 800), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
           if (err) log.error('Proactive Sonos failed:', err.message);
         });
       }
 
+      // Always send full text to Telegram as backup when using voice devices
       if (route.channel !== 'telegram' && telegramChannel) {
-        await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response.slice(0, 500));
+        await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
       }
     } catch (err) {
       log.error('Proactive notification failed:', err.message);
