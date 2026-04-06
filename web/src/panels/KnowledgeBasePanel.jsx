@@ -18,13 +18,17 @@ export default function KnowledgeBasePanel({ api }) {
 
   const load = useCallback(async () => {
     try {
-      const [kbRes, cfgRes] = await Promise.all([
-        fetch(api + '/api/knowledgebases').then(r => r.json()),
-        fetch(api + '/api/knowledgebases/config').then(r => r.json()),
-      ]);
-      setKbs(kbRes.knowledgebases || []);
-      setYaml(cfgRes.content || '');
-    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+      const kbRes = await fetch(api + '/api/knowledgebases');
+      const cfgRes = await fetch(api + '/api/knowledgebases/config');
+      if (kbRes.ok) {
+        const kbData = await kbRes.json();
+        setKbs(kbData.knowledgebases || []);
+      }
+      if (cfgRes.ok) {
+        const cfgData = await cfgRes.json();
+        setYaml(cfgData.content || '');
+      }
+    } catch (err) { setAlert({ type: 'error', text: 'Chargement échoué: ' + err.message }); }
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
@@ -35,6 +39,7 @@ export default function KnowledgeBasePanel({ api }) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: yaml }),
       });
+      if (!res.ok) { setAlert({ type: 'error', text: 'Erreur serveur: ' + res.status }); return; }
       const data = await res.json();
       if (data.saved) {
         setAlert({ type: 'success', text: 'Configuration sauvegardée' });
@@ -50,6 +55,7 @@ export default function KnowledgeBasePanel({ api }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
+      if (!res.ok) { setAlert({ type: 'error', text: 'Sync erreur: ' + res.status }); setSyncing(null); return; }
       const data = await res.json();
       setAlert({ type: 'success', text: data.result || 'Synced' });
       load();

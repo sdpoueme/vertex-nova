@@ -257,12 +257,13 @@ export function startDashboard(config, port) {
         var { listKbs } = await import('../knowledgebase.js');
         json(res, 200, { knowledgebases: listKbs() });
       } catch (err) {
+        log.warn('KB list error: ' + err.message);
         json(res, 200, { knowledgebases: [] });
       }
       return;
     }
 
-    if (path === '/api/knowledgebases/config' && req.method === 'GET') {
+    if ((path === '/api/knowledgebases/config' || path === '/api/knowledgebases/config/') && req.method === 'GET') {
       try {
         var kbContent = readFileSync(join(projectDir, 'config/knowledgebases.yaml'), 'utf8');
         json(res, 200, { content: kbContent });
