@@ -13,9 +13,9 @@ import { logger } from './log.js';
 
 var log = logger('conversation');
 
-var MAX_MESSAGES = 20;       // Keep last 20 messages in context
-var SUMMARIZE_THRESHOLD = 16; // Summarize when we hit 16 messages
-var conversations = new Map(); // sessionId → { messages, summary, lastActivity }
+var MAX_MESSAGES = 40;       // Keep last 40 messages in context
+var SUMMARIZE_THRESHOLD = 30; // Summarize when we hit 30 messages
+var conversations = new Map(); // sessionId → { messages, summary, lastActivity, lastToolResults }
 
 /**
  * Get or create a conversation.
@@ -27,6 +27,7 @@ export function getConversation(sessionId) {
       summary: '',
       lastActivity: Date.now(),
       messageCount: 0,
+      lastToolResults: {}, // toolName → last result (persists across summarization)
     });
   }
   var conv = conversations.get(sessionId);
@@ -61,6 +62,20 @@ export function addToolResult(sessionId, content) {
   var conv = getConversation(sessionId);
   // Trim large tool results to prevent context bloat
   if (typeof content === 'object' && content.content) {
+    // Cache the last tool result for follow-up context
+    if (typeof content.content === 'string') {
+      // Try to extract tool name from recent messages
+      var lastMsg = conv.messages[conv.messages.length - 1];
+      if (lastMsg && lastMsg.content) {
+        var toolBlocks = Array.isArray(lastMsg.content) ? lastMsg.content : [];
+        for (var tb of toolBlocks) {
+          if (tb.type === 'tool_use' || tb.name) {
+            conv.lastToolResults[tb.name || 'unknown'] = content.content.slice(0, 2000);
+          }
+        }
+      }
+    }
+
     if (typeof content.content === 'string' && content.content.length > 4000) {
       content = Object.assign({}, content, { content: content.content.slice(0, 4000) + '\n...[tronqué]' });
     }
@@ -94,8 +109,8 @@ export function needsSummarization(sessionId) {
 export function summarizeAndCompact(sessionId, summaryText) {
   var conv = getConversation(sessionId);
 
-  // Keep the last 6 messages (3 exchanges) for immediate context
-  var keepCount = 6;
+  // Keep the last 12 messages (6 exchanges) for immediate context
+  var keepCount = 12;
   var oldMessages = conv.messages.slice(0, -keepCount);
   var recentMessages = conv.messages.slice(-keepCount);
 
@@ -104,9 +119,16 @@ export function summarizeAndCompact(sessionId, summaryText) {
     ? conv.summary + '\n\n--- Résumé mis à jour ---\n' + summaryText
     : summaryText;
 
-  // Trim summary if too long (keep last 2000 chars)
-  if (newSummary.length > 2000) {
-    newSummary = '...' + newSummary.slice(-2000);
+  // Append last tool results to summary so follow-ups work
+  var toolContext = '';
+  for (var toolName in conv.lastToolResults) {
+    toolContext += '\n[Dernier résultat ' + toolName + ']: ' + conv.lastToolResults[toolName].slice(0, 500);
+  }
+  if (toolContext) newSummary += '\n\n--- Contexte outils ---' + toolContext;
+
+  // Trim summary if too long (keep last 3000 chars)
+  if (newSummary.length > 3000) {
+    newSummary = '...' + newSummary.slice(-3000);
   }
 
   conv.summary = newSummary;
@@ -157,8 +179,10 @@ export function getSummarizationPrompt(sessionId) {
     return '';
   }).filter(Boolean).join('\n');
 
-  return 'Résume cette conversation en 2-3 phrases concises en français. ' +
-    'Garde les points clés, décisions, et actions prises:\n\n' + text;
+  return 'Résume cette conversation en 3-5 phrases concises en français. ' +
+    'IMPORTANT: Préserve les informations spécifiques (titres de nouvelles, résultats de recherche, ' +
+    'noms de fichiers, données chiffrées) car l\'utilisateur pourrait y faire référence. ' +
+    'Garde les points clés, décisions, actions prises, et tout contenu factuel:\n\n' + text;
 }
 
 /**
