@@ -122,43 +122,51 @@ function SourceEditor({ sources, onChange }) {
   const remove = (idx) => onChange(sources.filter((_, i) => i !== idx));
   const add = (type) => onChange([...sources, { type, from: '', token: '', keywords: [] }]);
 
+  const srcLabels = { macos_log: 'macOS Log', email: 'Email', webhook: 'Webhook' };
+  const srcStatus = { macos_log: 'success', email: 'info', webhook: 'warning' };
+
   return (
-    <SpaceBetween size="xs">
+    <SpaceBetween size="s">
       <Box variant="awsui-key-label">Sources de notification</Box>
       {sources.map((s, i) => (
-        <div key={i} style={{ padding: '8px', background: '#0d1117', borderRadius: '6px', borderLeft: '3px solid ' + (s.type === 'macos_log' ? '#0972d3' : s.type === 'email' ? '#238636' : '#d29922') }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-            <Select
-              selectedOption={SRC_TYPE_OPTIONS.find(o => o.value === s.type) || SRC_TYPE_OPTIONS[0]}
-              onChange={({ detail }) => update(i, 'type', detail.selectedOption.value)}
-              options={SRC_TYPE_OPTIONS}
-            />
-            <Button variant="icon" iconName="close" onClick={() => remove(i)} />
-          </div>
-          {s.type === 'email' && (
-            <ColumnLayout columns={2}>
-              <FormField label="Expéditeur (from)">
-                <Input value={s.from || ''} onChange={({ detail }) => update(i, 'from', detail.value)} placeholder="noreply@myqdevice.com" />
-              </FormField>
-              <FormField label="Mots-clés (séparés par virgules)">
-                <Input value={(s.keywords || []).join(', ')} onChange={({ detail }) => update(i, 'keywords', detail.value.split(',').map(k => k.trim()).filter(Boolean))} placeholder="garage, door, opened" />
-              </FormField>
-            </ColumnLayout>
-          )}
-          {s.type === 'webhook' && (
-            <FormField label="Token d'authentification">
-              <Input value={s.token || ''} onChange={({ detail }) => update(i, 'token', detail.value)} placeholder="myq-secret" />
+        <Container key={i} variant="stacked" header={
+          <Header variant="h5" actions={<Button variant="icon" iconName="close" onClick={() => remove(i)} />}>
+            <StatusIndicator type={srcStatus[s.type] || 'info'}>{srcLabels[s.type] || s.type}</StatusIndicator>
+          </Header>
+        }>
+          <SpaceBetween size="xs">
+            <FormField label="Type">
+              <Select
+                selectedOption={SRC_TYPE_OPTIONS.find(o => o.value === s.type) || SRC_TYPE_OPTIONS[0]}
+                onChange={({ detail }) => update(i, 'type', detail.selectedOption.value)}
+                options={SRC_TYPE_OPTIONS}
+              />
             </FormField>
-          )}
-          {s.type === 'macos_log' && (
-            <Box variant="small" color="text-body-secondary">Détection automatique via le bundle ID dans les logs macOS.</Box>
-          )}
-        </div>
+            {s.type === 'email' && (
+              <ColumnLayout columns={2}>
+                <FormField label="Expéditeur (from)">
+                  <Input value={s.from || ''} onChange={({ detail }) => update(i, 'from', detail.value)} placeholder="noreply@myqdevice.com" />
+                </FormField>
+                <FormField label="Mots-clés (virgules)">
+                  <Input value={(s.keywords || []).join(', ')} onChange={({ detail }) => update(i, 'keywords', detail.value.split(',').map(k => k.trim()).filter(Boolean))} placeholder="garage, door, opened" />
+                </FormField>
+              </ColumnLayout>
+            )}
+            {s.type === 'webhook' && (
+              <FormField label="Token d'authentification">
+                <Input value={s.token || ''} onChange={({ detail }) => update(i, 'token', detail.value)} placeholder="myq-secret" />
+              </FormField>
+            )}
+            {s.type === 'macos_log' && (
+              <Box variant="small" color="text-body-secondary">Détection automatique via le bundle ID dans les logs macOS.</Box>
+            )}
+          </SpaceBetween>
+        </Container>
       ))}
       <SpaceBetween direction="horizontal" size="xs">
-        <Button onClick={() => add('macos_log')} iconName="add-plus" variant="link">macOS Log</Button>
-        <Button onClick={() => add('email')} iconName="add-plus" variant="link">Email</Button>
-        <Button onClick={() => add('webhook')} iconName="add-plus" variant="link">Webhook</Button>
+        <Button onClick={() => add('macos_log')} iconName="add-plus">macOS Log</Button>
+        <Button onClick={() => add('email')} iconName="add-plus">Email</Button>
+        <Button onClick={() => add('webhook')} iconName="add-plus">Webhook</Button>
       </SpaceBetween>
     </SpaceBetween>
   );
@@ -229,15 +237,20 @@ export default function DevicesPanel({ api }) {
         <Container header={<Header variant="h3">Activité</Header>}>
           <ColumnLayout columns={Math.min(stats.length, 4)}>
             {stats.map(d => (
-              <div key={d.name}>
-                <Box variant="h4">{d.icon + ' ' + d.name}</Box>
-                <Box>{d.totalNotifications} notifs — {timeAgo(d.lastSeen)}</Box>
-                {d.hourCounts?.some(c => c > 0) && (
-                  <div style={{ display: 'flex', gap: '1px', height: '20px', alignItems: 'flex-end', marginTop: '4px' }}>
-                    {d.hourCounts.map((c, h) => (<div key={h} title={h + 'h: ' + c} style={{ width: '9px', height: Math.max(1, (c / Math.max(...d.hourCounts, 1)) * 18) + 'px', background: c === 0 ? '#1a1f2e' : (h >= 22 || h < 6) ? '#d13212' : '#0972d3', borderRadius: '1px' }} />))}
-                  </div>
-                )}
-              </div>
+              <Container key={d.name} variant="stacked">
+                <SpaceBetween size="xxs">
+                  <Box variant="h4">{d.icon + ' ' + d.name}</Box>
+                  <Box variant="small">{d.totalNotifications} notifications — dernière: {timeAgo(d.lastSeen)}</Box>
+                  {d.hourCounts?.some(c => c > 0) && (
+                    <Box>
+                      <Box variant="awsui-key-label">Activité par heure (rouge = nuit)</Box>
+                      <div style={{ display: 'flex', gap: '1px', height: '20px', alignItems: 'flex-end', marginTop: '4px' }}>
+                        {d.hourCounts.map((c, h) => (<div key={h} title={h + 'h: ' + c} style={{ width: '9px', height: Math.max(1, (c / Math.max(...d.hourCounts, 1)) * 18) + 'px', background: c === 0 ? '#1a1f2e' : (h >= 22 || h < 6) ? '#d13212' : '#0972d3', borderRadius: '1px' }} />))}
+                      </div>
+                    </Box>
+                  )}
+                </SpaceBetween>
+              </Container>
             ))}
           </ColumnLayout>
         </Container>
