@@ -237,14 +237,29 @@ async function runAction(action, notify) {
     if (action.notify_condition === 'always') {
       shouldNotify = true;
     } else if (action.notify_condition === 'not_skip') {
-      // Check for SKIP anywhere in the response, not just at the start
       var upper = response.trim().toUpperCase();
-      shouldNotify = !upper.startsWith('SKIP') && !upper.includes('\nSKIP') && upper !== 'SKIP.';
+      var lower = response.trim().toLowerCase();
+      // Explicit SKIP
+      if (upper === 'SKIP' || upper === 'SKIP.' || upper.startsWith('SKIP\n') || upper.startsWith('SKIP ')) {
+        shouldNotify = false;
+      }
+      // "Nothing to report" patterns in French and English
+      else if (/^(rien|aucun|pas de|nothing|no |je n'ai aucun)/i.test(lower) && response.length < 200) {
+        shouldNotify = false;
+      }
+      // Contains SKIP anywhere
+      else if (upper.includes('SKIP')) {
+        shouldNotify = false;
+      }
+      else {
+        shouldNotify = true;
+      }
     }
 
-    // Never notify with error messages
+    // Never notify with error messages or empty content
     if (response.includes('difficultés techniques') || response.includes('Réessayez') ||
         response.includes('Unknown tool') || response.includes('Trop d\'itérations') ||
+        response.includes('Pas de réponse') || response.includes('fetch failed') ||
         response.length < 15) {
       log.debug('Action ' + action.name + ': suppressed (error or empty)');
       return;
