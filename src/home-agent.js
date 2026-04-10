@@ -237,6 +237,67 @@ async function main() {
       return;
     }
 
+    // Device alert webhook — third notification source
+    // POST /device-alert { "device": "myq", "token": "myq-secret", "message": "Garage door opened" }
+    if (req.method === 'POST' && req.url === '/device-alert') {
+      var alertBody = '';
+      req.on('data', function(c) { alertBody += c; });
+      req.on('end', async function() {
+        try {
+          var alertData = JSON.parse(alertBody);
+          var deviceName = (alertData.device || '').toLowerCase();
+          var token = alertData.token || '';
+          var message = alertData.message || '';
+
+          // Validate token against config
+          var { getDeviceApps } = await import('./notification-monitor.js');
+          var apps = getDeviceApps();
+          var matched = null;
+          for (var bid in apps) {
+            var app = apps[bid];
+            if (app.name.toLowerCase().replace(/\s+/g, '-') === deviceName || app.name.toLowerCase() === deviceName) {
+              var sources = app.sources || [];
+              for (var s of sources) {
+                if (s.type === 'webhook' && s.token === token) { matched = app; break; }
+              }
+            }
+            if (matched) break;
+          }
+
+          if (!matched) {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid device or token' }));
+            return;
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ received: true }));
+
+          log.info('[webhook] Device alert from ' + matched.name + ': ' + message.slice(0, 100));
+
+          // Process through AI
+          var sessionId = getSessionId('webhook-' + deviceName);
+          var prompt = '[Webhook: ' + matched.name + ']\n' +
+            'Appareil: ' + matched.description + '\n' +
+            'Message: ' + message + '\n' +
+            'Heure: ' + localTimestamp() + '\n' +
+            'Contexte: ' + matched.context + '\n' +
+            'Analyse ce message et donne un avis concis en français.';
+          var response = await chat(prompt, sessionId);
+
+          if (!response.includes('SKIP') && !response.includes('difficultés techniques')) {
+            var prefix = matched.security_level === 'critical' ? '🚨' : matched.security_level === 'high' ? '⚠️' : matched.icon;
+            await sendTelegram(prefix + ' ' + response);
+          }
+        } catch (err) {
+          log.error('[webhook] Error:', err.message);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
     res.writeHead(404);
     res.end('Not found');
   });

@@ -45,8 +45,22 @@ function parseDevicesYaml(text) {
     var hoursMatch = b.match(/normal_hours:\s*\[([^\]]*)\]/);
     var normalHours = hoursMatch ? hoursMatch[1].split(',').map(function(h) { return parseInt(h.trim()); }) : [];
 
+    // Parse sources
+    var sources = [];
+    var sourceBlocks = b.split(/- type:/g);
+    for (var si = 1; si < sourceBlocks.length; si++) {
+      var sb = '- type:' + sourceBlocks[si];
+      var sType = (sb.match(/type:\s*(\S+)/) || [])[1]?.trim() || '';
+      var sFrom = (sb.match(/from:\s*"([^"]*)"/) || [])[1] || '';
+      var sToken = (sb.match(/token:\s*"([^"]*)"/) || [])[1] || '';
+      var sKeywords = [];
+      var kwMatch = sb.match(/keywords:\s*\[([^\]]*)\]/);
+      if (kwMatch) sKeywords = kwMatch[1].split(',').map(function(k) { return k.trim().replace(/"/g, ''); });
+      if (sType) sources.push({ type: sType, from: sFrom, token: sToken, keywords: sKeywords });
+    }
+
     if (bundleId) {
-      result.devices.push({ bundle_id: bundleId, name: name, icon: icon, description: desc, security_level: secLevel, normal_hours: normalHours, context: context, enabled: enabled });
+      result.devices.push({ bundle_id: bundleId, name: name, icon: icon, description: desc, security_level: secLevel, normal_hours: normalHours, context: context, enabled: enabled, sources: sources });
     }
   }
   return result;

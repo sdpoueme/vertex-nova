@@ -104,29 +104,48 @@ export class EmailMonitor {
   async _processEmail(email) {
     log.info('Processing email from ' + email.from + ': ' + email.subject);
 
-    // Classify the email source
-    var source = 'unknown';
-    var fromLower = (email.from + ' ' + email.subject).toLowerCase();
+    // Match against configured device email sources
+    var matchedDevice = null;
+    var fromLower = (email.from + ' ' + email.subject + ' ' + email.summary).toLowerCase();
 
-    if (fromLower.includes('telus') || fromLower.includes('smarthome') || fromLower.includes('alarm')) {
-      source = 'telus-security';
-    } else if (fromLower.includes('myq') || fromLower.includes('chamberlain') || fromLower.includes('liftmaster') || fromLower.includes('garage')) {
-      source = 'myq-garage';
-    } else if (fromLower.includes('honeywell') || fromLower.includes('resideo') || fromLower.includes('thermostat')) {
-      source = 'honeywell-thermostat';
-    } else if (fromLower.includes('ring') || fromLower.includes('doorbell') || fromLower.includes('camera')) {
-      source = 'ring-camera';
+    try {
+      var { getDeviceApps } = await import('./notification-monitor.js');
+      var apps = getDeviceApps();
+      for (var bid in apps) {
+        var app = apps[bid];
+        var sources = app.sources || [];
+        for (var s of sources) {
+          if (s.type !== 'email') continue;
+          var fromMatch = s.from && fromLower.includes(s.from.toLowerCase());
+          var keywordMatch = s.keywords && s.keywords.some(function(kw) { return fromLower.includes(kw.toLowerCase()); });
+          if (fromMatch || keywordMatch) { matchedDevice = app; break; }
+        }
+        if (matchedDevice) break;
+      }
+    } catch {}
+
+    // Fallback to legacy matching if no config match
+    var source = matchedDevice ? matchedDevice.name : 'unknown';
+    if (!matchedDevice) {
+      if (fromLower.includes('telus') || fromLower.includes('smarthome') || fromLower.includes('alarm')) source = 'Telus';
+      else if (fromLower.includes('myq') || fromLower.includes('chamberlain') || fromLower.includes('garage')) source = 'MyQ';
+      else if (fromLower.includes('honeywell') || fromLower.includes('resideo') || fromLower.includes('thermostat')) source = 'Honeywell';
+      else if (fromLower.includes('ring') || fromLower.includes('doorbell')) source = 'Ring';
+      else if (fromLower.includes('lg') || fromLower.includes('thinq')) source = 'LG ThinQ';
+      else if (fromLower.includes('bosch') || fromLower.includes('homeconnect')) source = 'Bosch';
     }
 
-    var eventText = '[Home Device Alert — ' + source + ']\n' +
-      'From: ' + email.from + '\n' +
-      'Subject: ' + email.subject + '\n' +
-      'Summary: ' + email.summary + '\n' +
-      'Date: ' + email.date + '\n\n' +
-      'Analyze this alert. If it indicates an anomaly or issue, log it as a home event in the vault. ' +
-      'If it is routine (e.g., normal arm/disarm), just acknowledge it briefly.';
+    var icon = matchedDevice ? matchedDevice.icon : '📧';
+    var context = matchedDevice ? matchedDevice.context : '';
 
-    // Forward to the AI handler
+    var eventText = '[Email: ' + source + '] ' + icon + '\n' +
+      'De: ' + email.from + '\n' +
+      'Sujet: ' + email.subject + '\n' +
+      'Résumé: ' + email.summary + '\n' +
+      'Date: ' + email.date + '\n' +
+      (context ? 'Contexte: ' + context + '\n' : '') +
+      '\nAnalyse cette alerte. Si c\'est une anomalie ou un problème, résume en français. Si c\'est routine, réponds "SKIP".';
+
     if (this.onEvent) {
       await this.onEvent({
         channel: 'email-monitor',
@@ -134,6 +153,7 @@ export class EmailMonitor {
         text: eventText,
         userId: 'system',
         source: source,
+        icon: icon,
       });
     }
   }
