@@ -7,6 +7,7 @@ import ChatPanel from './panels/ChatPanel';
 import ConfigPanel from './panels/ConfigPanel';
 import LogsPanel from './panels/LogsPanel';
 import KnowledgeBasePanel from './panels/KnowledgeBasePanel';
+import DevicesPanel from './panels/DevicesPanel';
 
 const API = '';
 
@@ -39,6 +40,7 @@ export default function App() {
               { type: 'link', text: 'Chat', href: '#/chat' },
               { type: 'link', text: 'Configuration', href: '#/config' },
               { type: 'link', text: 'Connaissances', href: '#/kb' },
+              { type: 'link', text: 'Appareils', href: '#/devices' },
               { type: 'link', text: 'Logs', href: '#/logs' },
               { type: 'divider' },
               { type: 'link', text: 'Statut', href: '#/status', info: (
@@ -54,6 +56,7 @@ export default function App() {
           activePanel === 'chat' ? <ChatPanel api={API} /> :
           activePanel === 'config' ? <ConfigPanel api={API} /> :
           activePanel === 'kb' ? <KnowledgeBasePanel api={API} /> :
+          activePanel === 'devices' ? <DevicesPanel api={API} /> :
           activePanel === 'logs' ? <LogsPanel api={API} /> :
           <div>Statut: {JSON.stringify(status, null, 2)}</div>
         }

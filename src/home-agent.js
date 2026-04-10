@@ -304,29 +304,39 @@ async function main() {
 
   // macOS Notification Center monitor (device alerts from iPhone Mirroring)
   if (process.platform === 'darwin') {
-    var { startNotificationMonitor, initPatterns } = await import('./notification-monitor.js');
-    initPatterns(vaultPath);
+    var { startNotificationMonitor } = await import('./notification-monitor.js');
     startNotificationMonitor(async function(alert) {
       try {
-        // Only send to AI if anomaly detected or security-critical device
-        if (!alert.analysis.isAnomaly && alert.analysis.severity === 'info') {
-          log.debug('Device ' + alert.device + ': normal activity, skipping');
-          return;
-        }
-
         var sessionId = getSessionId('notif-monitor');
         var response = await chat(alert.prompt, sessionId);
 
-        if (response.trim().toUpperCase() === 'SKIP' || response.includes('SKIP')) return;
-        if (response.includes('difficultés techniques')) return;
+        if (response.includes('difficultés techniques') || response.includes('SKIP')) return;
 
-        // Prefix with severity indicator
         var prefix = alert.analysis.severity === 'critical' ? '🚨' : alert.analysis.severity === 'warning' ? '⚠️' : alert.icon;
+
+        // Always alert on Telegram
         await sendTelegram(prefix + ' ' + response);
+
+        // Vocal alert only if enabled AND anomaly detected
+        if (alert.vocalEnabled && alert.analysis.isAnomaly) {
+          var hour = new Date().getHours();
+          if (hour >= 7 && hour < 22) {
+            // Clean for voice and speak
+            var voiceText = response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s*/g, '');
+            try {
+              var { execFile: execVoice } = await import('node:child_process');
+              var { join: joinVoice } = await import('node:path');
+              var cliPath = joinVoice(config.projectDir, 'scripts/sonos-cli.js');
+              execVoice('node', [cliPath, 'speak', voiceText.slice(0, 500), 'Rez de Chaussee'], { timeout: 30000 }, function(err) {
+                if (err) log.error('Device alert Sonos failed:', err.message);
+              });
+            } catch {}
+          }
+        }
       } catch (err) {
         log.error('Notification processing error: ' + err.message);
       }
-    }, 30000);
+    }, config.projectDir, vaultPath);
   }
 
   startProactive(async function(response, route, action) {

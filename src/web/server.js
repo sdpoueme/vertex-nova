@@ -251,6 +251,48 @@ export function startDashboard(config, port) {
       return;
     }
 
+    // --- API: Device monitoring ---
+    if (path === '/api/devices' && req.method === 'GET') {
+      try {
+        var { getDeviceApps, getPatternData, getSettings } = await import('../notification-monitor.js');
+        var devApps = getDeviceApps();
+        var patterns = getPatternData();
+        var devSettings = getSettings();
+        var devices = Object.entries(devApps).map(function(entry) {
+          var bid = entry[0]; var app = entry[1];
+          var pat = patterns[bid] || { totalCount: 0, lastSeen: null, hourCounts: new Array(24).fill(0) };
+          return { bundle_id: bid, name: app.name, icon: app.icon, description: app.description, security_level: app.security_level, enabled: app.enabled !== false, totalNotifications: pat.totalCount, lastSeen: pat.lastSeen, hourCounts: pat.hourCounts };
+        });
+        json(res, 200, { devices: devices, settings: devSettings });
+      } catch (err) {
+        // Fallback: read from config file
+        try {
+          var devContent = readFileSync(join(projectDir, 'config/devices.yaml'), 'utf8');
+          json(res, 200, { devices: [], settings: { vocal_alerts: false }, config: devContent });
+        } catch { json(res, 200, { devices: [], settings: { vocal_alerts: false } }); }
+      }
+      return;
+    }
+
+    if (path === '/api/devices/config' && req.method === 'GET') {
+      try {
+        var dc = readFileSync(join(projectDir, 'config/devices.yaml'), 'utf8');
+        json(res, 200, { content: dc });
+      } catch { json(res, 200, { content: '' }); }
+      return;
+    }
+
+    if (path === '/api/devices/config' && req.method === 'PUT') {
+      var devBody = await readBody(req);
+      try {
+        var devData = JSON.parse(devBody);
+        writeFileSync(join(projectDir, 'config/devices.yaml'), devData.content);
+        try { var { reloadDeviceConfig } = await import('../notification-monitor.js'); reloadDeviceConfig(projectDir); } catch {}
+        json(res, 200, { saved: true });
+      } catch (err) { json(res, 500, { error: err.message }); }
+      return;
+    }
+
     // --- API: Knowledge bases ---
     if (path === '/api/knowledgebases' && req.method === 'GET') {
       try {

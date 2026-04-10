@@ -1,14 +1,10 @@
 /**
  * macOS Notification Monitor — pattern-based anomaly detection.
  *
- * Since Apple redacts notification content, we track PATTERNS:
- *   - Which device sends notifications at what hours
- *   - How frequently each device notifies
- *   - Burst detection (many notifications in short time)
- *   - Time-of-day anomalies (garage door at 2 AM = suspicious)
- *
- * Patterns are persisted to vault/memories/device-patterns.json
- * and used to classify each new notification as normal or anomalous.
+ * Tracks device notification patterns by bundle ID from macOS unified log.
+ * Detects anomalies: unusual hours, bursts, night activity on security devices.
+ * Always alerts on Telegram. Vocal alerts configurable but disabled by default.
+ * Device list configurable via config/devices.yaml and web dashboard.
  */
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
@@ -17,86 +13,74 @@ import { logger } from './log.js';
 
 var log = logger('notif-monitor');
 
-// Device definitions with security context
-var DEVICE_APPS = {
-  'com.myliftmaster.myq': {
-    name: 'MyQ', icon: '🚗',
-    description: 'Porte de garage (MyQ)',
-    securityLevel: 'high',
-    normalHours: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
-    suspiciousContext: 'La porte de garage a été activée. Si personne ne devrait entrer ou sortir, cela pourrait indiquer une intrusion ou un dysfonctionnement.',
-  },
-  'com.honeywell.totalconnect': {
-    name: 'Honeywell', icon: '🌡️',
-    description: 'Thermostat Honeywell',
-    securityLevel: 'low',
-    normalHours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
-    suspiciousContext: 'Le thermostat a envoyé une alerte. Possibles causes: température extrême, panne de chauffage/climatisation, changement de mode inattendu.',
-  },
-  'com.resideo.honeywell': {
-    name: 'Honeywell', icon: '🌡️',
-    description: 'Thermostat Resideo',
-    securityLevel: 'low',
-    normalHours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
-    suspiciousContext: 'Alerte thermostat Resideo.',
-  },
-  'com.telus.smarthome': {
-    name: 'Telus', icon: '🔒',
-    description: 'Sécurité Telus SmartHome',
-    securityLevel: 'critical',
-    normalHours: [6, 7, 8, 17, 18, 22, 23],
-    suspiciousContext: 'Le système de sécurité Telus a envoyé une alerte. Possibles causes: intrusion détectée, capteur déclenché, système armé/désarmé de façon inattendue.',
-  },
-  'com.telus.smarthomesecurity': {
-    name: 'Telus', icon: '🔒',
-    description: 'Sécurité Telus',
-    securityLevel: 'critical',
-    normalHours: [6, 7, 8, 17, 18, 22, 23],
-    suspiciousContext: 'Alerte sécurité Telus.',
-  },
-  'com.lge.lgthinq': {
-    name: 'LG ThinQ', icon: '👕',
-    description: 'Électroménagers LG',
-    securityLevel: 'low',
-    normalHours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21],
-    suspiciousContext: 'Notification LG ThinQ. Possibles causes: cycle de lavage terminé, erreur appareil, alerte de maintenance.',
-  },
-  'com.bshg.homeconnect': {
-    name: 'Bosch', icon: '🧊',
-    description: 'Bosch Home Connect',
-    securityLevel: 'medium',
-    normalHours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
-    suspiciousContext: 'Alerte Bosch. Possibles causes: porte du frigo ouverte, température anormale, erreur appareil.',
-  },
-  'com.ring.ring': {
-    name: 'Ring', icon: '🔔',
-    description: 'Sonnette/caméra Ring',
-    securityLevel: 'high',
-    normalHours: [8,9,10,11,12,13,14,15,16,17,18,19],
-    suspiciousContext: 'La sonnette ou caméra Ring a détecté un mouvement ou quelqu\'un a sonné. Vérifier si un visiteur est attendu.',
-  },
-  'com.google.home': {
-    name: 'Google Home', icon: '🏠',
-    description: 'Google Home/Nest',
-    securityLevel: 'low',
-    normalHours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23],
-    suspiciousContext: 'Notification Google Home.',
-  },
-};
-
+var deviceApps = {};  // bundleId → device config
+var settings = { vocal_alerts: false, poll_interval_seconds: 30 };
 var seenNotifIds = new Set();
 var MAX_SEEN = 200;
-var patternData = {}; // bundleId → { hourCounts: [24], recentEvents: [], totalCount }
+var patternData = {};
 var patternsFile = null;
+var configDir = null;
+
+// --- Config loading ---
+function parseDevicesYaml(text) {
+  var result = { settings: { vocal_alerts: false, poll_interval_seconds: 30 }, devices: [] };
+
+  // Parse settings
+  var vocalMatch = text.match(/vocal_alerts:\s*(true|false)/);
+  if (vocalMatch) result.settings.vocal_alerts = vocalMatch[1] === 'true';
+  var pollMatch = text.match(/poll_interval_seconds:\s*(\d+)/);
+  if (pollMatch) result.settings.poll_interval_seconds = parseInt(pollMatch[1]);
+
+  // Parse devices
+  var blocks = text.split(/^\s+-\s+bundle_id:/m);
+  for (var i = 1; i < blocks.length; i++) {
+    var b = '  - bundle_id:' + blocks[i];
+    var bundleId = (b.match(/bundle_id:\s*(\S+)/) || [])[1]?.trim() || '';
+    var name = (b.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+    var icon = (b.match(/icon:\s*"([^"]*)"/) || [])[1] || '📱';
+    var desc = (b.match(/description:\s*"([^"]*)"/) || [])[1] || '';
+    var secLevel = (b.match(/security_level:\s*(\S+)/) || [])[1]?.trim() || 'low';
+    var context = (b.match(/context:\s*"([^"]*)"/) || [])[1] || '';
+    var enabled = (b.match(/enabled:\s*(\S+)/) || [])[1]?.trim() !== 'false';
+    var hoursMatch = b.match(/normal_hours:\s*\[([^\]]*)\]/);
+    var normalHours = hoursMatch ? hoursMatch[1].split(',').map(function(h) { return parseInt(h.trim()); }) : [];
+
+    if (bundleId) {
+      result.devices.push({ bundle_id: bundleId, name: name, icon: icon, description: desc, security_level: secLevel, normal_hours: normalHours, context: context, enabled: enabled });
+    }
+  }
+  return result;
+}
+
+function loadConfig(projectDir) {
+  configDir = projectDir;
+  var configPath = join(projectDir, 'config', 'devices.yaml');
+  try {
+    if (existsSync(configPath)) {
+      var parsed = parseDevicesYaml(readFileSync(configPath, 'utf8'));
+      settings = parsed.settings;
+      deviceApps = {};
+      for (var d of parsed.devices) {
+        if (d.enabled) {
+          deviceApps[d.bundle_id] = d;
+        }
+      }
+      log.info('Loaded ' + Object.keys(deviceApps).length + ' device monitors');
+    }
+  } catch (err) {
+    log.warn('Could not load devices config: ' + err.message);
+  }
+}
+
+export function reloadDeviceConfig(projectDir) {
+  loadConfig(projectDir || configDir);
+}
 
 // --- Pattern persistence ---
 function loadPatterns() {
   if (!patternsFile) return;
   try {
-    if (existsSync(patternsFile)) {
-      patternData = JSON.parse(readFileSync(patternsFile, 'utf8'));
-      log.info('Loaded device patterns for ' + Object.keys(patternData).length + ' devices');
-    }
+    if (existsSync(patternsFile)) patternData = JSON.parse(readFileSync(patternsFile, 'utf8'));
   } catch {}
 }
 
@@ -107,12 +91,7 @@ function savePatterns() {
 
 function ensurePattern(bundleId) {
   if (!patternData[bundleId]) {
-    patternData[bundleId] = {
-      hourCounts: new Array(24).fill(0),
-      recentEvents: [], // last 50 timestamps
-      totalCount: 0,
-      lastSeen: null,
-    };
+    patternData[bundleId] = { hourCounts: new Array(24).fill(0), recentEvents: [], totalCount: 0, lastSeen: null };
   }
   return patternData[bundleId];
 }
@@ -122,11 +101,9 @@ function analyzeEvent(bundleId, app) {
   var pattern = ensurePattern(bundleId);
   var now = new Date();
   var hour = now.getHours();
-  var dayOfWeek = now.getDay(); // 0=Sun
-  var isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
   var isNight = hour >= 22 || hour < 6;
+  var isWeekend = now.getDay() === 0 || now.getDay() === 6;
 
-  // Record this event
   pattern.hourCounts[hour]++;
   pattern.totalCount++;
   pattern.recentEvents.push(Date.now());
@@ -135,50 +112,31 @@ function analyzeEvent(bundleId, app) {
   savePatterns();
 
   var anomalies = [];
-  var severity = 'info'; // info, warning, critical
+  var severity = 'info';
 
-  // 1. Time-of-day anomaly: notification outside normal hours
-  if (app.normalHours && app.normalHours.indexOf(hour) === -1) {
-    anomalies.push('Heure inhabituelle (' + hour + 'h) pour ' + app.name);
-    severity = app.securityLevel === 'critical' ? 'critical' : 'warning';
+  if (app.normal_hours && app.normal_hours.length > 0 && app.normal_hours.indexOf(hour) === -1) {
+    anomalies.push('Heure inhabituelle (' + hour + 'h)');
+    severity = app.security_level === 'critical' ? 'critical' : 'warning';
   }
 
-  // 2. Night activity for security-sensitive devices
-  if (isNight && (app.securityLevel === 'high' || app.securityLevel === 'critical')) {
-    anomalies.push('Activité nocturne sur un appareil sensible');
+  if (isNight && (app.security_level === 'high' || app.security_level === 'critical')) {
+    anomalies.push('Activité nocturne sur appareil sensible');
     severity = 'critical';
   }
 
-  // 3. Burst detection: more than 3 notifications in 5 minutes
   var fiveMinAgo = Date.now() - 5 * 60 * 1000;
   var recentCount = pattern.recentEvents.filter(function(t) { return t > fiveMinAgo; }).length;
   if (recentCount > 3) {
-    anomalies.push('Rafale de ' + recentCount + ' notifications en 5 minutes');
+    anomalies.push('Rafale: ' + recentCount + ' notifications en 5 min');
     severity = severity === 'critical' ? 'critical' : 'warning';
   }
 
-  // 4. Unusual frequency: this hour has significantly more events than average
-  var avgPerHour = pattern.totalCount / Math.max(1, pattern.hourCounts.filter(function(c) { return c > 0; }).length);
-  if (pattern.hourCounts[hour] > avgPerHour * 3 && pattern.totalCount > 10) {
-    anomalies.push('Fréquence inhabituelle pour cette heure');
-  }
-
-  // 5. First-ever notification from this device (no history)
   if (pattern.totalCount === 1) {
     anomalies.push('Première notification de cet appareil');
     severity = 'warning';
   }
 
-  return {
-    anomalies: anomalies,
-    severity: severity,
-    isAnomaly: anomalies.length > 0,
-    hour: hour,
-    isNight: isNight,
-    isWeekend: isWeekend,
-    recentBurst: recentCount,
-    totalHistory: pattern.totalCount,
-  };
+  return { anomalies: anomalies, severity: severity, isAnomaly: anomalies.length > 0, hour: hour, isNight: isNight, isWeekend: isWeekend, recentBurst: recentCount, totalHistory: pattern.totalCount };
 }
 
 // --- Log reading ---
@@ -186,66 +144,52 @@ function checkLog() {
   return new Promise(function(resolve) {
     execFile('log', ['show',
       '--predicate', 'process == "NotificationCenter" AND category == "layout" AND composedMessage CONTAINS "Re-add"',
-      '--last', '2m',
-      '--style', 'compact'
+      '--last', '2m', '--style', 'compact'
     ], { timeout: 15000, maxBuffer: 512 * 1024 }, function(err, stdout) {
-      if (err) {
-        if (!err.message.includes('No log messages')) {
-          log.debug('Log query error: ' + err.message.slice(0, 100));
-        }
-        resolve([]);
-        return;
-      }
-
+      if (err) { resolve([]); return; }
       var events = [];
       var lines = stdout.split('\n');
       for (var i = 0; i < lines.length; i++) {
-        var line = lines[i];
-        var match = line.match(/Re-add\s+([^:]+):([A-F0-9]+),\s+(\S+)\s+with visibility:\s*\[([^\]]*)\]/);
+        var match = lines[i].match(/Re-add\s+([^:]+):([A-F0-9]+),\s+(\S+)\s+with visibility:\s*\[([^\]]*)\]/);
         if (!match) continue;
-
         var bundleId = match[1];
         var notifId = match[2];
-        var visibility = match[4];
-
-        var app = DEVICE_APPS[bundleId];
-        if (!app) continue;
-        if (seenNotifIds.has(notifId)) continue;
+        var app = deviceApps[bundleId];
+        if (!app || seenNotifIds.has(notifId)) continue;
         seenNotifIds.add(notifId);
-
-        // Accept any visibility (alert, banner, history, lockscreen)
-        events.push({ bundleId: bundleId, notifId: notifId, app: app, visibility: visibility });
+        events.push({ bundleId: bundleId, notifId: notifId, app: app });
       }
-
-      if (seenNotifIds.size > MAX_SEEN) {
-        var arr = Array.from(seenNotifIds);
-        seenNotifIds = new Set(arr.slice(-100));
-      }
+      if (seenNotifIds.size > MAX_SEEN) seenNotifIds = new Set(Array.from(seenNotifIds).slice(-100));
       resolve(events);
     });
   });
 }
 
 /**
- * Start the notification monitor with pattern-based anomaly detection.
- * @param {function} onAlert - callback({ device, icon, description, analysis, prompt })
- * @param {number} intervalMs - poll interval (default 30s)
+ * Start the notification monitor.
+ * @param {function} onAlert - callback({ device, icon, description, analysis, prompt, vocalEnabled })
+ * @param {string} projectDir - project root
+ * @param {string} vaultPath - vault path for pattern storage
  */
-export function startNotificationMonitor(onAlert, intervalMs) {
-  intervalMs = intervalMs || 30000;
-
+export function startNotificationMonitor(onAlert, projectDir, vaultPath) {
   if (process.platform !== 'darwin') {
     log.info('Notification monitor only works on macOS, skipping');
     return null;
   }
 
-  log.info('Starting notification monitor (pattern-based anomaly detection, polling every ' + (intervalMs / 1000) + 's)');
+  loadConfig(projectDir);
+  var memDir = join(vaultPath, 'memories');
+  mkdirSync(memDir, { recursive: true });
+  patternsFile = join(memDir, 'device-patterns.json');
+  loadPatterns();
+
+  var intervalMs = settings.poll_interval_seconds * 1000;
+  log.info('Starting notification monitor (' + Object.keys(deviceApps).length + ' devices, polling every ' + settings.poll_interval_seconds + 's, vocal: ' + settings.vocal_alerts + ')');
 
   // Pre-populate seen IDs
   execFile('log', ['show',
     '--predicate', 'process == "NotificationCenter" AND category == "layout" AND composedMessage CONTAINS "Re-add"',
-    '--last', '30m',
-    '--style', 'compact'
+    '--last', '30m', '--style', 'compact'
   ], { timeout: 15000, maxBuffer: 512 * 1024 }, function(err, stdout) {
     if (err || !stdout) return;
     var lines = stdout.split('\n');
@@ -263,22 +207,22 @@ export function startNotificationMonitor(onAlert, intervalMs) {
         var analysis = analyzeEvent(ev.bundleId, ev.app);
 
         log.info('Device: ' + ev.app.name + ' | severity: ' + analysis.severity +
-          ' | anomalies: ' + (analysis.anomalies.length > 0 ? analysis.anomalies.join(', ') : 'none') +
+          (analysis.anomalies.length > 0 ? ' | anomalies: ' + analysis.anomalies.join(', ') : ' | normal') +
           ' | history: ' + analysis.totalHistory);
 
-        // Build context-rich prompt for the AI
         var prompt = '[Notification appareil: ' + ev.app.name + ']\n' +
           'Appareil: ' + ev.app.description + '\n' +
           'Heure: ' + analysis.hour + 'h' + (analysis.isNight ? ' (nuit)' : '') + (analysis.isWeekend ? ' (weekend)' : '') + '\n' +
-          'Historique: ' + analysis.totalHistory + ' notifications au total\n';
+          'Historique: ' + analysis.totalHistory + ' notifications au total\n' +
+          'Niveau sécurité: ' + ev.app.security_level + '\n';
 
         if (analysis.isAnomaly) {
-          prompt += 'ANOMALIES DÉTECTÉES:\n- ' + analysis.anomalies.join('\n- ') + '\n';
-          prompt += 'Contexte sécurité: ' + ev.app.suspiciousContext + '\n';
-          prompt += '\nAnalyse cette situation et donne un avis en français. Sois direct et concis.';
+          prompt += 'ANOMALIES: ' + analysis.anomalies.join(', ') + '\n';
+          prompt += 'Contexte: ' + ev.app.context + '\n';
+          prompt += 'Analyse cette situation et donne un avis concis en français.';
         } else {
-          prompt += 'Aucune anomalie détectée. Activité normale.\n';
-          prompt += 'Réponds "SKIP" car c\'est une activité de routine.';
+          prompt += 'Activité normale pour cet appareil à cette heure.\n';
+          prompt += 'Informe brièvement en français (1 phrase). Ex: "MyQ: activité garage détectée (routine)"';
         }
 
         try {
@@ -288,6 +232,7 @@ export function startNotificationMonitor(onAlert, intervalMs) {
             description: ev.app.description,
             analysis: analysis,
             prompt: prompt,
+            vocalEnabled: settings.vocal_alerts,
           });
         } catch (err) {
           log.error('Alert handler error: ' + err.message);
@@ -303,12 +248,6 @@ export function startNotificationMonitor(onAlert, intervalMs) {
   return timer;
 }
 
-/**
- * Initialize pattern storage.
- */
-export function initPatterns(vaultPath) {
-  var memDir = join(vaultPath, 'memories');
-  mkdirSync(memDir, { recursive: true });
-  patternsFile = join(memDir, 'device-patterns.json');
-  loadPatterns();
-}
+export function getSettings() { return settings; }
+export function getDeviceApps() { return deviceApps; }
+export function getPatternData() { return patternData; }
