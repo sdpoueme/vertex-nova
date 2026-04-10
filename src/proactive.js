@@ -3,7 +3,7 @@
  * Reads config/proactive.yaml for actions and routing rules.
  * Uses AI to decide whether notifications are worth sending.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { chat } from './ai.js';
 import { logger } from './log.js';
@@ -14,6 +14,25 @@ var config = null;
 var lastRun = {}; // action name → timestamp
 var notificationCount = {}; // hour → count
 var lastNotificationTime = 0;
+var LAST_RUN_FILE = null;
+
+// Persist lastRun to disk so restarts don't trigger all actions
+function saveLastRun() {
+  if (!LAST_RUN_FILE) return;
+  try {
+    writeFileSync(LAST_RUN_FILE, JSON.stringify(lastRun));
+  } catch {}
+}
+
+function loadLastRun() {
+  if (!LAST_RUN_FILE) return;
+  try {
+    if (existsSync(LAST_RUN_FILE)) {
+      lastRun = JSON.parse(readFileSync(LAST_RUN_FILE, 'utf8'));
+      log.info('Restored lastRun state for ' + Object.keys(lastRun).length + ' actions');
+    }
+  } catch {}
+}
 
 function loadConfig() {
   var configPath = join(import.meta.dirname, '..', 'config', 'proactive.yaml');
@@ -200,6 +219,7 @@ function shouldRun(action) {
 async function runAction(action, notify) {
   log.info('Running proactive action: ' + action.name);
   lastRun[action.name] = Date.now();
+  saveLastRun();
 
   try {
     var sessionId = 'proactive-' + action.name;
@@ -264,6 +284,11 @@ export function startProactive(notify) {
     return null;
   }
 
+  // Set up persistence file
+  var projectDir = join(import.meta.dirname, '..');
+  LAST_RUN_FILE = join(projectDir, '.sessions', 'proactive-lastrun.json');
+  loadLastRun();
+
   log.info('Proactive scheduler started with ' + config.actions.length + ' actions');
 
   // Check every minute
@@ -276,15 +301,20 @@ export function startProactive(notify) {
     }
   }, 60000);
 
-  // Initial check after 30 seconds
+  // Staggered initial check — wait 2 minutes after startup to avoid burst
   setTimeout(function() {
+    var delay = 0;
     for (var i = 0; i < config.actions.length; i++) {
-      var action = config.actions[i];
-      if (shouldRun(action)) {
-        runAction(action, notify);
-      }
+      (function(action, d) {
+        setTimeout(function() {
+          if (shouldRun(action)) {
+            runAction(action, notify);
+          }
+        }, d);
+      })(config.actions[i], delay);
+      delay += 10000; // 10 seconds between each action
     }
-  }, 30000);
+  }, 120000); // 2 minute grace period after startup
 
   return timer;
 }
