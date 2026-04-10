@@ -19,13 +19,22 @@ devices:
     context: "La porte de garage a été activée. Si personne ne devrait entrer ou sortir, cela pourrait indiquer une intrusion."
     enabled: true
 
-  - bundle_id: com.honeywell.totalconnect
+  - bundle_id: com.honeywell.acs.lyric
     name: Honeywell
     icon: "🌡️"
-    description: "Thermostat Honeywell Total Connect"
+    description: "Thermostat Honeywell Lyric/Home"
     security_level: low
     normal_hours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
-    context: "Alerte thermostat. Possibles causes: température extrême, panne chauffage/clim."
+    context: "Alerte thermostat. Possibles causes: température extrême, panne chauffage/clim, changement de mode."
+    enabled: true
+
+  - bundle_id: com.honeywell.totalconnect
+    name: Honeywell TC
+    icon: "🌡️"
+    description: "Honeywell Total Connect"
+    security_level: low
+    normal_hours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
+    context: "Alerte thermostat Honeywell Total Connect."
     enabled: true
 
   - bundle_id: com.resideo.honeywell
@@ -55,13 +64,22 @@ devices:
     context: "Alerte sécurité Telus."
     enabled: true
 
-  - bundle_id: com.lge.lgthinq
+  - bundle_id: com.lgeha.nuts
     name: LG ThinQ
     icon: "👕"
     description: "Électroménagers LG (laveuse/sécheuse)"
     security_level: low
     normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]
     context: "Notification LG ThinQ. Cycle terminé, erreur appareil, ou alerte maintenance."
+    enabled: true
+
+  - bundle_id: com.lge.lgthinq
+    name: LG ThinQ
+    icon: "👕"
+    description: "LG ThinQ (ancien bundle)"
+    security_level: low
+    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]
+    context: "Notification LG ThinQ."
     enabled: true
 
   - bundle_id: com.bshg.homeconnect
