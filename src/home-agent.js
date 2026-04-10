@@ -304,21 +304,25 @@ async function main() {
 
   // macOS Notification Center monitor (device alerts from iPhone Mirroring)
   if (process.platform === 'darwin') {
-    var { startNotificationMonitor } = await import('./notification-monitor.js');
+    var { startNotificationMonitor, initPatterns } = await import('./notification-monitor.js');
+    initPatterns(vaultPath);
     startNotificationMonitor(async function(alert) {
       try {
+        // Only send to AI if anomaly detected or security-critical device
+        if (!alert.analysis.isAnomaly && alert.analysis.severity === 'info') {
+          log.debug('Device ' + alert.device + ': normal activity, skipping');
+          return;
+        }
+
         var sessionId = getSessionId('notif-monitor');
-        var prompt = '[Notification de ' + alert.description + ']\n' +
-          'L\'application ' + alert.device + ' vient d\'envoyer une notification sur le téléphone.\n' +
-          'Basé sur le contexte (heure: ' + localTimestamp() + ', appareil: ' + alert.description + '), ' +
-          'que pourrait signifier cette notification? Donne une interprétation probable en 1-2 phrases en français.\n' +
-          'Si c\'est probablement routine (ex: rappel quotidien, statut normal), réponds "SKIP".';
-        var response = await chat(prompt, sessionId);
+        var response = await chat(alert.prompt, sessionId);
 
         if (response.trim().toUpperCase() === 'SKIP' || response.includes('SKIP')) return;
         if (response.includes('difficultés techniques')) return;
 
-        await sendTelegram(alert.icon + ' ' + response);
+        // Prefix with severity indicator
+        var prefix = alert.analysis.severity === 'critical' ? '🚨' : alert.analysis.severity === 'warning' ? '⚠️' : alert.icon;
+        await sendTelegram(prefix + ' ' + response);
       } catch (err) {
         log.error('Notification processing error: ' + err.message);
       }
