@@ -138,12 +138,12 @@ var tools = [
   },
   {
     name: 'echo_speak',
-    description: 'Make an Alexa Echo device speak text via Voice Monkey. Available devices: vertexnovaspeaker (Echo Show kitchen), bureau-serge (Bureau Serge), garage (Garage). Use this when the user asks to speak or announce on Echo/Alexa devices.',
+    description: 'Make an Alexa Echo device speak text via Voice Monkey. Available devices: vertexnovaspeaker (Echo Show kitchen), vertexnovaspeakeroffice (Bureau Serge), garage (Garage). Use this when the user asks to speak or announce on Echo/Alexa devices.',
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to speak' },
-        device: { type: 'string', description: 'Voice Monkey device ID. Default: vertexnovaspeaker. Options: vertexnovaspeaker, bureau-serge, garage' }
+        device: { type: 'string', description: 'Voice Monkey device ID. Default: vertexnovaspeaker. Options: vertexnovaspeaker, vertexnovaspeakeroffice, garage' }
       },
       required: ['text']
     }
@@ -401,7 +401,7 @@ async function executeTool(name, input) {
   if (name === 'echo_speak_all') {
     var { VoiceMonkey: VM } = await import('./outputs/voicemonkey.js');
     var vmAll = new VM(config);
-    var devices = ['vertexnovaspeaker', 'bureau-serge', 'garage'];
+    var devices = ['vertexnovaspeaker', 'vertexnovaspeakeroffice', 'garage'];
     var results = await vmAll.speakAll(input.text, devices);
     var successCount = results.filter(function(r) { return r; }).length;
     return 'Annonce envoyée sur ' + successCount + '/' + devices.length + ' appareils Echo';

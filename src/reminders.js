@@ -66,7 +66,7 @@ function getBestChannel(hour) {
   }
   // Workday (9 AM – 5 PM): Echo bureau (office)
   if (hour >= 9 && hour < 17) {
-    return { channel: 'echo', device: 'bureau-serge', room: null };
+    return { channel: 'echo', device: 'vertexnovaspeakeroffice', room: null };
   }
   // Evening (5-7 PM): Echo Show kitchen
   if (hour >= 17 && hour < 19) {

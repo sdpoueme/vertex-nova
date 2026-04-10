@@ -11,7 +11,7 @@ routing:
   workday:
     hours: [9, 10, 11, 12, 13, 14, 15, 16]
     channel: echo
-    device: bureau-serge
+    device: vertexnovaspeakeroffice
   evening:
     hours: [17, 18]
     channel: echo

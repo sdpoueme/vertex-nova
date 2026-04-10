@@ -183,7 +183,7 @@ function ModelsPanel({ api }) {
 
   const echoOptions = [
     { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
-    { value: 'bureau-serge', label: 'Bureau Serge' },
+    { value: 'vertexnovaspeakeroffice', label: 'Bureau Serge' },
     { value: 'garage', label: 'Garage' },
   ];
   const currentEcho = models.voice_monkey_default_device || '';
