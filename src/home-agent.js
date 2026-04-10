@@ -379,13 +379,12 @@ async function main() {
 
   // Startup notification
   setTimeout(function() {
-    sendTelegram('🟢 Vertex Nova en ligne — ' + localTimestamp());
+    sendTelegram('🟢 Vertex Nova en ligne');
   }, 5000);
 
   // macOS sleep/wake detection
   if (process.platform === 'darwin') {
     var { execFile: execSleep } = await import('node:child_process');
-    // Monitor power events via pmset log
     var lastSleepCheck = Date.now();
     setInterval(function() {
       execSleep('pmset', ['-g', 'log'], { timeout: 5000, maxBuffer: 512 * 1024 }, function(err, stdout) {
@@ -393,7 +392,6 @@ async function main() {
         var lines = stdout.split('\n');
         for (var i = lines.length - 1; i >= 0; i--) {
           var line = lines[i];
-          // Only check recent entries
           if (!line.includes('Sleep') && !line.includes('Wake')) continue;
           var tsMatch = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
           if (!tsMatch) continue;
@@ -402,13 +400,13 @@ async function main() {
 
           if (line.includes('Entering Sleep') || line.includes('System Sleep')) {
             log.info('System entering sleep');
-            sendTelegram('😴 Vertex Nova passe en veille — ' + localTimestamp());
+            sendTelegram('😴 Vertex Nova en veille');
             lastSleepCheck = ts;
             return;
           }
           if (line.includes('Wake from') || line.includes('DarkWake')) {
             log.info('System waking up');
-            sendTelegram('🟢 Vertex Nova de retour — ' + localTimestamp());
+            sendTelegram('🟢 Vertex Nova de retour');
             lastSleepCheck = ts;
             return;
           }
@@ -423,16 +421,23 @@ async function main() {
   var dashboardPort = Number(process.env.DASHBOARD_PORT) || 3080;
   startDashboard(config, dashboardPort);
 
-  function shutdown(signal) {
+  var isShuttingDown = false;
+  async function shutdown(signal) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
     log.info(signal + ' received, shutting down...');
-    // Notify before shutting down (best effort, don't await)
-    sendTelegram('🔴 Vertex Nova hors ligne — ' + signal + ' — ' + localTimestamp()).catch(function() {});
-    setTimeout(function() {
-      if (ttsServer) ttsServer.close();
-      if (telegramChannel) telegramChannel.stop();
-      if (whatsappChannel) whatsappChannel.stop();
-      process.exit(0);
-    }, 2000); // Give 2s for the Telegram message to send
+    // Send shutdown notification and actually wait for it
+    try {
+      if (telegramChannel) {
+        await telegramChannel.bot.telegram.sendMessage(OWNER_CHAT_ID, '🔴 Vertex Nova hors ligne');
+      }
+    } catch {}
+    // Small delay to ensure message is flushed
+    await new Promise(function(r) { setTimeout(r, 500); });
+    if (ttsServer) ttsServer.close();
+    if (telegramChannel) telegramChannel.stop();
+    if (whatsappChannel) whatsappChannel.stop();
+    process.exit(0);
   }
 
   process.on('SIGINT', function() { shutdown('SIGINT'); });
