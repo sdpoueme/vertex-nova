@@ -377,9 +377,16 @@ async function main() {
     config.whatsappEnabled ? 'WhatsApp' : null,
   ].filter(Boolean).join(', '));
 
-  // Startup notification
-  setTimeout(function() {
-    sendTelegram('🟢 Vertex Nova en ligne');
+  // Startup notification — check if recovering from a previous shutdown
+  setTimeout(async function() {
+    var { existsSync: seExists, unlinkSync: seUnlink } = await import('node:fs');
+    var shutdownMarker = join(config.projectDir, '.sessions', 'was-shutdown');
+    if (seExists(shutdownMarker)) {
+      await sendTelegram('🟢 Vertex Nova de retour en ligne');
+      try { seUnlink(shutdownMarker); } catch {}
+    } else {
+      await sendTelegram('🟢 Vertex Nova en ligne');
+    }
   }, 5000);
 
   // macOS sleep/wake detection
@@ -422,18 +429,13 @@ async function main() {
   startDashboard(config, dashboardPort);
 
   var isShuttingDown = false;
-  async function shutdown(signal) {
+  var { writeFileSync: shutdownWrite } = await import('node:fs');
+  function shutdown(signal) {
     if (isShuttingDown) return;
     isShuttingDown = true;
     log.info(signal + ' received, shutting down...');
-    // Send shutdown notification and actually wait for it
-    try {
-      if (telegramChannel) {
-        await telegramChannel.bot.telegram.sendMessage(OWNER_CHAT_ID, '🔴 Vertex Nova hors ligne');
-      }
-    } catch {}
-    // Small delay to ensure message is flushed
-    await new Promise(function(r) { setTimeout(r, 500); });
+    // Write marker file so next startup knows we were shut down (instant, no network)
+    try { shutdownWrite(join(config.projectDir, '.sessions', 'was-shutdown'), signal); } catch {}
     if (ttsServer) ttsServer.close();
     if (telegramChannel) telegramChannel.stop();
     if (whatsappChannel) whatsappChannel.stop();
