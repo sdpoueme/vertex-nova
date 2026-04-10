@@ -247,6 +247,32 @@ async function main() {
 
   // Proactive scheduler
   var { startProactive } = await import('./proactive.js');
+
+  // macOS Notification Center monitor (device alerts from iPhone Mirroring)
+  if (process.platform === 'darwin') {
+    var { startNotificationMonitor } = await import('./notification-monitor.js');
+    startNotificationMonitor(async function(alert) {
+      try {
+        var sessionId = getSessionId('notif-monitor');
+        var prompt = '[Notification appareil ' + alert.device + '] ' + alert.text +
+          '\n\nAnalyse cette notification d\'appareil. Si c\'est important ou inhabituel, résume en français. Si c\'est routine (ex: porte de garage fermée normalement), réponds "SKIP".';
+        var response = await chat(prompt, sessionId);
+
+        if (response.trim().toUpperCase() === 'SKIP' || response.includes('SKIP')) return;
+        if (response.includes('difficultés techniques')) return;
+
+        var DEVICE_ICONS = { 'honeywell': '🌡️', 'myq': '🚗', 'telus': '🔒', 'lg-thinq': '👕', 'bosch': '🧊', 'ring': '🔔', 'nest': '🏠' };
+        var icon = DEVICE_ICONS[alert.device] || '📱';
+
+        if (telegramChannel) {
+          await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
+        }
+      } catch (err) {
+        log.error('Notification processing error: ' + err.message);
+      }
+    }, 30000);
+  }
+
   startProactive(async function(response, route, action) {
     var ICONS = {'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'};
     var icon = ICONS[action.name] || '🏠';
