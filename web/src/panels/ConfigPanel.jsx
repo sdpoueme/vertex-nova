@@ -162,10 +162,11 @@ function ModelsPanel({ api }) {
   }
 
   const claudeOptions = [
-    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (recommandé)' },
-    { value: 'claude-haiku-4-20250514', label: 'Claude Haiku 4 (rapide, économique)' },
-    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-    { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (ancien)' },
+    { value: 'claude-opus-4-6', label: 'Claude Opus 4.6 (le plus capable)' },
+    { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 (recommandé — équilibré)' },
+    { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (rapide, économique)' },
+    { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (ancien)' },
+    { value: 'claude-opus-4-20250514', label: 'Claude Opus 4 (ancien)' },
   ];
   const currentClaude = models.claude_model || 'claude-sonnet-4-20250514';
   if (!claudeOptions.find(o => o.value === currentClaude)) {

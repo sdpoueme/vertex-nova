@@ -19,7 +19,7 @@ var log = logger('ai');
 
 var CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 var CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY;
-var CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514';
+var CLAUDE_MODEL = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
 var OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 var OLLAMA_FAST_MODEL = process.env.OLLAMA_FAST_MODEL || 'mistral';
