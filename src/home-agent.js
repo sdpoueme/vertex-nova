@@ -14,6 +14,31 @@ import { logger } from './log.js';
 var log = logger('home-agent');
 var telegramChannel = null;
 var whatsappChannel = null;
+var OWNER_CHAT_ID = 787677377;
+
+// Send a message to the owner on Telegram with Markdown support
+async function sendTelegram(text) {
+  if (!telegramChannel) return;
+  // Split long messages
+  var remaining = text;
+  while (remaining.length > 0) {
+    var chunk;
+    if (remaining.length <= 4000) { chunk = remaining; remaining = ''; }
+    else {
+      var splitAt = remaining.lastIndexOf('\n\n', 4000);
+      if (splitAt < 500) splitAt = remaining.lastIndexOf('\n', 4000);
+      if (splitAt < 500) splitAt = 4000;
+      chunk = remaining.slice(0, splitAt);
+      remaining = remaining.slice(splitAt).trimStart();
+    }
+    try {
+      await telegramChannel.bot.telegram.sendMessage(OWNER_CHAT_ID, chunk, { parse_mode: 'Markdown' });
+    } catch {
+      // Markdown failed (malformed), send as plain text
+      try { await telegramChannel.bot.telegram.sendMessage(OWNER_CHAT_ID, chunk); } catch {}
+    }
+  }
+}
 
 function localTimestamp() {
   var now = new Date();
@@ -200,11 +225,8 @@ async function main() {
         // Notify owner on Telegram if it's an anomaly
         if (response.toLowerCase().includes('anomal') || response.toLowerCase().includes('urgent') ||
             response.toLowerCase().includes('attention') || response.toLowerCase().includes('alerte')) {
-          if (telegramChannel) {
-            // Send to Serge's Telegram
-            var { Telegraf } = await import('telegraf');
-            var ICONS = {'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'}; var icon = ICONS[action.name] || '🏠'; await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
-          }
+          var emailIcon = '📧';
+          await sendTelegram(emailIcon + ' ' + response);
         }
       } catch (err) {
         log.error('[email] Processing error: ' + err.message);
@@ -223,14 +245,13 @@ async function main() {
 
   startReminders(vaultPath, async function(text, route) {
     try {
-      if (route.channel === 'telegram' && telegramChannel) {
-        await telegramChannel.bot.telegram.sendMessage(787677377, text);
+      if (route.channel === 'telegram') {
+        await sendTelegram(text);
       } else if (route.channel === 'echo') {
         var { VoiceMonkey: VMRem } = await import('./outputs/voicemonkey.js');
         var vmRem = new VMRem(config);
         await vmRem.speak(text.slice(0, 500), route.device);
-        // Also send to Telegram as backup
-        if (telegramChannel) await telegramChannel.bot.telegram.sendMessage(787677377, text);
+        await sendTelegram(text);
       } else if (route.channel === 'sonos') {
         var { execFile: execRem } = await import('node:child_process');
         var { join: joinRem } = await import('node:path');
@@ -238,7 +259,7 @@ async function main() {
         execRem('node', [cliRem, 'speak', text.slice(0, 500), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
           if (err) log.error('Reminder Sonos failed:', err.message);
         });
-        if (telegramChannel) await telegramChannel.bot.telegram.sendMessage(787677377, text);
+        await sendTelegram(text);
       }
     } catch (err) {
       log.error('Reminder notification failed:', err.message);
@@ -263,10 +284,7 @@ async function main() {
 
         var DEVICE_ICONS = { 'honeywell': '🌡️', 'myq': '🚗', 'telus': '🔒', 'lg-thinq': '👕', 'bosch': '🧊', 'ring': '🔔', 'nest': '🏠' };
         var icon = DEVICE_ICONS[alert.device] || '📱';
-
-        if (telegramChannel) {
-          await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
-        }
+        await sendTelegram(icon + ' ' + response);
       } catch (err) {
         log.error('Notification processing error: ' + err.message);
       }
@@ -302,8 +320,8 @@ async function main() {
     }
 
     try {
-      if (route.channel === 'telegram' && telegramChannel) {
-        await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
+      if (route.channel === 'telegram') {
+        await sendTelegram(icon + ' ' + response);
       } else if (route.channel === 'echo') {
         var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
         var vm = new VoiceMonkey(config);
@@ -318,8 +336,8 @@ async function main() {
       }
 
       // Always send full text to Telegram as backup when using voice devices
-      if (route.channel !== 'telegram' && telegramChannel) {
-        await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
+      if (route.channel !== 'telegram') {
+        await sendTelegram(icon + ' ' + response);
       }
     } catch (err) {
       log.error('Proactive notification failed:', err.message);
