@@ -82,23 +82,99 @@ function extractHtml(html) {
 function extractJson(jsonStr, fileName) {
   try {
     var data = JSON.parse(jsonStr);
-    // Handle family-data-dynamic.json format
-    if (data.persons) {
-      return data.persons.map(function(p) {
-        var parts = [p.name || ''];
-        if (p.dates) parts.push('(' + p.dates + ')');
-        if (p.role) parts.push('— ' + p.role);
-        if (p.birthPlace) parts.push('Né à ' + p.birthPlace);
-        if (p.residence) parts.push('Résidence: ' + p.residence);
-        if (p.titles) parts.push('Titres: ' + p.titles.join(', '));
-        if (p.notes) parts.push(p.notes);
-        if (p.education) parts.push('Éducation: ' + p.education.join('; '));
-        if (p.career) parts.push('Carrière: ' + p.career.map(function(c) { return c.title + ' (' + c.period + ')'; }).join('; '));
-        return parts.join('. ');
-      }).join('\n\n');
+    if (!data.persons) {
+      return JSON.stringify(data, null, 2).slice(0, 50000);
     }
-    // Generic: stringify readable
-    return JSON.stringify(data, null, 2).slice(0, 50000);
+
+    // Build a lookup map for resolving relationships
+    var byId = {};
+    for (var i = 0; i < data.persons.length; i++) {
+      byId[data.persons[i].id] = data.persons[i];
+    }
+
+    // Build rich per-person descriptions with relationships
+    var entries = [];
+    for (var j = 0; j < data.persons.length; j++) {
+      var p = data.persons[j];
+      var lines = [];
+      lines.push('PERSONNE: ' + (p.name || 'Inconnu'));
+      if (p.ndap) lines.push('Nom traditionnel: ' + p.ndap);
+      if (p.born) lines.push('Né en ' + p.born);
+      if (p.dates) lines.push('Période: ' + p.dates);
+      if (p.gender) lines.push('Genre: ' + (p.gender === 'M' ? 'Homme' : 'Femme'));
+      if (p.role) lines.push('Rôle: ' + p.role);
+      if (p.birthPlace) lines.push('Lieu de naissance: ' + p.birthPlace);
+      if (p.residence) lines.push('Résidence: ' + p.residence);
+      if (p.occupation) lines.push('Profession: ' + p.occupation);
+
+      // Parent relationship
+      if (p.parentId && byId[p.parentId]) {
+        lines.push('Parent/Père: ' + byId[p.parentId].name);
+      }
+
+      // Spouse relationships
+      if (p.spouseIds && p.spouseIds.length > 0) {
+        var spouseNames = p.spouseIds.map(function(sid) { return byId[sid] ? byId[sid].name : sid; });
+        lines.push('Conjoint(e)(s): ' + spouseNames.join(', '));
+      }
+
+      // Children
+      var children = data.persons.filter(function(c) { return c.parentId === p.id; });
+      if (children.length > 0) {
+        lines.push('Enfants (' + children.length + '): ' + children.map(function(c) { return c.name; }).join(', '));
+      }
+
+      // Titles
+      if (p.titles && p.titles.length > 0) {
+        lines.push('Titres: ' + p.titles.join('; '));
+      }
+
+      // Career
+      if (p.career && p.career.length > 0) {
+        lines.push('Carrière:');
+        for (var ci = 0; ci < p.career.length; ci++) {
+          var c = p.career[ci];
+          lines.push('  - ' + (c.title || c.role || '') + (c.period ? ' (' + c.period + ')' : '') + (c.institution ? ' à ' + c.institution : ''));
+        }
+      }
+
+      // Education
+      if (p.education && p.education.length > 0) {
+        lines.push('Éducation: ' + p.education.join('; '));
+      }
+
+      // Notes
+      if (p.notes) lines.push('Notes: ' + p.notes);
+
+      entries.push(lines.join('\n'));
+    }
+
+    // Also build a family tree summary
+    var roots = data.persons.filter(function(p) { return !p.parentId; });
+    var treeSummary = 'ARBRE GÉNÉALOGIQUE — Résumé\n';
+    treeSummary += 'Nombre total de personnes: ' + data.persons.length + '\n';
+    treeSummary += 'Fondateurs/Racines: ' + roots.map(function(r) { return r.name; }).join(', ') + '\n\n';
+
+    // Build generation chains for key lineages
+    function getDescendants(id, depth) {
+      if (depth > 6) return '';
+      var kids = data.persons.filter(function(p) { return p.parentId === id; });
+      if (kids.length === 0) return '';
+      var indent = '  '.repeat(depth);
+      return kids.map(function(k) {
+        return indent + '→ ' + k.name + (k.dates ? ' (' + k.dates + ')' : k.born ? ' (né ' + k.born + ')' : '') +
+          (k.role ? ' — ' + k.role : '') + '\n' + getDescendants(k.id, depth + 1);
+      }).join('');
+    }
+
+    for (var ri = 0; ri < roots.length; ri++) {
+      treeSummary += roots[ri].name + (roots[ri].dates ? ' (' + roots[ri].dates + ')' : '') + '\n';
+      treeSummary += getDescendants(roots[ri].id, 1);
+      treeSummary += '\n';
+    }
+
+    // Return tree summary + all person entries (separated by markers for chunking)
+    return treeSummary + '\n---PERSON_SEPARATOR---\n' + entries.join('\n---PERSON_SEPARATOR---\n');
   } catch {
     return jsonStr.slice(0, 50000);
   }
@@ -115,13 +191,25 @@ function extractFile(filePath) {
 
 // --- Chunking ---
 function chunkText(text, size, overlap) {
+  // If text has person separators (genealogy data), chunk by person
+  if (text.includes('---PERSON_SEPARATOR---')) {
+    var parts = text.split('---PERSON_SEPARATOR---');
+    var chunks = [];
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i].trim();
+      if (part.length > 20) chunks.push(part);
+    }
+    return chunks;
+  }
+
+  // Default: sliding window
   size = size || 500;
   overlap = overlap || 100;
   var chunks = [];
-  var i = 0;
-  while (i < text.length) {
-    chunks.push(text.slice(i, i + size));
-    i += size - overlap;
+  var idx = 0;
+  while (idx < text.length) {
+    chunks.push(text.slice(idx, idx + size));
+    idx += size - overlap;
   }
   return chunks;
 }
@@ -183,19 +271,37 @@ function indexKb(kb) {
 
 // --- Search ---
 export function searchKb(query, maxResults) {
-  maxResults = maxResults || 5;
+  maxResults = maxResults || 8;
   var queryTerms = tokenize(query);
-  if (queryTerms.length === 0) return [];
+  // Also keep original query words (with accents) for name matching
+  var queryWords = query.toLowerCase().split(/\s+/).filter(function(t) { return t.length > 1; });
+  if (queryTerms.length === 0 && queryWords.length === 0) return [];
 
   var scored = [];
   for (var entry of index) {
     var score = 0;
+    var textLower = entry.text.toLowerCase();
+
+    // Exact name/phrase matching (high weight)
+    for (var qw of queryWords) {
+      if (textLower.includes(qw)) score += 5;
+    }
+    // Full query phrase match (very high weight)
+    if (textLower.includes(query.toLowerCase())) score += 15;
+
+    // Term matching
     for (var qt of queryTerms) {
       for (var et of entry.terms) {
         if (et === qt) score += 3;
         else if (et.includes(qt) || qt.includes(et)) score += 1;
       }
     }
+
+    // Boost person entries (they have "PERSONNE:" marker)
+    if (score > 0 && entry.text.includes('PERSONNE:')) score += 2;
+    // Boost tree summary
+    if (score > 0 && entry.text.includes('ARBRE GÉNÉALOGIQUE')) score += 3;
+
     if (score > 0) scored.push({ score: score, entry: entry });
   }
 

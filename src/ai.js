@@ -625,10 +625,10 @@ async function executeTool(name, input) {
   // Knowledge base tools
   if (name === 'kb_search') {
     var { searchKb } = await import('./knowledgebase.js');
-    var results = searchKb(input.query, 5);
+    var results = searchKb(input.query, 8);
     if (results.length === 0) return 'Aucun résultat dans les bases de connaissances pour: ' + input.query;
     return results.map(function(r, i) {
-      return (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + r.score + ')\n' + r.text.slice(0, 400);
+      return (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + r.score + ')\n' + r.text.slice(0, 800);
     }).join('\n\n---\n\n');
   }
 
