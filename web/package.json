@@ -12,7 +12,6 @@
   "dependencies": {
     "@cloudscape-design/components": "^3.0.1266",
     "@cloudscape-design/global-styles": "^1.0.56",
-    "lucide-react": "^1.8.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
   },

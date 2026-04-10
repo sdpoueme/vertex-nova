@@ -8,9 +8,7 @@ import Button from '@cloudscape-design/components/button';
 import Box from '@cloudscape-design/components/box';
 import Spinner from '@cloudscape-design/components/spinner';
 import StatusIndicator from '@cloudscape-design/components/status-indicator';
-import { Camera, Mic, Square, Send, X, MessageCircle, Smartphone, Globe, Volume2, Mail, ArrowRight, ArrowLeft } from 'lucide-react';
-
-const CHANNEL_ICONS = { telegram: MessageCircle, whatsapp: Smartphone, web: Globe, 'alexa-ifttt': Volume2, 'email-monitor': Mail };
+import Icon from '@cloudscape-design/components/icon';
 
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -154,23 +152,17 @@ export default function ChatPanel({ api }) {
             <SpaceBetween direction="horizontal" size="xs" alignItems="center">
               <img src={image.preview} alt="" style={{ height: '36px', borderRadius: '4px' }} />
               <Box variant="small">{image.name}</Box>
-              <button onClick={() => setImage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}><X size={16} color="#8b949e" /></button>
+              <button onClick={() => setImage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}><Icon name="close" /></button>
             </SpaceBetween>
           </Container>
         )}
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
-          <button onClick={() => fileRef.current?.click()} aria-label="Image" style={{ background: 'none', border: '1px solid #414d5c', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-            <Camera size={18} color="#8b949e" />
-          </button>
+          <Button variant="icon" iconName="upload" onClick={() => fileRef.current?.click()} ariaLabel="Image" />
           {recording
-            ? <button onClick={stopRecording} aria-label="Stop" style={{ background: '#d13212', border: 'none', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                <Square size={18} color="white" />
-              </button>
-            : <button onClick={startRecording} aria-label="Vocal" style={{ background: 'none', border: '1px solid #414d5c', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                <Mic size={18} color="#8b949e" />
-              </button>
+            ? <Button variant="icon" iconName="stop-circle" onClick={stopRecording} ariaLabel="Stop" />
+            : <Button variant="icon" iconName="microphone" onClick={startRecording} ariaLabel="Vocal" />
           }
           <div style={{ flex: 1 }}>
             <Input
@@ -181,10 +173,7 @@ export default function ChatPanel({ api }) {
               disabled={recording}
             />
           </div>
-          <button onClick={send} disabled={loading || recording} aria-label="Envoyer" style={{ background: '#0972d3', border: 'none', borderRadius: '8px', padding: '6px 12px', cursor: loading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: 'white', fontSize: '14px', opacity: (loading || recording) ? 0.5 : 1 }}>
-            {loading ? <Spinner size="normal" /> : <Send size={18} />}
-            <span>Envoyer</span>
-          </button>
+          <Button variant="primary" iconName="send" onClick={send} loading={loading} disabled={recording}>Envoyer</Button>
         </div>
       </SpaceBetween>
     </Container>
@@ -202,14 +191,14 @@ export default function ChatPanel({ api }) {
                 <SpaceBetween size="xxs">
                   <SpaceBetween direction="horizontal" size="xs">
                     <StatusIndicator type={h.direction === 'in' ? 'info' : 'success'}>
-                      {(() => { const Icon = CHANNEL_ICONS[h.channel]; return Icon ? <Icon size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> : null; })()}
+                      <Icon name={h.channel === 'telegram' ? 'contact' : h.channel === 'whatsapp' ? 'call' : h.channel === 'web' ? 'globe' : h.channel === 'email-monitor' ? 'envelope' : 'notification'} />
                       {' ' + h.channel}
                     </StatusIndicator>
-                    {h.hasImage && <StatusIndicator type="info"><Camera size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /></StatusIndicator>}
+                    {h.hasImage && <StatusIndicator type="info"><Icon name="file" /></StatusIndicator>}
                     <Box variant="small" color="text-body-secondary">{timeAgo(h.ts)}</Box>
                   </SpaceBetween>
                   <Box variant="small" color={h.direction === 'in' ? 'text-body-secondary' : 'text-status-success'}>
-                    {h.direction === 'in' ? <ArrowRight size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> : <ArrowLeft size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />}
+                    <Icon name={h.direction === 'in' ? 'arrow-right' : 'arrow-left'} />
                     {' '}{h.text}
                   </Box>
                 </SpaceBetween>
