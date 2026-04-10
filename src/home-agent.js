@@ -70,6 +70,24 @@ async function handleMessage(msg) {
     logInteraction(channel, 'in', text, !!msg.image);
   } catch {}
 
+  // Thinking indicator — show what the agent is doing
+  var thinkingMsg = null;
+  if (channel === 'telegram' && telegramChannel) {
+    var thinkingText = '🧠 ';
+    if (msg.image) thinkingText += 'Analyse de l\'image...';
+    else if (text.includes('[Voice message]')) thinkingText += 'Traitement du message vocal...';
+    else if (/nouvelles|news|actualit|briefing/i.test(text)) thinkingText += 'Recherche des actualités...';
+    else if (/météo|weather|température/i.test(text)) thinkingText += 'Consultation de la météo...';
+    else if (/rappel|remind|rappelle/i.test(text)) thinkingText += 'Création du rappel...';
+    else if (/sonos|parle|speak|echo/i.test(text)) thinkingText += 'Préparation de l\'annonce...';
+    else if (/famille|poueme|généalogie|genealog/i.test(text)) thinkingText += 'Recherche dans la base familiale...';
+    else if (/cherche|search|trouve|find/i.test(text)) thinkingText += 'Recherche en cours...';
+    else thinkingText += 'Réflexion...';
+    try {
+      thinkingMsg = await telegramChannel.bot.telegram.sendMessage(replyTo.chat?.id || OWNER_CHAT_ID, thinkingText);
+    } catch {}
+  }
+
   try {
     var sessionId = getSessionId(userId);
 
@@ -87,6 +105,11 @@ async function handleMessage(msg) {
     var elapsed = ((Date.now() - start) / 1000).toFixed(1);
     log.info('Response in ' + elapsed + 's (' + response.length + ' chars)');
 
+    // Delete thinking indicator
+    if (thinkingMsg && channel === 'telegram') {
+      try { await telegramChannel.bot.telegram.deleteMessage(thinkingMsg.chat.id, thinkingMsg.message_id); } catch {}
+    }
+
     // Log outgoing interaction
     try {
       var { logInteraction: logOut } = await import('./web/server.js');
@@ -100,6 +123,10 @@ async function handleMessage(msg) {
       await whatsappChannel.sendText(replyTo, response);
     }
   } catch (err) {
+    // Delete thinking indicator on error too
+    if (thinkingMsg && channel === 'telegram') {
+      try { await telegramChannel.bot.telegram.deleteMessage(thinkingMsg.chat.id, thinkingMsg.message_id); } catch {}
+    }
     log.error('[' + channel + '] Error: ' + err.message);
     var errMsg = 'Erreur: ' + err.message;
     if (channel === 'telegram' && telegramChannel) {
@@ -350,6 +377,47 @@ async function main() {
     config.whatsappEnabled ? 'WhatsApp' : null,
   ].filter(Boolean).join(', '));
 
+  // Startup notification
+  setTimeout(function() {
+    sendTelegram('🟢 Vertex Nova en ligne — ' + localTimestamp());
+  }, 5000);
+
+  // macOS sleep/wake detection
+  if (process.platform === 'darwin') {
+    var { execFile: execSleep } = await import('node:child_process');
+    // Monitor power events via pmset log
+    var lastSleepCheck = Date.now();
+    setInterval(function() {
+      execSleep('pmset', ['-g', 'log'], { timeout: 5000, maxBuffer: 512 * 1024 }, function(err, stdout) {
+        if (err) return;
+        var lines = stdout.split('\n');
+        for (var i = lines.length - 1; i >= 0; i--) {
+          var line = lines[i];
+          // Only check recent entries
+          if (!line.includes('Sleep') && !line.includes('Wake')) continue;
+          var tsMatch = line.match(/(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+          if (!tsMatch) continue;
+          var ts = new Date(tsMatch[1]).getTime();
+          if (ts <= lastSleepCheck) break;
+
+          if (line.includes('Entering Sleep') || line.includes('System Sleep')) {
+            log.info('System entering sleep');
+            sendTelegram('😴 Vertex Nova passe en veille — ' + localTimestamp());
+            lastSleepCheck = ts;
+            return;
+          }
+          if (line.includes('Wake from') || line.includes('DarkWake')) {
+            log.info('System waking up');
+            sendTelegram('🟢 Vertex Nova de retour — ' + localTimestamp());
+            lastSleepCheck = ts;
+            return;
+          }
+        }
+        lastSleepCheck = Date.now();
+      });
+    }, 30000);
+  }
+
   // Web dashboard
   var { startDashboard } = await import('./web/server.js');
   var dashboardPort = Number(process.env.DASHBOARD_PORT) || 3080;
@@ -357,10 +425,14 @@ async function main() {
 
   function shutdown(signal) {
     log.info(signal + ' received, shutting down...');
-    if (ttsServer) ttsServer.close();
-    if (telegramChannel) telegramChannel.stop();
-    if (whatsappChannel) whatsappChannel.stop();
-    process.exit(0);
+    // Notify before shutting down (best effort, don't await)
+    sendTelegram('🔴 Vertex Nova hors ligne — ' + signal + ' — ' + localTimestamp()).catch(function() {});
+    setTimeout(function() {
+      if (ttsServer) ttsServer.close();
+      if (telegramChannel) telegramChannel.stop();
+      if (whatsappChannel) whatsappChannel.stop();
+      process.exit(0);
+    }, 2000); // Give 2s for the Telegram message to send
   }
 
   process.on('SIGINT', function() { shutdown('SIGINT'); });
