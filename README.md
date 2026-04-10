@@ -22,6 +22,7 @@ You ──→ Telegram / WhatsApp / Web Dashboard
 - Learns your preferences across sessions
 - Proactively sends news, weather alerts, and reminders
 - Indexes family knowledge bases for genealogy/history questions
+- Monitors device notifications from your iPhone (Honeywell, MyQ, Telus, LG, Bosch)
 - Works fully offline when Claude API is unavailable
 
 ## Quick Start
@@ -37,7 +38,7 @@ npm install
 npm start
 ```
 
-The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whisper-cpp) and walks you through configuration.
+The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whisper-cpp) and walks you through configuration. See [docs/INSTALL.md](docs/INSTALL.md) for the full guide.
 
 ## Features
 
@@ -45,17 +46,18 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 |---------|-------------|
 | Telegram | Text, voice (whisper.cpp), images (vision) |
 | WhatsApp | Text and voice (configurable) |
-| Web Dashboard | Chat, config editor, logs, knowledge bases — port 3080 |
-| Sonos TTS | Official Cloud API + local Piper (offline FR/EN) |
+| Web Dashboard | Multimodal chat, config editor, logs, knowledge bases — port 3080 |
+| Sonos TTS | Official Cloud API + local Piper (offline FR/EN), auto token refresh |
 | Echo Devices | Voice Monkey API (speak on Echo Show, Echo Dot) |
 | News | Google News (Canada + Cameroun + Business Insider) |
 | Web Search | DuckDuckGo + page content fetch |
 | Memory | Persistent cross-session learning in vault |
 | Reminders | Natural language, smart delivery by time of day |
-| Proactive | Scheduled news, weather, maintenance, movies |
+| Proactive | Scheduled news, weather, maintenance, movies — persistent schedule |
 | Email Monitor | Gmail polling for device alerts |
-| Knowledge Bases | Git-synced repos indexed for RAG search |
-| Night Mode | Voice devices blocked 10 PM – 7 AM |
+| Notification Monitor | macOS Notification Center polling via iPhone Mirroring |
+| Knowledge Bases | Git-synced repos with relationship-aware RAG for genealogy |
+| Night Mode | Voice devices blocked 10 PM – 7 AM, Telegram only |
 | Conversation | Sliding window + auto-summarization |
 
 ## Architecture
@@ -66,7 +68,7 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 |-------|------|------|-----------|
 | Qwen3 8B | Default — chat, tools, search | Free (local) | 80%+ of requests |
 | Gemma 4 E2B | Vision — image analysis | Free (local) | When images are sent |
-| Claude Sonnet | Escalation — complex reasoning | Pay per use | Qwen3 failures, vision fallback |
+| Claude Sonnet | Escalation — complex reasoning | Pay per use | Local model failures, vision fallback |
 
 ### Tools (21 total)
 
@@ -91,7 +93,7 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 | `memory_view` | View learned patterns |
 | `memory_write` | Save new learning |
 | `memory_append` | Add to existing memory |
-| `kb_search` | Search family knowledge bases |
+| `kb_search` | Search family knowledge bases (RAG) |
 | `kb_list` | List configured knowledge bases |
 
 ### Notification Routing
@@ -107,18 +109,33 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 
 ## Web Dashboard
 
-Access from any device on your network: `http://<your-ip>:3080`
+Starts automatically with the agent on port 3080. Access from any device on your network: `http://<your-ip>:3080`
 
 | Panel | Features |
 |-------|----------|
-| Chat | Text, image upload, voice recording, recent interactions from all channels |
-| Configuration | Model switching, channel toggles, routing rules, proactive actions — forms + synced YAML |
-| Knowledge Bases | View, sync, and configure family knowledge base repos |
-| Logs | Live tail of the last 100 log lines |
+| Chat | Multimodal — text, image upload, voice recording. Shows recent interactions from all channels (Telegram, WhatsApp, web). |
+| Configuration | 4 tabs: Models & Devices (switch Ollama/Claude models, Sonos/Echo defaults, channel toggles), Routing (form + synced YAML), Proactive Actions (form + synced YAML), Agent Prompt editor. All changes persist to .env and config files. |
+| Knowledge Bases | View sync status, chunk count, trigger manual sync, edit YAML config. |
+| Logs | Live tail of the last 100 log lines. |
+
+## Device Notification Monitor
+
+On macOS, the agent reads your Notification Center every 30 seconds via the accessibility API. When paired with iPhone Mirroring (macOS Sequoia+), all iPhone notifications are forwarded to the Mac — including alerts from smart home devices.
+
+Supported devices: Honeywell/Resideo, MyQ/Chamberlain, Telus SmartHome, LG ThinQ, Bosch Home Connect, Ring, Nest.
+
+Setup:
+1. Enable iPhone Mirroring (System Settings → Desktop & Dock)
+2. Enable "Allow notifications from iPhone" (System Settings → Notifications)
+3. Grant Accessibility access to `/opt/homebrew/bin/node` (System Settings → Privacy & Security → Accessibility)
+
+The agent classifies each notification, sends it to the AI for analysis, and alerts you on Telegram only if it's important or unusual. Routine events (garage closed normally) are silently filtered.
 
 ## Knowledge Bases (RAG)
 
-Family knowledge bases are git repos synced into `vault/kb/` and indexed for search. Configure in `config/knowledgebases.yaml`:
+Family knowledge bases are git repos synced into `vault/kb/` and indexed for retrieval-augmented generation. The indexer understands structured genealogy data — it resolves parent/child/spouse relationships by name, builds per-person chunks with full context, and generates a family tree summary.
+
+Configure in `config/knowledgebases.yaml`:
 
 ```yaml
 knowledgebases:
@@ -131,7 +148,7 @@ knowledgebases:
     enabled: true
 ```
 
-Supports HTML (strips tags), JSON (understands genealogy structures), and Markdown. Content is chunked and indexed in memory for fast retrieval.
+Supports HTML (strips tags), JSON (genealogy-aware extraction with relationship resolution), and Markdown. Repos sync on startup and on schedule. Manageable from the web dashboard.
 
 ## Proactive Actions
 
@@ -143,6 +160,8 @@ Supports HTML (strips tags), JSON (understands genealogy structures), and Markdo
 | 📬 Email Digest | 2 hours | Device alert summary |
 | 🎬 Friday Movies | Fridays 5-7 PM | Streaming recommendations |
 | 🎯 Weekend Activities | Saturdays 8-9 AM | Local family activities |
+
+Schedule state persists across restarts — no notification flood after reboot. 2-minute grace period on startup with staggered checks. Error messages and "SKIP" responses are never forwarded to users. Voice output is cleaned of markdown formatting.
 
 Configure in `config/proactive.yaml` or via the web dashboard.
 
@@ -203,31 +222,21 @@ ollama pull gemma4:e2b    # Optional: for image analysis
 
 # 4. Download Piper TTS voices
 mkdir -p ~/.piper/models
-# English
 curl -L -o ~/.piper/models/en_US-amy-medium.onnx \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx
-curl -L -o ~/.piper/models/en_US-amy-medium.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json
-# French
 curl -L -o ~/.piper/models/fr_FR-siwis-medium.onnx \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx
-curl -L -o ~/.piper/models/fr_FR-siwis-medium.onnx.json \
-  https://huggingface.co/rhasspy/piper-voices/resolve/main/fr/fr_FR/siwis/medium/fr_FR-siwis-medium.onnx.json
 
 # 5. Configure
-cp .env.home.example .env
-# Edit .env with your Telegram bot token, Sonos credentials, etc.
+cp .env.home.example .env   # Edit with your credentials
+cp agent.example.md agent.md # Edit with your household info
 
-# 6. Create your agent persona
-cp agent.example.md agent.md
-# Edit agent.md with your household info
-
-# 7. (Optional) Sonos OAuth setup
+# 6. (Optional) Sonos OAuth setup
 node scripts/sonos-auth.js
 
-# 8. Start
+# 7. Start
 npm start
-# Dashboard available at http://localhost:3080
+# Dashboard at http://localhost:3080
 ```
 
 ### Auto-start on macOS
@@ -240,24 +249,7 @@ launchctl load ~/Library/LaunchAgents/com.vertexnova.agent.plist
 ### Auto-start on Linux (systemd)
 
 ```bash
-sudo tee /etc/systemd/system/vertex-nova.service << EOF
-[Unit]
-Description=Vertex Nova Home Assistant
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$(pwd)
-ExecStart=/usr/bin/node src/home-agent.js
-Restart=always
-RestartSec=10
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
+sudo cp scripts/vertex-nova.service /etc/systemd/system/
 sudo systemctl enable vertex-nova
 sudo systemctl start vertex-nova
 ```
@@ -266,15 +258,15 @@ sudo systemctl start vertex-nova
 
 | File | Purpose | Editable from Dashboard |
 |------|---------|------------------------|
-| `.env` | Credentials, API keys, toggles | Partially (models, channels) |
+| `.env` | Credentials, API keys, toggles | Yes (models, channels, devices) |
 | `agent.md` | Agent persona and rules | Yes |
-| `config/routing.yaml` | Model routing rules | Yes |
-| `config/proactive.yaml` | Scheduled actions | Yes |
-| `config/knowledgebases.yaml` | Family knowledge bases | Yes |
+| `config/routing.yaml` | Model routing rules | Yes (form + YAML) |
+| `config/proactive.yaml` | Scheduled actions and notification routing | Yes (form + YAML) |
+| `config/knowledgebases.yaml` | Family knowledge base repos | Yes |
 
 ## Roadmap
 
 - Alexa+ Multi-Agent SDK — voice input from Echo devices
 - Honeywell thermostat API — direct temperature control
+- Home Assistant bridge — bidirectional device control
 - Docker deployment
-- Home Assistant integration
