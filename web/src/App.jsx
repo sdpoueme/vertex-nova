@@ -8,11 +8,12 @@ import ConfigPanel from './panels/ConfigPanel';
 import LogsPanel from './panels/LogsPanel';
 import KnowledgeBasePanel from './panels/KnowledgeBasePanel';
 import DevicesPanel from './panels/DevicesPanel';
+import DashboardPanel from './panels/DashboardPanel';
 
 const API = '';
 
 export default function App() {
-  const [activePanel, setActivePanel] = useState('chat');
+  const [activePanel, setActivePanel] = useState('dashboard');
   const [status, setStatus] = useState({});
 
   useEffect(() => {
@@ -37,6 +38,7 @@ export default function App() {
             activeHref={'#/' + activePanel}
             header={{ text: 'Navigation', href: '#' }}
             items={[
+              { type: 'link', text: 'Accueil', href: '#/dashboard' },
               { type: 'link', text: 'Chat', href: '#/chat' },
               { type: 'link', text: 'Configuration', href: '#/config' },
               { type: 'link', text: 'Connaissances', href: '#/kb' },
@@ -53,12 +55,13 @@ export default function App() {
           />
         }
         content={
+          activePanel === 'dashboard' ? <DashboardPanel api={API} onNavigate={setActivePanel} /> :
           activePanel === 'chat' ? <ChatPanel api={API} /> :
           activePanel === 'config' ? <ConfigPanel api={API} /> :
           activePanel === 'kb' ? <KnowledgeBasePanel api={API} /> :
           activePanel === 'devices' ? <DevicesPanel api={API} /> :
           activePanel === 'logs' ? <LogsPanel api={API} /> :
-          <div>Statut: {JSON.stringify(status, null, 2)}</div>
+          <DashboardPanel api={API} onNavigate={setActivePanel} />
         }
         toolsHide
         navigationWidth={220}
