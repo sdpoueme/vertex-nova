@@ -308,16 +308,17 @@ async function main() {
     startNotificationMonitor(async function(alert) {
       try {
         var sessionId = getSessionId('notif-monitor');
-        var prompt = '[Notification appareil ' + alert.device + '] ' + alert.text +
-          '\n\nAnalyse cette notification d\'appareil. Si c\'est important ou inhabituel, résume en français. Si c\'est routine (ex: porte de garage fermée normalement), réponds "SKIP".';
+        var prompt = '[Notification de ' + alert.description + ']\n' +
+          'L\'application ' + alert.device + ' vient d\'envoyer une notification sur le téléphone.\n' +
+          'Basé sur le contexte (heure: ' + localTimestamp() + ', appareil: ' + alert.description + '), ' +
+          'que pourrait signifier cette notification? Donne une interprétation probable en 1-2 phrases en français.\n' +
+          'Si c\'est probablement routine (ex: rappel quotidien, statut normal), réponds "SKIP".';
         var response = await chat(prompt, sessionId);
 
         if (response.trim().toUpperCase() === 'SKIP' || response.includes('SKIP')) return;
         if (response.includes('difficultés techniques')) return;
 
-        var DEVICE_ICONS = { 'honeywell': '🌡️', 'myq': '🚗', 'telus': '🔒', 'lg-thinq': '👕', 'bosch': '🧊', 'ring': '🔔', 'nest': '🏠' };
-        var icon = DEVICE_ICONS[alert.device] || '📱';
-        await sendTelegram(icon + ' ' + response);
+        await sendTelegram(alert.icon + ' ' + response);
       } catch (err) {
         log.error('Notification processing error: ' + err.message);
       }
