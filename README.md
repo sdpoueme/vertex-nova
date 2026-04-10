@@ -113,21 +113,75 @@ Starts automatically with the agent on port 3080. Access from any device on your
 
 | Panel | Features |
 |-------|----------|
-| Chat | Multimodal — text, image upload, voice recording. Shows recent interactions from all channels (Telegram, WhatsApp, web). |
-| Configuration | 4 tabs: Models & Devices (switch Ollama/Claude models, Sonos/Echo defaults, channel toggles), Routing (form + synced YAML), Proactive Actions (form + synced YAML), Agent Prompt editor. All changes persist to .env and config files. |
+| Chat | Multimodal — text, image upload, voice recording. Shows recent interactions from all channels. |
+| Configuration | Models & Devices, Routing (form + YAML), Proactive Actions (form + YAML), Agent Prompt. |
+| Appareils | Per-device monitoring config, security levels, normal hours, activity charts, vocal alerts toggle. |
 | Knowledge Bases | View sync status, chunk count, trigger manual sync, edit YAML config. |
 | Logs | Live tail of the last 100 log lines. |
 
 ## Device Notification Monitor
 
-On macOS, the agent reads your Notification Center every 30 seconds via the accessibility API. When paired with iPhone Mirroring (macOS Sequoia+), all iPhone notifications are forwarded to the Mac — including alerts from smart home devices.
+Three ways to detect device notifications, configurable per device in `config/devices.yaml`:
 
-Supported devices: Honeywell/Resideo, MyQ/Chamberlain, Telus SmartHome, LG ThinQ, Bosch Home Connect, Ring, Nest.
+### Source 1: macOS Unified Log
+
+Reads the macOS unified log for notification delivery events. Detects which app sent a notification by bundle ID. No content visible (Apple redacts it), so the agent uses pattern-based anomaly detection: unusual hours, bursts, night activity on security devices.
 
 Setup:
 1. Enable iPhone Mirroring (System Settings → Desktop & Dock)
 2. Enable "Allow notifications from iPhone" (System Settings → Notifications)
-3. Grant Accessibility access to `/opt/homebrew/bin/node` (System Settings → Privacy & Security → Accessibility)
+3. The agent reads the log automatically — no accessibility permission needed for this method
+
+### Source 2: Email
+
+The email monitor polls Gmail and matches incoming alerts against configured sender addresses and keywords per device. This gives the AI actual notification content (subject + summary) for better analysis.
+
+```yaml
+sources:
+  - type: email
+    from: "noreply@myqdevice.com"
+    keywords: ["garage", "door", "opened", "closed"]
+```
+
+Setup: enable email notifications in each device's app (MyQ, Honeywell, Telus, LG ThinQ, Bosch).
+
+### Source 3: Webhook API
+
+External services can POST device alerts directly to the agent. Token-authenticated per device.
+
+```bash
+curl -X POST http://<your-ip>:3001/device-alert \
+  -H 'Content-Type: application/json' \
+  -d '{"device": "myq", "token": "myq-secret", "message": "Garage door opened"}'
+```
+
+```yaml
+sources:
+  - type: webhook
+    token: "myq-secret"
+```
+
+Useful for IFTTT, Home Assistant, or any automation that can make HTTP calls.
+
+### Anomaly Detection
+
+The agent tracks notification patterns per device and flags anomalies:
+- Time-of-day: MyQ at 2 AM when normal hours are 6-21 → critical alert
+- Night + security device: Telus or MyQ between 10 PM and 6 AM → critical
+- Burst: 3+ notifications from same device in 5 minutes → warning
+- Frequency: significantly more notifications than average for this hour
+
+All alerts go to Telegram. Vocal alerts (Sonos/Echo) can be enabled in `config/devices.yaml` (`vocal_alerts: true`) for anomalies during daytime.
+
+### Dream Engine
+
+During quiet hours (1-5 AM), when idle for 30+ minutes, the agent "dreams":
+1. Reviews the day's conversations and extracts learnings
+2. Consolidates memory files — merges duplicates, prunes stale entries
+3. Analyzes escalation patterns to reduce future Claude usage
+4. Pre-fetches tomorrow's weather and events
+
+Dream journals are saved to `vault/dreams/`. Learnings persist to `vault/memories/dream-learnings.md`.
 
 The agent classifies each notification, sends it to the AI for analysis, and alerts you on Telegram only if it's important or unusual. Routine events (garage closed normally) are silently filtered.
 
@@ -263,6 +317,7 @@ sudo systemctl start vertex-nova
 | `config/routing.yaml` | Model routing rules | Yes (form + YAML) |
 | `config/proactive.yaml` | Scheduled actions and notification routing | Yes (form + YAML) |
 | `config/knowledgebases.yaml` | Family knowledge base repos | Yes |
+| `config/devices.yaml` | Device monitoring, sources, anomaly rules | Yes (form + YAML) |
 
 ## Roadmap
 

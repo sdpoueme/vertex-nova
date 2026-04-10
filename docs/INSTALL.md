@@ -236,6 +236,7 @@ Note: The temporary test token expires every 24 hours.
 - `config/routing.yaml` — Model routing rules (which model handles which queries)
 - `config/proactive.yaml` — Scheduled proactive actions and notification routing
 - `config/knowledgebases.yaml` — Family knowledge base git repos for RAG
+- `config/devices.yaml` — Device notification monitoring (sources, security levels, anomaly rules)
 - `agent.md` — Agent persona, rules, and household info (not committed to git)
 
 ---
