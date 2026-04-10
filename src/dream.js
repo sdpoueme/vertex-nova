@@ -149,8 +149,8 @@ async function prepareForTomorrow(vaultPath) {
   var prompt = '[DREAM MODE]\n\n' +
     'Demain c\'est ' + dayName + ' ' + tomorrow.toISOString().slice(0, 10) + '.\n' +
     'Utilise web_search pour préparer un briefing matinal:\n' +
-    '1. Météo Sainte-Julie demain\n' +
-    '2. Événements importants prévus au Québec/Canada\n' +
+    '1. Météo locale demain\n' +
+    '2. Événements importants prévus\n' +
     'Résume en 3-4 lignes maximum. Si rien de notable, réponds "SKIP".';
 
   try {

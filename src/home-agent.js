@@ -219,7 +219,7 @@ async function main() {
             var { execFile } = await import('node:child_process');
             var { join } = await import('node:path');
             var cliPath = join(config.projectDir, 'scripts/sonos-cli.js');
-            execFile('node', [cliPath, 'speak', response.slice(0, 500), config.sonosDefaultRoom || 'Rez de Chaussee'], { timeout: 30000 }, function(err) {
+            execFile('node', [cliPath, 'speak', response.slice(0, 500), config.sonosDefaultRoom || ''], { timeout: 30000 }, function(err) {
               if (err) log.error('Sonos speak failed:', err.message);
             });
           }
@@ -350,7 +350,7 @@ async function main() {
         var { execFile: execRem } = await import('node:child_process');
         var { join: joinRem } = await import('node:path');
         var cliRem = joinRem(config.projectDir, 'scripts/sonos-cli.js');
-        execRem('node', [cliRem, 'speak', text.slice(0, 500), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
+        execRem('node', [cliRem, 'speak', text.slice(0, 500), route.room || config.sonosDefaultRoom || ''], { timeout: 30000 }, function(err) {
           if (err) log.error('Reminder Sonos failed:', err.message);
         });
         await sendTelegram(text);
@@ -388,7 +388,7 @@ async function main() {
               var { execFile: execVoice } = await import('node:child_process');
               var { join: joinVoice } = await import('node:path');
               var cliPath = joinVoice(config.projectDir, 'scripts/sonos-cli.js');
-              execVoice('node', [cliPath, 'speak', voiceText.slice(0, 500), 'Rez de Chaussee'], { timeout: 30000 }, function(err) {
+              execVoice('node', [cliPath, 'speak', voiceText.slice(0, 500), config.sonosDayRoom || config.sonosDefaultRoom || ''], { timeout: 30000 }, function(err) {
                 if (err) log.error('Device alert Sonos failed:', err.message);
               });
             } catch {}
@@ -439,7 +439,7 @@ async function main() {
         var { execFile } = await import('node:child_process');
         var { join: joinPath } = await import('node:path');
         var cliPath = joinPath(config.projectDir, 'scripts/sonos-cli.js');
-        execFile('node', [cliPath, 'speak', cleanForVoice(response).slice(0, 800), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
+        execFile('node', [cliPath, 'speak', cleanForVoice(response).slice(0, 800), route.room || config.sonosDefaultRoom || ''], { timeout: 30000 }, function(err) {
           if (err) log.error('Proactive Sonos failed:', err.message);
         });
       }

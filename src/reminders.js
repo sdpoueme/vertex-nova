@@ -5,6 +5,7 @@
  */
 import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { config } from './home-config.js';
 import { logger } from './log.js';
 
 var log = logger('reminders');
@@ -56,27 +57,17 @@ function markDone(filePath) {
  * Same guardrails as proactive scheduler.
  */
 function getBestChannel(hour) {
-  // Night (10 PM – 7 AM): Telegram only, silent
-  if (hour >= 22 || hour < 7) {
-    return { channel: 'telegram', device: null, room: null };
-  }
-  // Morning (7-9 AM): Echo Show kitchen
-  if (hour >= 7 && hour < 9) {
-    return { channel: 'echo', device: 'vertexnovaspeaker', room: null };
-  }
-  // Workday (9 AM – 5 PM): Echo bureau (office)
-  if (hour >= 9 && hour < 17) {
-    return { channel: 'echo', device: 'vertexnovaspeakeroffice', room: null };
-  }
-  // Evening (5-7 PM): Echo Show kitchen
-  if (hour >= 17 && hour < 19) {
-    return { channel: 'echo', device: 'vertexnovaspeaker', room: null };
-  }
-  // Prime time (7-9 PM): Sonos basement
-  if (hour >= 19 && hour < 21) {
-    return { channel: 'sonos', device: null, room: 'Sous-sol' };
-  }
-  // Late evening (9-10 PM): Telegram
+  var defaultEcho = config.voiceMonkeyDefaultDevice || '';
+  var morningEcho = config.echoMorningDevice || defaultEcho;
+  var workEcho = config.echoWorkdayDevice || defaultEcho;
+  var eveningEcho = config.echoEveningDevice || defaultEcho;
+  var nightRoom = config.sonosNightRoom || config.sonosDefaultRoom || '';
+
+  if (hour >= 22 || hour < 7) return { channel: 'telegram', device: null, room: null };
+  if (hour >= 7 && hour < 9) return { channel: 'echo', device: morningEcho, room: null };
+  if (hour >= 9 && hour < 17) return { channel: 'echo', device: workEcho, room: null };
+  if (hour >= 17 && hour < 19) return { channel: 'echo', device: eveningEcho, room: null };
+  if (hour >= 19 && hour < 21) return { channel: 'sonos', device: null, room: nightRoom };
   return { channel: 'telegram', device: null, room: null };
 }
 
@@ -135,8 +126,8 @@ export function startReminders(vaultPath, notify) {
       // Override with user preference if set
       if (reminder.channel) {
         if (reminder.channel === 'telegram') route = { channel: 'telegram', device: null, room: null };
-        else if (reminder.channel === 'sonos') route = { channel: 'sonos', device: null, room: 'Sous-sol' };
-        else if (reminder.channel === 'echo') route = { channel: 'echo', device: 'vertexnovaspeaker', room: null };
+        else if (reminder.channel === 'sonos') route = { channel: 'sonos', device: null, room: config.sonosDefaultRoom || '' };
+        else if (reminder.channel === 'echo') route = { channel: 'echo', device: config.voiceMonkeyDefaultDevice || '', room: null };
 
         // Night guardrail: override voice channels to telegram
         if ((hour >= 22 || hour < 7) && route.channel !== 'telegram') {

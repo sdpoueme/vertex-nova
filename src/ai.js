@@ -42,12 +42,12 @@ var systemPrompt = loadSystemPrompt();
 var tools = [
   {
     name: 'sonos_speak',
-    description: 'Speak text on a Sonos speaker using TTS. Auto-detects French or English. Available speakers: "Rez de Chaussee" (ground floor), "Sous-sol" (basement).',
+    description: 'Speak text on a Sonos speaker using TTS. Auto-detects French or English. Use the room names configured in your Sonos system.',
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to speak' },
-        room: { type: 'string', description: 'Speaker name. Default: Rez de Chaussee' }
+        room: { type: 'string', description: 'Speaker name (from your Sonos setup)' }
       },
       required: ['text']
     }
@@ -138,12 +138,12 @@ var tools = [
   },
   {
     name: 'echo_speak',
-    description: 'Make an Alexa Echo device speak text via Voice Monkey. Available devices: vertexnovaspeaker (Echo Show kitchen), vertexnovaspeakeroffice (office), garage (Garage). Use this when the user asks to speak or announce on Echo/Alexa devices.',
+    description: 'Make an Alexa Echo device speak text via Voice Monkey. Use the device IDs configured in your Voice Monkey dashboard.',
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to speak' },
-        device: { type: 'string', description: 'Voice Monkey device ID. Default: vertexnovaspeaker. Options: vertexnovaspeaker, vertexnovaspeakeroffice, garage' }
+        device: { type: 'string', description: 'Voice Monkey device ID' }
       },
       required: ['text']
     }
@@ -273,12 +273,12 @@ function runCmd(cmd, args, timeout) {
 async function executeTool(name, input) {
   log.debug('Tool call: ' + name + ' ' + JSON.stringify(input).slice(0, 200));
 
-  // Night mode guardrail: 10 PM - 7 AM, never use Rez de Chaussee
+  // Night mode guardrail: 10 PM - 7 AM, redirect to night room
   if (name.startsWith('sonos_') && input.room) {
     var hour = new Date().getHours();
-    if ((hour >= 22 || hour < 7) && input.room.toLowerCase() === 'rez de chaussee') {
-      log.info('NIGHT MODE: Redirecting Sonos from Rez de Chaussee to Sous-sol');
-      input.room = 'Sous-sol';
+    if ((hour >= 22 || hour < 7) && input.room === config.sonosDayRoom) {
+      log.info('NIGHT MODE: Redirecting Sonos to night room');
+      input.room = config.sonosNightRoom || input.room;
     }
   }
 
@@ -289,17 +289,17 @@ async function executeTool(name, input) {
     return 'Mode nuit actif (22h-7h). Message envoyé par texte uniquement. Contenu: ' + (input.text || '').slice(0, 200);
   }
 
-  // Smart Sonos room default: RDC during day, Sous-sol at night
+  // Smart Sonos room default: day room during day, night room at night
   if (name === 'sonos_speak' && !input.room) {
     var h = new Date().getHours();
-    input.room = (h >= 22 || h < 7) ? 'Sous-sol' : 'Rez de Chaussee';
+    input.room = (h >= 22 || h < 7) ? (config.sonosNightRoom || config.sonosDefaultRoom) : (config.sonosDayRoom || config.sonosDefaultRoom);
     log.info('Sonos auto-room: ' + input.room);
   }
 
   // Block sonos_speak_all — always use single speaker
   if (name === 'sonos_speak_all') {
     var h2 = new Date().getHours();
-    var autoRoom = (h2 >= 22 || h2 < 7) ? 'Sous-sol' : 'Rez de Chaussee';
+    var autoRoom = (h2 >= 22 || h2 < 7) ? (config.sonosNightRoom || config.sonosDefaultRoom) : (config.sonosDayRoom || config.sonosDefaultRoom);
     log.info('Redirected speak_all to single speaker: ' + autoRoom);
     name = 'sonos_speak';
     input.room = autoRoom;
@@ -401,7 +401,7 @@ async function executeTool(name, input) {
   if (name === 'echo_speak_all') {
     var { VoiceMonkey: VM } = await import('./outputs/voicemonkey.js');
     var vmAll = new VM(config);
-    var devices = ['vertexnovaspeaker', 'vertexnovaspeakeroffice', 'garage'];
+    var devices = config.echoDevices.length > 0 ? config.echoDevices : [config.voiceMonkeyDefaultDevice].filter(Boolean);
     var results = await vmAll.speakAll(input.text, devices);
     var successCount = results.filter(function(r) { return r; }).length;
     return 'Annonce envoyée sur ' + successCount + '/' + devices.length + ' appareils Echo';

@@ -16,7 +16,7 @@ export class VoiceMonkey {
   /**
    * Make an Echo device speak text.
    * @param {string} text - Text to speak
-   * @param {string} [device] - Voice Monkey device ID (e.g. "vertexnovaspeaker")
+   * @param {string} [device] - Voice Monkey device ID
    */
   async speak(text, device) {
     var target = device || this.defaultDevice;

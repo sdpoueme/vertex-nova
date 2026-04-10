@@ -173,20 +173,21 @@ function ModelsPanel({ api }) {
     claudeOptions.unshift({ value: currentClaude, label: currentClaude + ' (actuel)' });
   }
 
-  const sonosOptions = [
-    { value: 'Rez de Chaussee', label: 'Rez de Chaussée (salon)' },
-    { value: 'Sous-sol', label: 'Sous-sol' },
-  ];
+  const sonosOptions = [];
+  if (currentSonos) sonosOptions.push({ value: currentSonos, label: currentSonos });
+  // Add common defaults if not already present
+  if (currentSonos !== process.env?.SONOS_DAY_ROOM) {
+    // Options will be populated from the current value
+  }
+  if (sonosOptions.length === 0) sonosOptions.push({ value: '', label: '(non configuré)' });
   const currentSonos = models.sonos_default_room || '';
   if (currentSonos && !sonosOptions.find(o => o.value === currentSonos)) {
     sonosOptions.unshift({ value: currentSonos, label: currentSonos + ' (actuel)' });
   }
 
-  const echoOptions = [
-    { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
-    { value: 'vertexnovaspeakeroffice', label: 'Office' },
-    { value: 'garage', label: 'Garage' },
-  ];
+  const echoOptions = [];
+  if (currentEcho) echoOptions.push({ value: currentEcho, label: currentEcho });
+  if (echoOptions.length === 0) echoOptions.push({ value: '', label: '(non configuré)' });
   const currentEcho = models.voice_monkey_default_device || '';
   if (currentEcho && !echoOptions.find(o => o.value === currentEcho)) {
     echoOptions.unshift({ value: currentEcho, label: currentEcho + ' (actuel)' });

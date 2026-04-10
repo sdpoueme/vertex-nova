@@ -122,6 +122,23 @@ export const config = {
   // --- Home-specific ---
   homeAnalysisSchedule: process.env.HOME_ANALYSIS_SCHEDULE || 'sun:10:00',
   homeName: process.env.HOME_NAME || 'Home',
+  homeLocation: process.env.HOME_LOCATION || '',
+  homeCountry: process.env.HOME_COUNTRY || '',
+
+  // --- Sonos rooms ---
+  sonosNightRoom: process.env.SONOS_NIGHT_ROOM || process.env.SONOS_DEFAULT_ROOM || '',
+  sonosDayRoom: process.env.SONOS_DAY_ROOM || process.env.SONOS_DEFAULT_ROOM || '',
+
+  // --- Echo devices ---
+  echoDevices: (process.env.ECHO_DEVICES || '').split(',').map(d => d.trim()).filter(Boolean),
+  echoMorningDevice: process.env.ECHO_MORNING_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+  echoWorkdayDevice: process.env.ECHO_WORKDAY_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+  echoEveningDevice: process.env.ECHO_EVENING_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+
+  // --- News sources ---
+  newsLocale: process.env.NEWS_LOCALE || 'fr-CA',
+  newsCountry: process.env.NEWS_COUNTRY || 'CA',
+  newsExtraTopics: process.env.NEWS_EXTRA_TOPICS || '',
 
   // --- Email Monitor ---
   emailMonitorAddress: process.env.EMAIL_MONITOR_ADDRESS || '',
