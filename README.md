@@ -115,7 +115,7 @@ Starts automatically with the agent on port 3080. Access from any device on your
 |-------|----------|
 | Chat | Multimodal — text, image upload, voice recording. Shows recent interactions from all channels. |
 | Configuration | Models & Devices, Routing (form + YAML), Proactive Actions (form + YAML), Agent Prompt. |
-| Appareils | Per-device monitoring config, security levels, normal hours, activity charts, vocal alerts toggle. |
+| Appareils | Per-device forms: bundle ID, security level, normal hours, AI context, notification sources (macOS log / email / webhook) with type-specific fields. Activity charts. Vocal alerts toggle. All synced with YAML editor. |
 | Knowledge Bases | View sync status, chunk count, trigger manual sync, edit YAML config. |
 | Logs | Live tail of the last 100 log lines. |
 
@@ -125,29 +125,17 @@ Three ways to detect device notifications, configurable per device in `config/de
 
 ### Source 1: macOS Unified Log
 
-Reads the macOS unified log for notification delivery events. Detects which app sent a notification by bundle ID. No content visible (Apple redacts it), so the agent uses pattern-based anomaly detection: unusual hours, bursts, night activity on security devices.
+Reads the macOS unified log for notification delivery events by app bundle ID. No content visible (Apple redacts it), so the agent uses pattern-based anomaly detection.
 
-Setup:
-1. Enable iPhone Mirroring (System Settings → Desktop & Dock)
-2. Enable "Allow notifications from iPhone" (System Settings → Notifications)
-3. The agent reads the log automatically — no accessibility permission needed for this method
+Setup: enable iPhone Mirroring (System Settings → Desktop & Dock) and "Allow notifications from iPhone" (System Settings → Notifications).
 
 ### Source 2: Email
 
-The email monitor polls Gmail and matches incoming alerts against configured sender addresses and keywords per device. This gives the AI actual notification content (subject + summary) for better analysis.
-
-```yaml
-sources:
-  - type: email
-    from: "noreply@myqdevice.com"
-    keywords: ["garage", "door", "opened", "closed"]
-```
-
-Setup: enable email notifications in each device's app (MyQ, Honeywell, Telus, LG ThinQ, Bosch).
+Polls Gmail and matches alerts against configured sender addresses and keywords per device. Provides actual notification content for AI analysis.
 
 ### Source 3: Webhook API
 
-External services can POST device alerts directly to the agent. Token-authenticated per device.
+External services POST device alerts directly. Token-authenticated per device.
 
 ```bash
 curl -X POST http://<your-ip>:3001/device-alert \
@@ -155,13 +143,7 @@ curl -X POST http://<your-ip>:3001/device-alert \
   -d '{"device": "myq", "token": "myq-secret", "message": "Garage door opened"}'
 ```
 
-```yaml
-sources:
-  - type: webhook
-    token: "myq-secret"
-```
-
-Useful for IFTTT, Home Assistant, or any automation that can make HTTP calls.
+All three sources are configurable per device in `config/devices.yaml` or via the Appareils dashboard panel. Each device card has forms for bundle ID, security level, normal hours, AI context, and a source editor where you can add/remove macOS log, email (from + keywords), or webhook (token) sources.
 
 ### Anomaly Detection
 
