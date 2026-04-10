@@ -153,17 +153,17 @@ export default function ChatPanel({ api }) {
             <SpaceBetween direction="horizontal" size="xs" alignItems="center">
               <img src={image.preview} alt="" style={{ height: '36px', borderRadius: '4px' }} />
               <Box variant="small">{image.name}</Box>
-              <Button variant="icon" iconName="close" onClick={() => setImage(null)} />
+              <Button variant="icon" iconName="remove" onClick={() => setImage(null)} />
             </SpaceBetween>
           </Container>
         )}
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
-          <Button variant="icon" iconName="upload" onClick={() => fileRef.current?.click()} ariaLabel="Image" />
+          <Button onClick={() => fileRef.current?.click()} ariaLabel="Image">📷</Button>
           {recording
-            ? <Button variant="icon" iconName="close" onClick={stopRecording} ariaLabel="Stop" />
-            : <Button variant="icon" iconName="microphone" onClick={startRecording} ariaLabel="Vocal" />
+            ? <Button onClick={stopRecording} ariaLabel="Stop">⏹️</Button>
+            : <Button onClick={startRecording} ariaLabel="Vocal">🎤</Button>
           }
           <div style={{ flex: 1 }}>
             <Input
