@@ -773,16 +773,15 @@ export async function chat(message, sessionId, image) {
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
-  // Images: try Claude first, fall back to Gemma 4 (also supports vision)
+  // Images: try Claude first, fall back to vision model
   if (image) {
     if (CLAUDE_API_KEY) {
       try {
         return await chatClaude(message, sessionId, image);
       } catch (err) {
-        log.warn('Claude vision failed: ' + err.message + ', trying Gemma 4');
+        log.warn('Claude vision failed: ' + err.message + ', trying local vision model');
       }
     }
-    // Gemma 4 E2B vision via Ollama (smallest vision model)
     return chatOllama(message, sessionId, 'gemma4:e2b', image);
   }
 
@@ -791,31 +790,30 @@ export async function chat(message, sessionId, image) {
     return chatClaude(message, sessionId, null);
   }
 
-  // Default: try Gemma 4 first
+  // Default: try local model first
   try {
-    var gemmaResponse = await chatOllama(message, sessionId, OLLAMA_MODEL);
+    var localResponse = await chatOllama(message, sessionId, OLLAMA_MODEL);
 
     // Check if response seems bad (too short, confused, or error-like)
-    if (shouldEscalate(gemmaResponse, message)) {
-      log.info('Escalating to Claude — Gemma 4 response was weak');
+    if (shouldEscalate(localResponse, message)) {
+      log.info('Escalating to Claude — local model response was weak');
       try {
         var claudeResponse = await chatClaude(message, sessionId, null);
-        // Save the pattern so Gemma 4 can learn
         saveEscalationPattern(message, claudeResponse);
         return claudeResponse;
       } catch (claudeErr) {
-        log.warn('Claude escalation failed: ' + claudeErr.message + ', using Gemma 4 response');
-        return gemmaResponse; // Fall back to Gemma 4's response
+        log.warn('Claude escalation failed: ' + claudeErr.message + ', using local response');
+        return localResponse;
       }
     }
 
-    return gemmaResponse;
-  } catch (gemmaErr) {
-    log.warn('Gemma 4 failed: ' + gemmaErr.message + ', escalating to Claude');
+    return localResponse;
+  } catch (localErr) {
+    log.warn('Local model failed: ' + localErr.message + ', escalating to Claude');
     try {
       return await chatClaude(message, sessionId, null);
     } catch (claudeErr) {
-      log.error('Both models failed. Gemma: ' + gemmaErr.message + ', Claude: ' + claudeErr.message);
+      log.error('Both models failed. Local: ' + localErr.message + ', Claude: ' + claudeErr.message);
       return 'Désolé, je rencontre des difficultés techniques. Réessayez dans un moment.';
     }
   }

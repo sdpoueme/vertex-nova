@@ -251,18 +251,42 @@ async function main() {
     var ICONS = {'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'};
     var icon = ICONS[action.name] || '🏠';
 
+    // Never send error messages or SKIP to users
+    if (!response || response.includes('difficultés techniques') || response.includes('Réessayez') ||
+        response.trim().toUpperCase() === 'SKIP' || response.includes('Unknown tool') ||
+        response.includes('Trop d\'itérations') || response.length < 15) {
+      log.debug('Proactive ' + action.name + ': suppressed (error or empty response)');
+      return;
+    }
+
+    // Clean markdown for voice devices (remove **, *, _, #, etc.)
+    function cleanForVoice(text) {
+      return text
+        .replace(/\*\*([^*]+)\*\*/g, '$1')  // **bold** → bold
+        .replace(/\*([^*]+)\*/g, '$1')       // *italic* → italic
+        .replace(/_([^_]+)_/g, '$1')         // _italic_ → italic
+        .replace(/#{1,6}\s*/g, '')           // ### headers → remove
+        .replace(/```[\s\S]*?```/g, '')      // code blocks → remove
+        .replace(/`([^`]+)`/g, '$1')         // `code` → code
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [link](url) → link
+        .replace(/^\s*[-*]\s+/gm, '')        // bullet points → remove
+        .replace(/^\s*\d+\.\s+/gm, '')       // numbered lists → remove
+        .replace(/\n{3,}/g, '\n\n')          // collapse multiple newlines
+        .trim();
+    }
+
     try {
       if (route.channel === 'telegram' && telegramChannel) {
         await telegramChannel.bot.telegram.sendMessage(787677377, icon + ' ' + response);
       } else if (route.channel === 'echo') {
         var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
         var vm = new VoiceMonkey(config);
-        await vm.speak(response.slice(0, 800), route.device);
+        await vm.speak(cleanForVoice(response).slice(0, 800), route.device);
       } else if (route.channel === 'sonos') {
         var { execFile } = await import('node:child_process');
         var { join: joinPath } = await import('node:path');
         var cliPath = joinPath(config.projectDir, 'scripts/sonos-cli.js');
-        execFile('node', [cliPath, 'speak', response.slice(0, 800), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
+        execFile('node', [cliPath, 'speak', cleanForVoice(response).slice(0, 800), route.room || 'Sous-sol'], { timeout: 30000 }, function(err) {
           if (err) log.error('Proactive Sonos failed:', err.message);
         });
       }

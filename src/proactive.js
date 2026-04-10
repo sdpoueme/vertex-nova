@@ -217,7 +217,17 @@ async function runAction(action, notify) {
     if (action.notify_condition === 'always') {
       shouldNotify = true;
     } else if (action.notify_condition === 'not_skip') {
-      shouldNotify = !response.trim().toUpperCase().startsWith('SKIP');
+      // Check for SKIP anywhere in the response, not just at the start
+      var upper = response.trim().toUpperCase();
+      shouldNotify = !upper.startsWith('SKIP') && !upper.includes('\nSKIP') && upper !== 'SKIP.';
+    }
+
+    // Never notify with error messages
+    if (response.includes('difficultés techniques') || response.includes('Réessayez') ||
+        response.includes('Unknown tool') || response.includes('Trop d\'itérations') ||
+        response.length < 15) {
+      log.debug('Action ' + action.name + ': suppressed (error or empty)');
+      return;
     }
 
     if (!shouldNotify) {
