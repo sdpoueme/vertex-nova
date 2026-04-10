@@ -70,6 +70,12 @@ async function handleMessage(msg) {
     logInteraction(channel, 'in', text, !!msg.image);
   } catch {}
 
+  // Track activity for dream engine
+  try {
+    var { recordActivity } = await import('./dream.js');
+    recordActivity();
+  } catch {}
+
   // Thinking indicator — show what the agent is doing
   var thinkingMsg = null;
   if (channel === 'telegram' && telegramChannel) {
@@ -376,6 +382,10 @@ async function main() {
     config.telegramEnabled ? 'Telegram' : null,
     config.whatsappEnabled ? 'WhatsApp' : null,
   ].filter(Boolean).join(', '));
+
+  // Dream engine — background self-improvement during quiet hours
+  var { startDreamEngine } = await import('./dream.js');
+  startDreamEngine(vaultPath);
 
   // Startup notification
   setTimeout(function() {
