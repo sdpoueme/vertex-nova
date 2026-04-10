@@ -676,6 +676,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
   });
 
   var maxIterations = 8;
+  var executedVoiceCalls = new Set();
 
   for (var i = 0; i < maxIterations; i++) {
     var data = await withRetry(async function() {
@@ -714,6 +715,17 @@ async function chatOllama(message, sessionId, modelOverride, image) {
 
     for (var j = 0; j < msg.tool_calls.length; j++) {
       var tc = msg.tool_calls[j];
+      // Deduplicate voice tool calls — prevent speaking the same text multiple times
+      var isVoiceTool = tc.function.name === 'echo_speak' || tc.function.name === 'echo_speak_all' || tc.function.name === 'sonos_speak' || tc.function.name === 'sonos_speak_all';
+      if (isVoiceTool) {
+        var voiceKey = tc.function.name + ':' + (tc.function.arguments?.text || '').slice(0, 100) + ':' + (tc.function.arguments?.device || tc.function.arguments?.room || '');
+        if (executedVoiceCalls.has(voiceKey)) {
+          log.info('Skipping duplicate voice call: ' + tc.function.name);
+          addToolResult(sessionId, { role: 'tool', content: 'Déjà annoncé.' });
+          continue;
+        }
+        executedVoiceCalls.add(voiceKey);
+      }
       try {
         var result = await executeTool(tc.function.name, tc.function.arguments || {});
         log.debug('Tool result (' + tc.function.name + '): ' + String(result).slice(0, 150));
@@ -865,6 +877,7 @@ async function chatClaude(message, sessionId, image) {
 
   var messages = buildMessages(sessionId);
   var maxIterations = 8;
+  var executedVoiceCallsClaude = new Set();
 
   for (var i = 0; i < maxIterations; i++) {
     var data = await withRetry(async function() {
@@ -914,6 +927,17 @@ async function chatClaude(message, sessionId, image) {
     for (var t = 0; t < data.content.length; t++) {
       var block = data.content[t];
       if (block.type === 'tool_use') {
+        // Deduplicate voice tool calls
+        var isVoice = block.name === 'echo_speak' || block.name === 'echo_speak_all' || block.name === 'sonos_speak' || block.name === 'sonos_speak_all';
+        if (isVoice) {
+          var vKey = block.name + ':' + (block.input?.text || '').slice(0, 100) + ':' + (block.input?.device || block.input?.room || '');
+          if (executedVoiceCallsClaude.has(vKey)) {
+            log.info('Skipping duplicate voice call: ' + block.name);
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Déjà annoncé.' });
+            continue;
+          }
+          executedVoiceCallsClaude.add(vKey);
+        }
         try {
           var result = await executeTool(block.name, block.input);
           log.debug('Tool (' + block.name + '): ' + String(result).slice(0, 150));
