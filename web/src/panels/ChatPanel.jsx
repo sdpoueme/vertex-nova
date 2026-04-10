@@ -8,8 +8,9 @@ import Button from '@cloudscape-design/components/button';
 import Box from '@cloudscape-design/components/box';
 import Spinner from '@cloudscape-design/components/spinner';
 import StatusIndicator from '@cloudscape-design/components/status-indicator';
+import { Camera, Mic, Square, Send, X, MessageCircle, Smartphone, Globe, Volume2, Mail, ArrowRight, ArrowLeft } from 'lucide-react';
 
-const CHANNEL_ICONS = { telegram: '💬', whatsapp: '📱', web: '🌐', 'alexa-ifttt': '🔊', 'email-monitor': '📧' };
+const CHANNEL_ICONS = { telegram: MessageCircle, whatsapp: Smartphone, web: Globe, 'alexa-ifttt': Volume2, 'email-monitor': Mail };
 
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -153,28 +154,37 @@ export default function ChatPanel({ api }) {
             <SpaceBetween direction="horizontal" size="xs" alignItems="center">
               <img src={image.preview} alt="" style={{ height: '36px', borderRadius: '4px' }} />
               <Box variant="small">{image.name}</Box>
-              <Button variant="icon" iconName="remove" onClick={() => setImage(null)} />
+              <button onClick={() => setImage(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex' }}><X size={16} color="#8b949e" /></button>
             </SpaceBetween>
           </Container>
         )}
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleImageSelect} />
-          <Button onClick={() => fileRef.current?.click()} ariaLabel="Image">📷</Button>
+          <button onClick={() => fileRef.current?.click()} aria-label="Image" style={{ background: 'none', border: '1px solid #414d5c', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+            <Camera size={18} color="#8b949e" />
+          </button>
           {recording
-            ? <Button onClick={stopRecording} ariaLabel="Stop">⏹️</Button>
-            : <Button onClick={startRecording} ariaLabel="Vocal">🎤</Button>
+            ? <button onClick={stopRecording} aria-label="Stop" style={{ background: '#d13212', border: 'none', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                <Square size={18} color="white" />
+              </button>
+            : <button onClick={startRecording} aria-label="Vocal" style={{ background: 'none', border: '1px solid #414d5c', borderRadius: '8px', padding: '6px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                <Mic size={18} color="#8b949e" />
+              </button>
           }
           <div style={{ flex: 1 }}>
             <Input
               value={input}
               onChange={({ detail }) => setInput(detail.value)}
               onKeyDown={({ detail }) => { if (detail.key === 'Enter' && !loading) send(); }}
-              placeholder={recording ? '🔴 Enregistrement...' : image ? "Décrivez l'image..." : 'Écrivez un message...'}
+              placeholder={recording ? 'Enregistrement...' : image ? "Décrivez l'image..." : 'Écrivez un message...'}
               disabled={recording}
             />
           </div>
-          <Button variant="primary" onClick={send} loading={loading} disabled={recording}>Envoyer</Button>
+          <button onClick={send} disabled={loading || recording} aria-label="Envoyer" style={{ background: '#0972d3', border: 'none', borderRadius: '8px', padding: '6px 12px', cursor: loading ? 'wait' : 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: 'white', fontSize: '14px', opacity: (loading || recording) ? 0.5 : 1 }}>
+            {loading ? <Spinner size="normal" /> : <Send size={18} />}
+            <span>Envoyer</span>
+          </button>
         </div>
       </SpaceBetween>
     </Container>
@@ -192,13 +202,15 @@ export default function ChatPanel({ api }) {
                 <SpaceBetween size="xxs">
                   <SpaceBetween direction="horizontal" size="xs">
                     <StatusIndicator type={h.direction === 'in' ? 'info' : 'success'}>
-                      {(CHANNEL_ICONS[h.channel] || '💬') + ' ' + h.channel}
+                      {(() => { const Icon = CHANNEL_ICONS[h.channel]; return Icon ? <Icon size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> : null; })()}
+                      {' ' + h.channel}
                     </StatusIndicator>
-                    {h.hasImage && <StatusIndicator type="info">📷</StatusIndicator>}
+                    {h.hasImage && <StatusIndicator type="info"><Camera size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /></StatusIndicator>}
                     <Box variant="small" color="text-body-secondary">{timeAgo(h.ts)}</Box>
                   </SpaceBetween>
                   <Box variant="small" color={h.direction === 'in' ? 'text-body-secondary' : 'text-status-success'}>
-                    {h.direction === 'in' ? '→ ' : '← '}{h.text}
+                    {h.direction === 'in' ? <ArrowRight size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> : <ArrowLeft size={12} style={{ display: 'inline', verticalAlign: 'middle' }} />}
+                    {' '}{h.text}
                   </Box>
                 </SpaceBetween>
               </Container>
@@ -211,8 +223,8 @@ export default function ChatPanel({ api }) {
 
   return (
     <Tabs tabs={[
-      { id: 'chat', label: '💬 Chat', content: chatContent },
-      { id: 'history', label: '📋 Interactions (' + history.length + ')', content: historyContent },
+      { id: 'chat', label: 'Chat', content: chatContent },
+      { id: 'history', label: 'Interactions (' + history.length + ')', content: historyContent },
     ]} />
   );
 }
