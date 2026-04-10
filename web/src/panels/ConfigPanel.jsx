@@ -579,10 +579,10 @@ function AgentPromptPanel({ api }) {
 export default function ConfigPanel({ api }) {
   return (
     <Tabs tabs={[
-      { id: 'models', label: '🤖 Modèles & Appareils', content: <ModelsPanel api={api} /> },
-      { id: 'routing', label: '🔀 Routage', content: <RoutingPanel api={api} /> },
-      { id: 'proactive', label: '⏰ Actions proactives', content: <ProactivePanel api={api} /> },
-      { id: 'prompt', label: '📝 Prompt agent', content: <AgentPromptPanel api={api} /> },
+      { id: 'models', label: 'Modèles & Appareils', content: <ModelsPanel api={api} /> },
+      { id: 'routing', label: 'Routage', content: <RoutingPanel api={api} /> },
+      { id: 'proactive', label: 'Actions proactives', content: <ProactivePanel api={api} /> },
+      { id: 'prompt', label: 'Prompt agent', content: <AgentPromptPanel api={api} /> },
     ]} />
   );
 }
