@@ -22,33 +22,27 @@ function timeAgo(ts) {
   return Math.floor(s / 86400) + 'j';
 }
 
-// Group devices by name to avoid duplicates (same device, multiple bundle IDs)
 function groupDevices(devices) {
   const groups = {};
   for (const d of devices) {
-    const key = d.name;
-    if (!groups[key]) {
-      groups[key] = { ...d, bundleIds: [d.bundle_id], totalNotifications: d.totalNotifications || 0, hourCounts: [...(d.hourCounts || new Array(24).fill(0))] };
+    if (!groups[d.name]) {
+      groups[d.name] = { ...d, bundleIds: [d.bundle_id], totalNotifications: d.totalNotifications || 0, hourCounts: [...(d.hourCounts || new Array(24).fill(0))] };
     } else {
-      groups[key].bundleIds.push(d.bundle_id);
-      groups[key].totalNotifications += (d.totalNotifications || 0);
-      if (d.lastSeen && (!groups[key].lastSeen || d.lastSeen > groups[key].lastSeen)) groups[key].lastSeen = d.lastSeen;
-      // Merge hour counts
-      if (d.hourCounts) {
-        for (let h = 0; h < 24; h++) groups[key].hourCounts[h] += (d.hourCounts[h] || 0);
-      }
+      groups[d.name].bundleIds.push(d.bundle_id);
+      groups[d.name].totalNotifications += (d.totalNotifications || 0);
+      if (d.lastSeen && (!groups[d.name].lastSeen || d.lastSeen > groups[d.name].lastSeen)) groups[d.name].lastSeen = d.lastSeen;
+      if (d.hourCounts) { for (let h = 0; h < 24; h++) groups[d.name].hourCounts[h] += (d.hourCounts[h] || 0); }
     }
   }
   return Object.values(groups);
 }
 
-// Parse devices YAML into structured data for form editing
 function parseDevicesYaml(text) {
   const result = { vocal_alerts: false, poll_interval_seconds: 30, devices: [] };
-  const vocalMatch = text.match(/vocal_alerts:\s*(true|false)/);
-  if (vocalMatch) result.vocal_alerts = vocalMatch[1] === 'true';
-  const pollMatch = text.match(/poll_interval_seconds:\s*(\d+)/);
-  if (pollMatch) result.poll_interval_seconds = parseInt(pollMatch[1]);
+  const vm = text.match(/vocal_alerts:\s*(true|false)/);
+  if (vm) result.vocal_alerts = vm[1] === 'true';
+  const pm = text.match(/poll_interval_seconds:\s*(\d+)/);
+  if (pm) result.poll_interval_seconds = parseInt(pm[1]);
 
   const blocks = text.split(/^\s+-\s+bundle_id:/m);
   for (let i = 1; i < blocks.length; i++) {
@@ -60,40 +54,117 @@ function parseDevicesYaml(text) {
     const secLevel = (b.match(/security_level:\s*(\S+)/) || [])[1]?.trim() || 'low';
     const context = (b.match(/context:\s*"([^"]*)"/) || [])[1] || '';
     const enabled = (b.match(/enabled:\s*(\S+)/) || [])[1]?.trim() !== 'false';
-    const hoursMatch = b.match(/normal_hours:\s*\[([^\]]*)\]/);
-    const normalHours = hoursMatch ? hoursMatch[1].split(',').map(h => parseInt(h.trim())) : [];
-    if (bundleId) result.devices.push({ bundle_id: bundleId, name, icon, description: desc, security_level: secLevel, normal_hours: normalHours, context, enabled });
+    const hm = b.match(/normal_hours:\s*\[([^\]]*)\]/);
+    const normalHours = hm ? hm[1].split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h)) : [];
+    // Parse sources
+    const sources = [];
+    const srcParts = b.split(/- type:/g);
+    for (let si = 1; si < srcParts.length; si++) {
+      const sb = '- type:' + srcParts[si];
+      const sType = (sb.match(/type:\s*(\S+)/) || [])[1]?.trim() || '';
+      const sFrom = (sb.match(/from:\s*"([^"]*)"/) || [])[1] || '';
+      const sToken = (sb.match(/token:\s*"([^"]*)"/) || [])[1] || '';
+      const kwm = sb.match(/keywords:\s*\[([^\]]*)\]/);
+      const sKw = kwm ? kwm[1].split(',').map(k => k.trim().replace(/"/g, '')) : [];
+      if (sType) sources.push({ type: sType, from: sFrom, token: sToken, keywords: sKw });
+    }
+    if (bundleId) result.devices.push({ bundle_id: bundleId, name, icon, description: desc, security_level: secLevel, normal_hours: normalHours, context, enabled, sources });
   }
   return result;
 }
 
 function buildDevicesYaml(data) {
-  let yaml = '# Vertex Nova — Device Notification Monitoring\n\nsettings:\n';
-  yaml += '  vocal_alerts: ' + data.vocal_alerts + '\n';
-  yaml += '  poll_interval_seconds: ' + data.poll_interval_seconds + '\n\ndevices:\n';
+  let y = '# Vertex Nova — Device Notification Monitoring\n\nsettings:\n';
+  y += '  vocal_alerts: ' + data.vocal_alerts + '\n';
+  y += '  poll_interval_seconds: ' + data.poll_interval_seconds + '\n\ndevices:\n';
   for (const d of data.devices) {
-    yaml += '  - bundle_id: ' + d.bundle_id + '\n';
-    yaml += '    name: ' + d.name + '\n';
-    yaml += '    icon: "' + d.icon + '"\n';
-    yaml += '    description: "' + d.description + '"\n';
-    yaml += '    security_level: ' + d.security_level + '\n';
-    yaml += '    normal_hours: [' + d.normal_hours.join(',') + ']\n';
-    yaml += '    context: "' + d.context.replace(/"/g, '\\"') + '"\n';
-    yaml += '    enabled: ' + d.enabled + '\n\n';
+    y += '  - bundle_id: ' + d.bundle_id + '\n';
+    y += '    name: ' + d.name + '\n';
+    y += '    icon: "' + d.icon + '"\n';
+    y += '    description: "' + (d.description || '').replace(/"/g, '\\"') + '"\n';
+    y += '    security_level: ' + d.security_level + '\n';
+    y += '    normal_hours: [' + (d.normal_hours || []).join(',') + ']\n';
+    y += '    context: "' + (d.context || '').replace(/"/g, '\\"') + '"\n';
+    if (d.sources && d.sources.length > 0) {
+      y += '    sources:\n';
+      for (const s of d.sources) {
+        y += '      - type: ' + s.type + '\n';
+        if (s.type === 'email') {
+          if (s.from) y += '        from: "' + s.from + '"\n';
+          if (s.keywords?.length) y += '        keywords: ["' + s.keywords.join('", "') + '"]\n';
+        }
+        if (s.type === 'webhook' && s.token) y += '        token: "' + s.token + '"\n';
+      }
+    }
+    y += '    enabled: ' + d.enabled + '\n\n';
   }
-  return yaml;
+  return y;
 }
 
 const SEC_OPTIONS = [
-  { value: 'critical', label: 'Critique — alerte immédiate' },
-  { value: 'high', label: 'Élevé — attention requise' },
-  { value: 'medium', label: 'Moyen — à surveiller' },
-  { value: 'low', label: 'Bas — informatif' },
+  { value: 'critical', label: 'Critique' },
+  { value: 'high', label: 'Élevé' },
+  { value: 'medium', label: 'Moyen' },
+  { value: 'low', label: 'Bas' },
 ];
-const secColors = { critical: 'error', high: 'warning', medium: 'info', low: 'success' };
+const SRC_TYPE_OPTIONS = [
+  { value: 'macos_log', label: 'macOS Log (notifications iPhone)' },
+  { value: 'email', label: 'Email (Gmail)' },
+  { value: 'webhook', label: 'Webhook (API)' },
+];
+
+function SourceEditor({ sources, onChange }) {
+  const update = (idx, field, val) => {
+    const ns = [...sources];
+    ns[idx] = { ...ns[idx], [field]: val };
+    onChange(ns);
+  };
+  const remove = (idx) => onChange(sources.filter((_, i) => i !== idx));
+  const add = (type) => onChange([...sources, { type, from: '', token: '', keywords: [] }]);
+
+  return (
+    <SpaceBetween size="xs">
+      <Box variant="awsui-key-label">Sources de notification</Box>
+      {sources.map((s, i) => (
+        <div key={i} style={{ padding: '8px', background: '#0d1117', borderRadius: '6px', borderLeft: '3px solid ' + (s.type === 'macos_log' ? '#0972d3' : s.type === 'email' ? '#238636' : '#d29922') }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+            <Select
+              selectedOption={SRC_TYPE_OPTIONS.find(o => o.value === s.type) || SRC_TYPE_OPTIONS[0]}
+              onChange={({ detail }) => update(i, 'type', detail.selectedOption.value)}
+              options={SRC_TYPE_OPTIONS}
+            />
+            <Button variant="icon" iconName="close" onClick={() => remove(i)} />
+          </div>
+          {s.type === 'email' && (
+            <ColumnLayout columns={2}>
+              <FormField label="Expéditeur (from)">
+                <Input value={s.from || ''} onChange={({ detail }) => update(i, 'from', detail.value)} placeholder="noreply@myqdevice.com" />
+              </FormField>
+              <FormField label="Mots-clés (séparés par virgules)">
+                <Input value={(s.keywords || []).join(', ')} onChange={({ detail }) => update(i, 'keywords', detail.value.split(',').map(k => k.trim()).filter(Boolean))} placeholder="garage, door, opened" />
+              </FormField>
+            </ColumnLayout>
+          )}
+          {s.type === 'webhook' && (
+            <FormField label="Token d'authentification">
+              <Input value={s.token || ''} onChange={({ detail }) => update(i, 'token', detail.value)} placeholder="myq-secret" />
+            </FormField>
+          )}
+          {s.type === 'macos_log' && (
+            <Box variant="small" color="text-body-secondary">Détection automatique via le bundle ID dans les logs macOS.</Box>
+          )}
+        </div>
+      ))}
+      <SpaceBetween direction="horizontal" size="xs">
+        <Button onClick={() => add('macos_log')} iconName="add-plus" variant="link">macOS Log</Button>
+        <Button onClick={() => add('email')} iconName="add-plus" variant="link">Email</Button>
+        <Button onClick={() => add('webhook')} iconName="add-plus" variant="link">Webhook</Button>
+      </SpaceBetween>
+    </SpaceBetween>
+  );
+}
 
 export default function DevicesPanel({ api }) {
-  const [devices, setDevices] = useState([]);
   const [yaml, setYaml] = useState('');
   const [parsed, setParsed] = useState({ vocal_alerts: false, poll_interval_seconds: 30, devices: [] });
   const [stats, setStats] = useState([]);
@@ -113,15 +184,8 @@ export default function DevicesPanel({ api }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const updateFromForm = (newParsed) => {
-    setParsed(newParsed);
-    setYaml(buildDevicesYaml(newParsed));
-  };
-
-  const updateFromYaml = (newYaml) => {
-    setYaml(newYaml);
-    try { setParsed(parseDevicesYaml(newYaml)); } catch {}
-  };
+  const updateFromForm = (p) => { setParsed(p); setYaml(buildDevicesYaml(p)); };
+  const updateFromYaml = (y) => { setYaml(y); try { setParsed(parseDevicesYaml(y)); } catch {} };
 
   const save = async () => {
     try {
@@ -130,60 +194,47 @@ export default function DevicesPanel({ api }) {
         body: JSON.stringify({ content: yaml }),
       });
       if (!res.ok) { setAlert({ type: 'error', text: 'Erreur: ' + res.status }); return; }
-      setAlert({ type: 'success', text: 'Configuration sauvegardée et rechargée' });
+      setAlert({ type: 'success', text: 'Sauvegardé et rechargé' });
       load();
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
 
   const updateDevice = (idx, field, value) => {
-    const newDevices = [...parsed.devices];
-    newDevices[idx] = { ...newDevices[idx], [field]: value };
-    updateFromForm({ ...parsed, devices: newDevices });
+    const nd = [...parsed.devices]; nd[idx] = { ...nd[idx], [field]: value }; updateFromForm({ ...parsed, devices: nd });
   };
-
-  const removeDevice = (idx) => {
-    updateFromForm({ ...parsed, devices: parsed.devices.filter((_, i) => i !== idx) });
-  };
-
-  const addDevice = () => {
-    updateFromForm({ ...parsed, devices: [...parsed.devices, {
-      bundle_id: 'com.example.app', name: 'Nouvel appareil', icon: '📱',
-      description: 'Description', security_level: 'low',
-      normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21],
-      context: 'Notification de cet appareil.', enabled: true,
-    }]});
-  };
+  const removeDevice = (idx) => updateFromForm({ ...parsed, devices: parsed.devices.filter((_, i) => i !== idx) });
+  const addDevice = () => updateFromForm({ ...parsed, devices: [...parsed.devices, {
+    bundle_id: 'com.example.app', name: 'Nouvel appareil', icon: '📱', description: '', security_level: 'low',
+    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21], context: '', enabled: true, sources: [{ type: 'macos_log', from: '', token: '', keywords: [] }],
+  }]});
 
   return (
     <SpaceBetween size="l">
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
 
-      <Container header={<Header variant="h3">Paramètres globaux</Header>}>
+      <Container header={<Header variant="h3">Paramètres</Header>}>
         <ColumnLayout columns={2}>
-          <FormField label="Alertes vocales (Sonos/Echo)">
+          <FormField label="Alertes vocales (Sonos/Echo sur anomalies)">
             <Toggle checked={parsed.vocal_alerts} onChange={({ detail }) => updateFromForm({ ...parsed, vocal_alerts: detail.checked })}>
-              {parsed.vocal_alerts ? 'Activées — les anomalies seront annoncées sur Sonos' : 'Désactivées — Telegram uniquement'}
+              {parsed.vocal_alerts ? 'Activées' : 'Désactivées'}
             </Toggle>
           </FormField>
-          <FormField label="Intervalle de vérification (secondes)">
+          <FormField label="Intervalle de vérification (sec)">
             <Input type="number" value={String(parsed.poll_interval_seconds)} onChange={({ detail }) => updateFromForm({ ...parsed, poll_interval_seconds: parseInt(detail.value) || 30 })} />
           </FormField>
         </ColumnLayout>
       </Container>
 
       {stats.length > 0 && (
-        <Container header={<Header variant="h3">Activité récente</Header>}>
-          <ColumnLayout columns={stats.length > 3 ? 3 : stats.length}>
+        <Container header={<Header variant="h3">Activité</Header>}>
+          <ColumnLayout columns={Math.min(stats.length, 4)}>
             {stats.map(d => (
               <div key={d.name}>
                 <Box variant="h4">{d.icon + ' ' + d.name}</Box>
-                <Box>{d.totalNotifications} notifications — dernière: {timeAgo(d.lastSeen)}</Box>
-                {d.hourCounts && d.hourCounts.some(c => c > 0) && (
-                  <div style={{ display: 'flex', gap: '1px', height: '24px', alignItems: 'flex-end', marginTop: '4px' }}>
-                    {d.hourCounts.map((c, h) => {
-                      const max = Math.max(...d.hourCounts, 1);
-                      return (<div key={h} title={h + 'h: ' + c} style={{ width: '10px', height: Math.max(2, (c / max) * 22) + 'px', background: c === 0 ? '#1a1f2e' : (h >= 22 || h < 6) ? '#d13212' : '#0972d3', borderRadius: '1px' }} />);
-                    })}
+                <Box>{d.totalNotifications} notifs — {timeAgo(d.lastSeen)}</Box>
+                {d.hourCounts?.some(c => c > 0) && (
+                  <div style={{ display: 'flex', gap: '1px', height: '20px', alignItems: 'flex-end', marginTop: '4px' }}>
+                    {d.hourCounts.map((c, h) => (<div key={h} title={h + 'h: ' + c} style={{ width: '9px', height: Math.max(1, (c / Math.max(...d.hourCounts, 1)) * 18) + 'px', background: c === 0 ? '#1a1f2e' : (h >= 22 || h < 6) ? '#d13212' : '#0972d3', borderRadius: '1px' }} />))}
                   </div>
                 )}
               </div>
@@ -194,63 +245,39 @@ export default function DevicesPanel({ api }) {
 
       <ColumnLayout columns={2}>
         <SpaceBetween size="m">
-          <Container header={
-            <Header variant="h3" actions={<Button onClick={addDevice} iconName="add-plus">Ajouter</Button>}>
-              Appareils ({parsed.devices.length})
-            </Header>
-          }>
-            <SpaceBetween size="m">
-              {parsed.devices.map((d, i) => (
-                <Container key={i} header={
-                  <Header variant="h4" actions={
-                    <SpaceBetween direction="horizontal" size="xs">
-                      <Toggle checked={d.enabled} onChange={({ detail }) => updateDevice(i, 'enabled', detail.checked)}>
-                        {d.enabled ? 'Actif' : 'Inactif'}
-                      </Toggle>
-                      <Button variant="icon" iconName="close" onClick={() => removeDevice(i)} />
-                    </SpaceBetween>
-                  }>
-                    {d.icon + ' ' + d.name}
-                  </Header>
-                }>
-                  <SpaceBetween size="xs">
-                    <ColumnLayout columns={2}>
-                      <FormField label="Bundle ID">
-                        <Input value={d.bundle_id} onChange={({ detail }) => updateDevice(i, 'bundle_id', detail.value)} />
-                      </FormField>
-                      <FormField label="Nom">
-                        <Input value={d.name} onChange={({ detail }) => updateDevice(i, 'name', detail.value)} />
-                      </FormField>
-                      <FormField label="Icône">
-                        <Input value={d.icon} onChange={({ detail }) => updateDevice(i, 'icon', detail.value)} />
-                      </FormField>
-                      <FormField label="Niveau sécurité">
-                        <Select
-                          selectedOption={SEC_OPTIONS.find(o => o.value === d.security_level) || SEC_OPTIONS[3]}
-                          onChange={({ detail }) => updateDevice(i, 'security_level', detail.selectedOption.value)}
-                          options={SEC_OPTIONS}
-                        />
-                      </FormField>
-                    </ColumnLayout>
-                    <FormField label="Description">
-                      <Input value={d.description} onChange={({ detail }) => updateDevice(i, 'description', detail.value)} />
-                    </FormField>
-                    <FormField label="Contexte d'analyse (pour l'IA)">
-                      <Input value={d.context} onChange={({ detail }) => updateDevice(i, 'context', detail.value)} />
-                    </FormField>
-                    <FormField label="Heures normales (séparées par virgules)">
-                      <Input value={d.normal_hours.join(',')} onChange={({ detail }) => updateDevice(i, 'normal_hours', detail.value.split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h)))} />
-                    </FormField>
-                  </SpaceBetween>
-                </Container>
-              ))}
-            </SpaceBetween>
-          </Container>
+          <Header variant="h3" actions={<Button onClick={addDevice} iconName="add-plus">Ajouter</Button>}>Appareils ({parsed.devices.length})</Header>
+          {parsed.devices.map((d, i) => (
+            <Container key={i} header={
+              <Header variant="h4" actions={
+                <SpaceBetween direction="horizontal" size="xs">
+                  <Toggle checked={d.enabled} onChange={({ detail }) => updateDevice(i, 'enabled', detail.checked)}>{d.enabled ? 'Actif' : 'Inactif'}</Toggle>
+                  <Button variant="icon" iconName="close" onClick={() => removeDevice(i)} />
+                </SpaceBetween>
+              }>{d.icon + ' ' + d.name}</Header>
+            }>
+              <SpaceBetween size="s">
+                <ColumnLayout columns={3}>
+                  <FormField label="Bundle ID"><Input value={d.bundle_id} onChange={({ detail }) => updateDevice(i, 'bundle_id', detail.value)} /></FormField>
+                  <FormField label="Nom"><Input value={d.name} onChange={({ detail }) => updateDevice(i, 'name', detail.value)} /></FormField>
+                  <FormField label="Icône"><Input value={d.icon} onChange={({ detail }) => updateDevice(i, 'icon', detail.value)} /></FormField>
+                </ColumnLayout>
+                <ColumnLayout columns={2}>
+                  <FormField label="Description"><Input value={d.description} onChange={({ detail }) => updateDevice(i, 'description', detail.value)} /></FormField>
+                  <FormField label="Sécurité">
+                    <Select selectedOption={SEC_OPTIONS.find(o => o.value === d.security_level) || SEC_OPTIONS[3]} onChange={({ detail }) => updateDevice(i, 'security_level', detail.selectedOption.value)} options={SEC_OPTIONS} />
+                  </FormField>
+                </ColumnLayout>
+                <FormField label="Contexte IA"><Input value={d.context} onChange={({ detail }) => updateDevice(i, 'context', detail.value)} /></FormField>
+                <FormField label="Heures normales (0-23, séparées par virgules)">
+                  <Input value={(d.normal_hours || []).join(', ')} onChange={({ detail }) => updateDevice(i, 'normal_hours', detail.value.split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h)))} />
+                </FormField>
+                <SourceEditor sources={d.sources || []} onChange={(s) => updateDevice(i, 'sources', s)} />
+              </SpaceBetween>
+            </Container>
+          ))}
         </SpaceBetween>
-        <Container header={
-          <Header variant="h3" actions={<Button variant="primary" onClick={save}>Sauvegarder</Button>}>YAML</Header>
-        }>
-          <Textarea value={yaml} onChange={({ detail }) => updateFromYaml(detail.value)} rows={35} />
+        <Container header={<Header variant="h3" actions={<Button variant="primary" onClick={save}>Sauvegarder</Button>}>YAML</Header>}>
+          <Textarea value={yaml} onChange={({ detail }) => updateFromYaml(detail.value)} rows={40} />
         </Container>
       </ColumnLayout>
     </SpaceBetween>
