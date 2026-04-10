@@ -113,7 +113,8 @@ Starts automatically with the agent on port 3080. Access from any device on your
 
 | Panel | Features |
 |-------|----------|
-| Chat | Multimodal — text, image upload, voice recording. Shows recent interactions from all channels. |
+| Accueil | Welcome dashboard — system status, channels, knowledge bases, devices, recent interactions, quick navigation |
+| Chat | Multimodal — text, image upload, voice recording. Interactions tab shows history from all channels. |
 | Configuration | Models & Devices, Routing (form + YAML), Proactive Actions (form + YAML), Agent Prompt. |
 | Appareils | Per-device forms: bundle ID, security level, normal hours, AI context, notification sources (macOS log / email / webhook) with type-specific fields. Activity charts. Vocal alerts toggle. All synced with YAML editor. |
 | Knowledge Bases | View sync status, chunk count, trigger manual sync, edit YAML config. |

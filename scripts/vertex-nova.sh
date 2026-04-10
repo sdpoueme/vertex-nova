@@ -1,3 +1,4 @@
 #!/bin/bash
-# Vertex Nova — Home Assistant
-exec /opt/homebrew/bin/node /Users/pouemes/Projects/synapse/src/home-agent.js
+# Start Vertex Nova — adjust the path to your installation
+cd "$(dirname "$0")/.." || exit 1
+exec node src/home-agent.js

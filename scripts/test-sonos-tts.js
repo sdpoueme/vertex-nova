@@ -9,9 +9,9 @@ const message = "Bonjour! En ce moment, on est en train de construire un assista
   "et gérer toute la maison. C'est vraiment cool!";
 
 const url = await generateTtsUrl(message, {
-  piperPath: '/Users/pouemes/.local/bin/piper',
-  frModel: '/Users/pouemes/.piper/models/fr_FR-siwis-medium.onnx',
-  enModel: '/Users/pouemes/.piper/models/en_US-amy-medium.onnx',
+  piperPath: process.env.TTS_PATH || 'piper',
+  frModel: process.env.TTS_FR_MODEL || '',
+  enModel: process.env.TTS_MODEL || '',
   port: 3004,
 });
 

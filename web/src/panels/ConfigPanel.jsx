@@ -184,7 +184,7 @@ function ModelsPanel({ api }) {
 
   const echoOptions = [
     { value: 'vertexnovaspeaker', label: 'Echo Show (cuisine)' },
-    { value: 'vertexnovaspeakeroffice', label: 'Bureau Serge' },
+    { value: 'vertexnovaspeakeroffice', label: 'Office' },
     { value: 'garage', label: 'Garage' },
   ];
   const currentEcho = models.voice_monkey_default_device || '';
@@ -260,7 +260,7 @@ function ModelsPanel({ api }) {
                   <Input value={models.telegram_bot_token || ''} disabled />
                 </FormField>
                 <FormField label="User IDs autorisés">
-                  <Input value={models.telegram_allowed_user_ids || ''} onChange={({ detail }) => save('TELEGRAM_ALLOWED_USER_IDS', detail.value)} placeholder="787677377" />
+                  <Input value={models.telegram_allowed_user_ids || ''} onChange={({ detail }) => save('TELEGRAM_ALLOWED_USER_IDS', detail.value)} placeholder="your-user-id" />
                 </FormField>
               </SpaceBetween>
             </Container>

@@ -7,22 +7,22 @@
     <key>ProgramArguments</key>
     <array>
         <string>/opt/homebrew/bin/node</string>
-        <string>/Users/pouemes/Projects/synapse/src/home-agent.js</string>
+        <string>src/home-agent.js</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/pouemes/Projects/synapse</string>
+    <string>/Users/REPLACE_WITH_YOUR_USERNAME/vertex-nova</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Users/pouemes/Projects/synapse/vertex-nova.log</string>
+    <string>/Users/REPLACE_WITH_YOUR_USERNAME/vertex-nova/vertex-nova.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/pouemes/Projects/synapse/vertex-nova.log</string>
+    <string>/Users/REPLACE_WITH_YOUR_USERNAME/vertex-nova/vertex-nova.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/pouemes/.local/bin</string>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
 </dict>
 </plist>

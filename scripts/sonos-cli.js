@@ -21,9 +21,9 @@ var CLIENT_ID = process.env.SONOS_CLIENT_ID || '';
 var CLIENT_SECRET = process.env.SONOS_CLIENT_SECRET || '';
 var DEFAULT_ROOM = process.env.SONOS_DEFAULT_ROOM || 'Rez de Chaussee';
 var TTS_VOLUME = Number(process.env.SONOS_TTS_VOLUME) || 30;
-var PIPER_PATH = process.env.TTS_PATH || '/Users/pouemes/.local/bin/piper';
-var EN_MODEL = process.env.TTS_MODEL || '/Users/pouemes/.piper/models/en_US-amy-medium.onnx';
-var FR_MODEL = process.env.TTS_FR_MODEL || '/Users/pouemes/.piper/models/fr_FR-siwis-medium.onnx';
+var PIPER_PATH = process.env.TTS_PATH || 'piper';
+var EN_MODEL = process.env.TTS_MODEL || '';
+var FR_MODEL = process.env.TTS_FR_MODEL || '';
 var TTS_PORT = Number(process.env.TTS_SERVER_PORT) || 3005;
 
 // Check if TTS server is already running on the main agent's port

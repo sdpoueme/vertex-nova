@@ -14,7 +14,7 @@ import { logger } from './log.js';
 var log = logger('home-agent');
 var telegramChannel = null;
 var whatsappChannel = null;
-var OWNER_CHAT_ID = 787677377;
+var OWNER_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_USER_IDS?.split(',')[0]) || 0;
 
 // Send a message to the owner on Telegram with Markdown support
 async function sendTelegram(text) {
@@ -99,8 +99,8 @@ async function handleMessage(msg) {
 
     // Add user identity context
     var userContext = '';
-    if (userId === '787677377' || userId === '15148650526') {
-      userContext = '[User: Serge Poueme, propriétaire] ';
+    if (config.telegramAllowedUserIds.includes(Number(userId))) {
+      userContext = '[User: propriétaire] ';
     }
 
     var stamped = '[Current time: ' + localTimestamp() + '] [Channel: ' + channel + '] ' + userContext + '\n' + text;
@@ -209,7 +209,7 @@ async function main() {
           log.info('[ifttt/alexa] Received: ' + text);
 
           var sessionId = getSessionId('alexa-ifttt');
-          var stamped = '[Current time: ' + localTimestamp() + '] [Channel: alexa-ifttt] [User: Serge Poueme, propriétaire]\n' + text;
+          var stamped = '[Current time: ' + localTimestamp() + '] [Channel: alexa-ifttt] [User: propriétaire]\n' + text;
 
           var response = await chat(stamped, sessionId);
           log.info('[ifttt/alexa] Response: ' + response.slice(0, 100));
