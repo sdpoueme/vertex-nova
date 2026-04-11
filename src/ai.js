@@ -639,33 +639,44 @@ async function executeTool(name, input) {
     return 'Ajouté à: ' + input.path;
   }
 
-  // Movie recommendations — TMDB API + NYT RSS + Google News
+  // Movie recommendations — TMDB + NYT + Google News
   if (name === 'movie_recommend') {
     try {
       var tmdbKey = process.env.TMDB_API_KEY || '';
-      var movieLang = process.env.MOVIE_LANGUAGE || 'fr';
+      var tmdbToken = process.env.TMDB_READ_TOKEN || '';
+      var movieLangs = (process.env.MOVIE_LANGUAGES || process.env.MOVIE_LANGUAGE || 'fr').split(',').map(function(l) { return l.trim(); });
       var prefGenres = (process.env.MOVIE_GENRES || '').split(',').map(function(g) { return g.trim(); }).filter(Boolean);
       var movies = [];
 
-      // Source 1: TMDB API (best, needs free key)
-      if (tmdbKey) {
-        try {
-          var tmdbUrl = input.query
-            ? 'https://api.themoviedb.org/3/search/movie?api_key=' + tmdbKey + '&language=' + movieLang + '&query=' + encodeURIComponent(input.query)
-            : 'https://api.themoviedb.org/3/trending/movie/week?api_key=' + tmdbKey + '&language=' + movieLang;
-          var tmdbRes = await fetch(tmdbUrl, { signal: AbortSignal.timeout(8000) });
-          if (tmdbRes.ok) {
-            var tmdbData = await tmdbRes.json();
-            for (var mv of (tmdbData.results || []).slice(0, 8)) {
-              movies.push(mv.title + (mv.release_date ? ' (' + mv.release_date.slice(0, 4) + ')' : '') +
-                (mv.vote_average ? ' — ' + mv.vote_average.toFixed(1) + '/10' : '') +
-                (mv.overview ? '\n   ' + mv.overview.slice(0, 120) : ''));
+      // Source 1: TMDB API (v3 key or v4 bearer token)
+      if (tmdbKey || tmdbToken) {
+        for (var lang of movieLangs) {
+          if (movies.length >= 8) break;
+          try {
+            var tmdbUrl = input.query
+              ? 'https://api.themoviedb.org/3/search/movie?language=' + lang + '&query=' + encodeURIComponent(input.query)
+              : 'https://api.themoviedb.org/3/trending/movie/week?language=' + lang;
+            var headers = {};
+            if (tmdbToken) {
+              headers['Authorization'] = 'Bearer ' + tmdbToken;
+            } else {
+              tmdbUrl += '&api_key=' + tmdbKey;
             }
-          }
-        } catch {}
+            var tmdbRes = await fetch(tmdbUrl, { headers: headers, signal: AbortSignal.timeout(8000) });
+            if (tmdbRes.ok) {
+              var tmdbData = await tmdbRes.json();
+              for (var mv of (tmdbData.results || []).slice(0, 5)) {
+                if (movies.length >= 8) break;
+                movies.push(mv.title + (mv.release_date ? ' (' + mv.release_date.slice(0, 4) + ')' : '') +
+                  (mv.vote_average ? ' — ' + mv.vote_average.toFixed(1) + '/10' : '') +
+                  (mv.overview ? '\n   ' + mv.overview.slice(0, 150) : ''));
+              }
+            }
+          } catch {}
+        }
       }
 
-      // Source 2: NYT Movies RSS (real reviews, always works)
+      // Source 2: NYT Movies RSS — extract actual movie titles from reviews
       if (movies.length < 5) {
         try {
           var nytRes = await fetch('https://rss.nytimes.com/services/xml/rss/nyt/Movies.xml', {
@@ -678,16 +689,21 @@ async function executeTool(name, input) {
             while ((nm = nytRegex.exec(nytXml)) !== null && movies.length < 8) {
               var nTitle = nm[1].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").trim();
               var nDesc = nm[2].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim();
-              if (nTitle.includes('Review') || nTitle.match(/^['']/)) {
-                movies.push(nTitle.replace(/\s*Review:?\s*/, ': ') + '\n   ' + nDesc.slice(0, 120));
+              // Only include actual movie reviews (title starts with quote or contains "Review")
+              var movieName = nTitle.match(/^['']([^'']+)['']/);
+              if (movieName) {
+                movies.push(movieName[1] + '\n   ' + nDesc.slice(0, 150));
+              } else if (nTitle.includes('Review')) {
+                var reviewName = nTitle.replace(/\s*Review.*$/, '').replace(/^['']|['']$/g, '').trim();
+                if (reviewName.length > 2) movies.push(reviewName + '\n   ' + nDesc.slice(0, 150));
               }
             }
           }
         } catch {}
       }
 
-      // Source 3: Google News movies
-      if (movies.length < 5) {
+      // Source 3: Google News — streaming recommendations
+      if (movies.length < 3) {
         try {
           var gnRes = await fetch('https://news.google.com/rss/search?q=meilleurs+films+streaming+' + new Date().getFullYear() + '&hl=fr-CA&gl=CA&ceid=CA:fr', {
             headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
@@ -698,16 +714,17 @@ async function executeTool(name, input) {
             var gm;
             while ((gm = gnRegex.exec(gnXml)) !== null && movies.length < 8) {
               var gTitle = gm[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim();
-              if (gTitle.length > 10) movies.push(gTitle);
+              if (gTitle.length > 10 && gTitle.length < 100) movies.push(gTitle);
             }
           }
         } catch {}
       }
 
-      if (movies.length === 0) return 'Aucun film trouvé. Configurez TMDB_API_KEY pour de meilleurs résultats.';
-      var output = 'Films et recommandations:\n\n';
-      for (var fi = 0; fi < movies.length; fi++) output += (fi + 1) + '. ' + movies[fi] + '\n';
-      if (prefGenres.length > 0) output += '\nGenres préférés: ' + prefGenres.join(', ');
+      if (movies.length === 0) return 'Aucun film trouvé. Configurez TMDB_API_KEY ou TMDB_READ_TOKEN dans .env pour de meilleurs résultats.';
+      var output = 'Voici mes recommandations de films:\n\n';
+      for (var fi = 0; fi < movies.length; fi++) output += (fi + 1) + '. ' + movies[fi] + '\n\n';
+      if (prefGenres.length > 0) output += 'Vos genres préférés: ' + prefGenres.join(', ') + '\n';
+      output += '\nCes recommandations sont basées sur les tendances actuelles et les critiques récentes.';
       return output;
     } catch (err) {
       return 'Erreur recherche films: ' + err.message;
