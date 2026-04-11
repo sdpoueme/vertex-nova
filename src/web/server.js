@@ -17,23 +17,41 @@ import { logger } from '../log.js';
 
 var log = logger('web');
 
-// Recent interactions log — shared across channels
+// Recent interactions log — persisted to disk
 var recentInteractions = [];
-var MAX_INTERACTIONS = 50;
+var MAX_INTERACTIONS = 100;
+var INTERACTIONS_FILE = null;
+
+function loadInteractions(projectDir) {
+  INTERACTIONS_FILE = join(projectDir, '.sessions', 'interactions.json');
+  try {
+    if (existsSync(INTERACTIONS_FILE)) {
+      recentInteractions = JSON.parse(readFileSync(INTERACTIONS_FILE, 'utf8'));
+      log.info('Loaded ' + recentInteractions.length + ' interactions from disk');
+    }
+  } catch {}
+}
+
+function saveInteractions() {
+  if (!INTERACTIONS_FILE) return;
+  try { writeFileSync(INTERACTIONS_FILE, JSON.stringify(recentInteractions)); } catch {}
+}
 
 export function logInteraction(channel, direction, text, hasImage) {
   recentInteractions.push({
     ts: Date.now(),
     channel: channel,
-    direction: direction, // 'in' or 'out'
+    direction: direction,
     text: (text || '').slice(0, 300),
     hasImage: !!hasImage,
   });
   if (recentInteractions.length > MAX_INTERACTIONS) recentInteractions.shift();
+  saveInteractions();
 }
 
 export function startDashboard(config, port) {
   var projectDir = config.projectDir;
+  loadInteractions(projectDir);
 
   var server = createServer(async function(req, res) {
     var url = new URL(req.url, 'http://localhost');
