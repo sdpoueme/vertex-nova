@@ -249,6 +249,10 @@ Note: The temporary test token expires every 24 hours.
 ```bash
 # Standard
 npm start
+# Dashboard at https://localhost:3080 (HTTPS with auto-generated cert)
+```
+
+The dashboard generates a self-signed HTTPS certificate on first run (requires `openssl`). This enables microphone access for voice recording from any device on your network. Accept the browser certificate warning on first visit.
 
 # With debug logging
 npm run dev:debug
@@ -377,12 +381,22 @@ LOG_LEVEL=debug node src/home-agent.js
 
 ### Dashboard not accessible from other devices
 
-Make sure your firewall allows port 3080. The dashboard binds to all interfaces by default.
+Make sure your firewall allows port 3080. The dashboard serves HTTPS with a self-signed certificate.
 
 ```bash
 # Test locally
-curl http://localhost:3080/api/status
+curl -k https://localhost:3080/api/status
 
 # Find your IP
 ifconfig | grep "inet " | grep -v 127.0.0.1
+
+# Access from other devices
+# https://<your-ip>:3080 (accept cert warning on first visit)
 ```
+
+### Microphone not working in dashboard
+
+The microphone requires HTTPS. The dashboard auto-generates a self-signed certificate. If you see a mic error:
+1. Make sure you're accessing via `https://` (not `http://`)
+2. Accept the certificate warning in your browser
+3. If the cert wasn't generated, check that `openssl` is installed

@@ -127,7 +127,9 @@ After every response, a background agent reviews the interaction with `think: tr
 
 ## Web Dashboard
 
-Starts with the agent on port 3080. Access: `http://<your-ip>:3080`
+Served over HTTPS with auto-generated self-signed certificate. Access: `https://<your-ip>:3080`
+
+On first visit, accept the browser's certificate warning (one-time). HTTPS enables microphone access for voice recording from any device on your network.
 
 | Panel | Features |
 |-------|----------|
@@ -204,13 +206,14 @@ Everything runs locally without Claude API:
 
 ## Installation
 
-See [docs/INSTALL.md](docs/INSTALL.md) for the full guide. Prerequisites: Node 20+, Ollama, ffmpeg, Piper TTS, whisper.cpp.
+See [docs/INSTALL.md](docs/INSTALL.md) for the full guide. Prerequisites: Node 20+, Ollama, ffmpeg, openssl, Piper TTS, whisper.cpp.
 
 ```bash
 npm install
 ollama pull qwen3:8b
 cp .env.home.example .env  # Edit with your credentials
 npm start
+# Dashboard at https://localhost:3080 (accept cert warning on first visit)
 ```
 
 ## Roadmap
