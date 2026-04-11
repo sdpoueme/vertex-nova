@@ -132,11 +132,18 @@ export function startDashboard(config, port) {
         var data = JSON.parse(body);
         var sessionId = 'web-dashboard-' + new Date().toISOString().slice(0, 10);
         logInteraction('web', 'in', data.message, !!data.image);
-        var response = await chat(data.message, sessionId, data.image || null);
+        // Timeout after 90 seconds
+        var chatTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 90000); });
+        var chatPromise = chat(data.message, sessionId, data.image || null);
+        var response = await Promise.race([chatPromise, chatTimeout]);
         logInteraction('web', 'out', response);
         json(res, 200, { response: response });
       } catch (err) {
-        json(res, 500, { error: err.message });
+        if (err.message === 'timeout') {
+          json(res, 200, { response: 'La requête a pris trop de temps. Réessayez avec une demande plus simple.' });
+        } else {
+          json(res, 500, { error: err.message });
+        }
       }
       return;
     }

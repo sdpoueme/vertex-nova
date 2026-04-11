@@ -672,19 +672,18 @@ async function chatOllama(message, sessionId, modelOverride, image) {
   addUserMessage(sessionId, message);
   var messages = buildMessages(sessionId);
 
-  var ollamaSystemPrompt = systemPrompt + "\n\n" +
-    "RÈGLES CRITIQUES:\n" +
-    "- Réponds TOUJOURS dans la langue du message.\n" +
-    "- Sois concis. Utilise les outils quand c'est pertinent.\n" +
-    "- Ne demande PAS les IDs d'appareils — utilise les valeurs par défaut des outils.\n" +
-    "- Quand on te demande de parler sur Echo/Sonos, utilise directement echo_speak ou sonos_speak SANS demander quel appareil.\n" +
-    "- Ne parle PAS de la maison sauf si on te le demande.";
+  var ollamaSystemPrompt = "Tu es Vertex Nova, assistant maison. " +
+    "Réponds dans la langue du message. Sois concis. " +
+    "Utilise les outils quand pertinent. " +
+    "Ne demande PAS les IDs d'appareils — utilise les valeurs par défaut. " +
+    "Quand on demande de parler sur Echo/Sonos, utilise directement l'outil SANS demander quel appareil. " +
+    "Pour un résumé de semaine, lis les notes dans 'daily' ou 'weekly' du vault.";
 
   var ollamaTools = tools.map(function(t) {
     return { type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } };
   });
 
-  var maxIterations = 8;
+  var maxIterations = 5;
   var executedVoiceCalls = new Set();
 
   for (var i = 0; i < maxIterations; i++) {
