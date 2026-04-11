@@ -639,92 +639,132 @@ async function executeTool(name, input) {
     return 'Ajouté à: ' + input.path;
   }
 
-  // Movie recommendations — TMDB + NYT + Google News
+  // Movie recommendations — all sources merged, ranked by user profile
   if (name === 'movie_recommend') {
     try {
       var tmdbKey = process.env.TMDB_API_KEY || '';
       var tmdbToken = process.env.TMDB_READ_TOKEN || '';
       var movieLangs = (process.env.MOVIE_LANGUAGES || process.env.MOVIE_LANGUAGE || 'fr').split(',').map(function(l) { return l.trim(); });
-      var prefGenres = (process.env.MOVIE_GENRES || '').split(',').map(function(g) { return g.trim(); }).filter(Boolean);
-      var movies = [];
+      var prefGenres = (process.env.MOVIE_GENRES || '').split(',').map(function(g) { return g.trim().toLowerCase(); }).filter(Boolean);
+      var allMovies = []; // { title, year, rating, overview, source, genres }
 
-      // Source 1: TMDB API (v3 key or v4 bearer token)
-      if (tmdbKey || tmdbToken) {
+      // Source 1: TMDB (best — structured data with genres)
+      if (tmdbToken || tmdbKey) {
+        var GENRE_MAP = {28:'action',12:'adventure',16:'animation',35:'comedy',80:'crime',99:'documentary',18:'drama',10751:'family',14:'fantasy',36:'history',27:'horror',10402:'music',9648:'mystery',10749:'romance',878:'sci-fi',53:'thriller',10752:'war',37:'western'};
         for (var lang of movieLangs) {
-          if (movies.length >= 8) break;
           try {
-            var tmdbUrl = input.query
+            var url = input.query
               ? 'https://api.themoviedb.org/3/search/movie?language=' + lang + '&query=' + encodeURIComponent(input.query)
               : 'https://api.themoviedb.org/3/trending/movie/week?language=' + lang;
             var headers = {};
-            if (tmdbToken) {
-              headers['Authorization'] = 'Bearer ' + tmdbToken;
-            } else {
-              tmdbUrl += '&api_key=' + tmdbKey;
-            }
-            var tmdbRes = await fetch(tmdbUrl, { headers: headers, signal: AbortSignal.timeout(8000) });
+            if (tmdbToken) headers['Authorization'] = 'Bearer ' + tmdbToken;
+            else url += '&api_key=' + tmdbKey;
+            var tmdbRes = await fetch(url, { headers: headers, signal: AbortSignal.timeout(8000) });
             if (tmdbRes.ok) {
               var tmdbData = await tmdbRes.json();
-              for (var mv of (tmdbData.results || []).slice(0, 5)) {
-                if (movies.length >= 8) break;
-                movies.push(mv.title + (mv.release_date ? ' (' + mv.release_date.slice(0, 4) + ')' : '') +
-                  (mv.vote_average ? ' — ' + mv.vote_average.toFixed(1) + '/10' : '') +
-                  (mv.overview ? '\n   ' + mv.overview.slice(0, 150) : ''));
+              for (var mv of (tmdbData.results || []).slice(0, 10)) {
+                var genres = (mv.genre_ids || []).map(function(id) { return GENRE_MAP[id] || ''; }).filter(Boolean);
+                allMovies.push({
+                  title: mv.title, year: (mv.release_date || '').slice(0, 4),
+                  rating: mv.vote_average || 0, overview: (mv.overview || '').slice(0, 150),
+                  source: 'TMDB', genres: genres, lang: lang,
+                });
               }
             }
           } catch {}
         }
       }
 
-      // Source 2: NYT Movies RSS — extract actual movie titles from reviews
-      if (movies.length < 5) {
-        try {
-          var nytRes = await fetch('https://rss.nytimes.com/services/xml/rss/nyt/Movies.xml', {
-            headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
-          });
-          if (nytRes.ok) {
-            var nytXml = await nytRes.text();
-            var nytRegex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<description>([\s\S]*?)<\/description>/g;
-            var nm;
-            while ((nm = nytRegex.exec(nytXml)) !== null && movies.length < 8) {
-              var nTitle = nm[1].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").trim();
-              var nDesc = nm[2].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim();
-              // Only include actual movie reviews (title starts with quote or contains "Review")
-              var movieName = nTitle.match(/^['']([^'']+)['']/);
-              if (movieName) {
-                movies.push(movieName[1] + '\n   ' + nDesc.slice(0, 150));
-              } else if (nTitle.includes('Review')) {
-                var reviewName = nTitle.replace(/\s*Review.*$/, '').replace(/^['']|['']$/g, '').trim();
-                if (reviewName.length > 2) movies.push(reviewName + '\n   ' + nDesc.slice(0, 150));
-              }
+      // Source 2: NYT Reviews (real critic picks)
+      try {
+        var nytRes = await fetch('https://rss.nytimes.com/services/xml/rss/nyt/Movies.xml', {
+          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
+        });
+        if (nytRes.ok) {
+          var nytXml = await nytRes.text();
+          var nytRegex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<description>([\s\S]*?)<\/description>/g;
+          var nm;
+          while ((nm = nytRegex.exec(nytXml)) !== null) {
+            var nTitle = nm[1].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").trim();
+            var nDesc = nm[2].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, '').trim();
+            var movieName = nTitle.match(/^['']([^'']+)['']/);
+            if (movieName) {
+              allMovies.push({ title: movieName[1], year: '', rating: 0, overview: nDesc.slice(0, 150), source: 'NYT', genres: [], lang: 'en' });
             }
           }
-        } catch {}
-      }
+        }
+      } catch {}
 
-      // Source 3: Google News — streaming recommendations
-      if (movies.length < 3) {
-        try {
-          var gnRes = await fetch('https://news.google.com/rss/search?q=meilleurs+films+streaming+' + new Date().getFullYear() + '&hl=fr-CA&gl=CA&ceid=CA:fr', {
-            headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
-          });
-          if (gnRes.ok) {
-            var gnXml = await gnRes.text();
-            var gnRegex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>/g;
-            var gm;
-            while ((gm = gnRegex.exec(gnXml)) !== null && movies.length < 8) {
-              var gTitle = gm[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim();
-              if (gTitle.length > 10 && gTitle.length < 100) movies.push(gTitle);
+      // Source 3: Google News streaming recommendations
+      try {
+        var gnRes = await fetch('https://news.google.com/rss/search?q=meilleurs+films+streaming+' + new Date().getFullYear() + '&hl=fr-CA&gl=CA&ceid=CA:fr', {
+          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
+        });
+        if (gnRes.ok) {
+          var gnXml = await gnRes.text();
+          var gnRegex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>/g;
+          var gm;
+          while ((gm = gnRegex.exec(gnXml)) !== null && allMovies.length < 20) {
+            var gTitle = gm[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+            if (gTitle.length > 10 && gTitle.length < 100) {
+              allMovies.push({ title: gTitle, year: '', rating: 0, overview: '', source: 'News', genres: [], lang: 'fr' });
             }
           }
-        } catch {}
+        }
+      } catch {}
+
+      if (allMovies.length === 0) return 'Aucun film trouvé.';
+
+      // Score movies based on user profile
+      var { getProfile } = await import('./identity.js');
+      var userId = '787677377'; // Default owner
+      try {
+        var profile = getProfile(userId);
+        var userGenres = (profile.preferences?.movieGenres || prefGenres).map(function(g) { return g.toLowerCase(); });
+
+        for (var movie of allMovies) {
+          var score = 0;
+          // Genre match: +3 per matching genre
+          for (var g of movie.genres) {
+            if (userGenres.includes(g)) score += 3;
+          }
+          // Rating boost: higher rated = better
+          if (movie.rating > 7) score += 2;
+          else if (movie.rating > 6) score += 1;
+          // French language preference
+          if (movie.lang === 'fr') score += 1;
+          // TMDB source is most reliable
+          if (movie.source === 'TMDB') score += 1;
+          // NYT = critic pick
+          if (movie.source === 'NYT') score += 1;
+          movie.score = score;
+        }
+
+        // Sort by score descending, then rating
+        allMovies.sort(function(a, b) { return (b.score || 0) - (a.score || 0) || (b.rating || 0) - (a.rating || 0); });
+      } catch {}
+
+      // Deduplicate by title
+      var seen = new Set();
+      var unique = [];
+      for (var m of allMovies) {
+        var key = m.title.toLowerCase().replace(/[^a-zà-ü0-9]/g, '');
+        if (!seen.has(key)) { seen.add(key); unique.push(m); }
       }
 
-      if (movies.length === 0) return 'Aucun film trouvé. Configurez TMDB_API_KEY ou TMDB_READ_TOKEN dans .env pour de meilleurs résultats.';
-      var output = 'Voici mes recommandations de films:\n\n';
-      for (var fi = 0; fi < movies.length; fi++) output += (fi + 1) + '. ' + movies[fi] + '\n\n';
-      if (prefGenres.length > 0) output += 'Vos genres préférés: ' + prefGenres.join(', ') + '\n';
-      output += '\nCes recommandations sont basées sur les tendances actuelles et les critiques récentes.';
+      // Take top 8
+      var top = unique.slice(0, 8);
+      var output = 'Voici mes recommandations personnalisées:\n\n';
+      for (var fi = 0; fi < top.length; fi++) {
+        var f = top[fi];
+        output += (fi + 1) + '. ' + f.title;
+        if (f.year) output += ' (' + f.year + ')';
+        if (f.rating > 0) output += ' — ' + f.rating.toFixed(1) + '/10';
+        if (f.genres.length > 0) output += ' [' + f.genres.join(', ') + ']';
+        output += '\n';
+        if (f.overview) output += '   ' + f.overview + '\n';
+      }
+      if (prefGenres.length > 0) output += '\nBasé sur vos genres préférés: ' + prefGenres.join(', ');
       return output;
     } catch (err) {
       return 'Erreur recherche films: ' + err.message;
