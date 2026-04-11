@@ -74,7 +74,7 @@ export default function ChatPanel({ api }) {
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      alert('Le microphone nécessite HTTPS ou localhost. Accédez au dashboard via http://localhost:3080 ou ajoutez cette adresse aux exceptions Chrome (chrome://flags/#unsafely-treat-insecure-origin-as-secure).');
+      alert('Le microphone nécessite HTTPS. Ouvrez http://localhost:3080 depuis ce Mac, ou dans Chrome: chrome://flags/#unsafely-treat-insecure-origin-as-secure → ajoutez http://192.168.2.153:3080');
       return;
     }
     try {
@@ -113,7 +113,13 @@ export default function ChatPanel({ api }) {
       mediaRecRef.current = mr;
       mr.start();
       setRecording(true);
-    } catch (err) { alert('Microphone non disponible: ' + err.message); }
+    } catch (err) {
+      if (err.message?.includes('mediaDevices') || err.name === 'TypeError') {
+        alert('Le microphone nécessite HTTPS. Ouvrez http://localhost:3080 depuis ce Mac, ou dans Chrome: chrome://flags → unsafely-treat-insecure-origin-as-secure → ajoutez http://192.168.2.153:3080');
+      } else {
+        alert('Microphone non disponible: ' + err.message);
+      }
+    }
   };
 
   const stopRecording = () => { if (mediaRecRef.current?.state === 'recording') mediaRecRef.current.stop(); };
