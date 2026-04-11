@@ -312,8 +312,8 @@ function ModelsPanel({ api }) {
             <FormField label="Clé API TMDB (v3)" description="Gratuite sur themoviedb.org">
               <Input value={models.tmdb_api_key || ''} onChange={({ detail }) => save('TMDB_API_KEY', detail.value)} placeholder="Clé API v3" />
             </FormField>
-            <FormField label="Token TMDB (Read Access)" description="Bearer token pour l'API v4">
-              <Input value={models.tmdb_read_token || ''} onChange={({ detail }) => save('TMDB_READ_TOKEN', detail.value)} placeholder="eyJhbGci..." />
+            <FormField label="Token TMDB (Read Access)" description={models.tmdb_read_token ? '✅ Configuré' : 'Bearer token pour l\'API v4 — themoviedb.org/settings/api'}>
+              <Input value={models.tmdb_read_token ? '' : ''} onChange={({ detail }) => { if (detail.value.length > 10) save('TMDB_READ_TOKEN', detail.value); }} placeholder={models.tmdb_read_token ? 'Token configuré — collez un nouveau pour remplacer' : 'eyJhbGci...'} />
             </FormField>
             <FormField label="Région">
               <Input value={models.movie_region || 'CA'} onChange={({ detail }) => save('MOVIE_REGION', detail.value)} placeholder="CA" />
