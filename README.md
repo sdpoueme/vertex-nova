@@ -7,6 +7,8 @@ You ──→ Telegram / WhatsApp / Web Dashboard
               │
          Orchestrator (detects multi-step tasks, pre-fetches data)
               │
+         Agent Router → News | Home | Media | Memory | Weather | General
+              │                    (3-7 tools each vs 22)
          Qwen3 8B (local, free, fast) + reasoning protocol
               │
          Good response? ── Yes → reply
@@ -60,6 +62,7 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 | Reminders | Natural language, smart delivery by time of day |
 | Proactive | Scheduled news, weather, maintenance, movies — persistent schedule |
 | Orchestrator | Pre-fetches data for multi-step tasks, reduces AI iterations |
+| Multi-Agent | Specialist agents (news, home, media, memory, weather) with reduced tool sets |
 | Reasoning | Structured XML protocol for reliable tool use and planning |
 | Email Monitor | Gmail polling for device alerts |
 | Notification Monitor | macOS Notification Center polling via iPhone Mirroring |
@@ -76,6 +79,21 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 | Qwen3 8B | Default — chat, tools, search | Free (local) | 80%+ of requests |
 | Gemma 4 E2B | Vision — image analysis | Free (local) | When images are sent |
 | Claude Sonnet | Escalation — complex reasoning | Pay per use | Local model failures, vision fallback |
+
+### Multi-Agent System
+
+Instead of one AI call with 22 tools, messages are routed to specialist agents with 3-7 tools each. Fewer tools = faster inference (40-60% speedup).
+
+| Agent | Tools | Handles |
+|-------|-------|---------|
+| News (3) | news_search, web_search, web_fetch | Actualités, briefings, nouvelles |
+| Home (7) | vault_*, kb_* | Notes, événements, généalogie |
+| Media (7) | movie_recommend, echo/sonos_speak | Films, annonces vocales |
+| Memory (5) | memory_*, reminder_* | Rappels, mémoire persistante |
+| Weather (1) | web_search | Météo, température |
+| General (22) | all | Fallback pour tout le reste |
+
+Multi-agent composition: "nouvelles du Cameroun sur Sonos" combines News + Media agents (6 tools) instead of loading all 22.
 
 ### Tools (21 total)
 
