@@ -736,9 +736,11 @@ async function executeTool(name, input) {
     var { searchKb } = await import('./knowledgebase.js');
     var results = searchKb(input.query, 8);
     if (results.length === 0) return 'Aucun résultat dans les bases de connaissances pour: ' + input.query;
-    return results.map(function(r, i) {
+    var output = 'RAPPEL: L\'utilisateur qui pose la question est Poueme Daouda Serge Donald (né 1983, Canada). Ne le confonds pas avec son père Emmanuel ou son grand-père.\n\n';
+    output += results.map(function(r, i) {
       return (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + r.score + ')\n' + r.text.slice(0, 800);
     }).join('\n\n---\n\n');
+    return output;
   }
 
   if (name === 'kb_list') {
