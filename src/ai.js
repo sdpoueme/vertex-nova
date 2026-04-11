@@ -42,12 +42,15 @@ var systemPrompt = loadSystemPrompt();
 var tools = [
   {
     name: 'sonos_speak',
-    description: 'Speak text on a Sonos speaker using TTS. Auto-detects French or English. Use the room names configured in your Sonos system.',
+    description: 'Speak text on a Sonos speaker using TTS. Auto-detects French or English.' +
+      (config.sonosDayRoom ? ' Day room: ' + config.sonosDayRoom + '.' : '') +
+      (config.sonosNightRoom ? ' Night room: ' + config.sonosNightRoom + '.' : '') +
+      (config.sonosDefaultRoom ? ' Default: ' + config.sonosDefaultRoom + '.' : ''),
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to speak' },
-        room: { type: 'string', description: 'Speaker name (from your Sonos setup)' }
+        room: { type: 'string', description: 'Speaker name' + (config.sonosDefaultRoom ? '. Default: ' + config.sonosDefaultRoom : '') }
       },
       required: ['text']
     }
@@ -138,12 +141,14 @@ var tools = [
   },
   {
     name: 'echo_speak',
-    description: 'Make an Alexa Echo device speak text via Voice Monkey. Use the device IDs configured in your Voice Monkey dashboard.',
+    description: 'Make an Alexa Echo device speak text via Voice Monkey.' +
+      (config.echoDevices.length > 0 ? ' Available devices: ' + config.echoDevices.join(', ') + '.' : '') +
+      (config.voiceMonkeyDefaultDevice ? ' Default: ' + config.voiceMonkeyDefaultDevice + '.' : ''),
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to speak' },
-        device: { type: 'string', description: 'Voice Monkey device ID' }
+        device: { type: 'string', description: 'Voice Monkey device ID' + (config.voiceMonkeyDefaultDevice ? '. Default: ' + config.voiceMonkeyDefaultDevice : '') }
       },
       required: ['text']
     }
@@ -666,10 +671,13 @@ async function chatOllama(message, sessionId, modelOverride, image) {
   addUserMessage(sessionId, message);
   var messages = buildMessages(sessionId);
 
-  var ollamaSystemPrompt = "Tu es Vertex Nova, un assistant personnel. " +
-    "RÈGLE ABSOLUE: Réponds TOUJOURS dans la langue du message de l'utilisateur. " +
-    "Sois concis et utile. Utilise les outils quand c'est pertinent. " +
-    "Ne parle PAS de la maison sauf si on te le demande.";
+  var ollamaSystemPrompt = systemPrompt + "\n\n" +
+    "RÈGLES CRITIQUES:\n" +
+    "- Réponds TOUJOURS dans la langue du message.\n" +
+    "- Sois concis. Utilise les outils quand c'est pertinent.\n" +
+    "- Ne demande PAS les IDs d'appareils — utilise les valeurs par défaut des outils.\n" +
+    "- Quand on te demande de parler sur Echo/Sonos, utilise directement echo_speak ou sonos_speak SANS demander quel appareil.\n" +
+    "- Ne parle PAS de la maison sauf si on te le demande.";
 
   var ollamaTools = tools.map(function(t) {
     return { type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } };
