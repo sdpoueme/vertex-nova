@@ -311,6 +311,18 @@ journalctl -u vertex-nova -f
 
 ---
 
+## Performance Tips
+
+The task orchestrator automatically optimizes multi-step requests. For best results:
+
+- Keep requests specific: "nouvelles du Cameroun sur Sonos" is faster than "donne-moi des infos sur le Cameroun et lis-les"
+- The orchestrator detects patterns like "news + device", "météo + device", "résumé + device" and pre-fetches data
+- Complex requests that don't match orchestrator patterns will use the full tool loop (slower)
+- If Claude API has no credits, the agent automatically enters a 30-minute cooldown to avoid wasting time on retries
+- All `.env` changes for devices, rooms, and locations take effect immediately via the dashboard (no restart needed for most settings)
+
+---
+
 ## Troubleshooting
 
 ### Ollama not responding

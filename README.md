@@ -5,11 +5,13 @@ A self-hosted, multi-channel home assistant powered by local AI models with clou
 ```
 You ──→ Telegram / WhatsApp / Web Dashboard
               │
-         Qwen3 8B (local, free, fast)
+         Orchestrator (detects multi-step tasks, pre-fetches data)
+              │
+         Qwen3 8B (local, free, fast) + reasoning protocol
               │
          Good response? ── Yes → reply
               │ No
-         Escalate to Claude → reply + learn
+         Escalate to Claude → reply + learn (30min cooldown if no credits)
               │
          Both fail → friendly error in French
 ```
@@ -17,12 +19,15 @@ You ──→ Telegram / WhatsApp / Web Dashboard
 ## Why Vertex Nova?
 
 - Runs 80%+ of requests locally at zero cost (Ollama + Qwen3)
+- Task orchestrator pre-fetches data for multi-step requests (news + speak = 1 AI call instead of 3)
+- Structured reasoning protocol with XML delimiters for reliable tool use
 - Speaks French and English natively
 - Controls Sonos and Echo devices with voice
-- Learns your preferences across sessions
+- Learns your preferences across sessions — dreams at night to consolidate memory
 - Proactively sends news, weather alerts, and reminders
-- Indexes family knowledge bases for genealogy/history questions
-- Monitors device notifications from your iPhone (Honeywell, MyQ, Telus, LG, Bosch)
+- Indexes family knowledge bases with relationship-aware RAG for genealogy
+- Monitors device notifications via macOS log, email, and webhook API
+- Pattern-based anomaly detection for home security devices
 - Works fully offline when Claude API is unavailable
 
 ## Quick Start
@@ -54,6 +59,8 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 | Memory | Persistent cross-session learning in vault |
 | Reminders | Natural language, smart delivery by time of day |
 | Proactive | Scheduled news, weather, maintenance, movies — persistent schedule |
+| Orchestrator | Pre-fetches data for multi-step tasks, reduces AI iterations |
+| Reasoning | Structured XML protocol for reliable tool use and planning |
 | Email Monitor | Gmail polling for device alerts |
 | Notification Monitor | macOS Notification Center polling via iPhone Mirroring |
 | Knowledge Bases | Git-synced repos with relationship-aware RAG for genealogy |
@@ -95,6 +102,27 @@ The installer handles all dependencies (Node.js, Ollama, ffmpeg, Piper TTS, whis
 | `memory_append` | Add to existing memory |
 | `kb_search` | Search family knowledge bases (RAG) |
 | `kb_list` | List configured knowledge bases |
+
+### Task Orchestrator
+
+Multi-step requests like "news du Cameroun sur Sonos" are detected and pre-processed before reaching the AI. The orchestrator fetches data in parallel, then gives the AI a single-step task.
+
+| Pattern | Pre-fetch | AI does |
+|---------|-----------|---------|
+| "news/nouvelles + device" | Google News RSS | Summarize + speak |
+| "météo + device" | DuckDuckGo weather | Format + speak |
+| "résumé semaine + device" | vault/weekly/ or vault/daily/ | Summarize + speak |
+
+Result: ~25 seconds instead of ~90 seconds for complex requests.
+
+### Reasoning Protocol
+
+The AI uses a structured reasoning protocol with XML delimiters:
+- `<rules>` — concise behavioral constraints
+- `<reasoning_protocol>` — INTENT → TOOLS → RESPONSE planning before each action
+- `<context>` / `<prefetched_data>` — structured data injection from the orchestrator
+
+Based on [OpenAI reasoning best practices](https://developers.openai.com/api/docs/guides/reasoning-best-practices): simple direct prompts, zero-shot, XML delimiters, specific constraints, planner/doer pattern.
 
 ### Notification Routing
 
