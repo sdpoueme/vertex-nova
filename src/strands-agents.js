@@ -187,32 +187,65 @@ var kbSearchTool = tool({
 // --- Movie tool ---
 var movieTool = tool({
   name: 'movie_recommend',
-  description: 'Recommend movies to watch. Uses TMDB and NYT reviews.',
+  description: 'Recommande des films à regarder. Utilise TMDB pour les tendances en français.',
   inputSchema: z.object({
-    query: z.string().optional().describe('Search query or empty for trending'),
+    query: z.string().optional().describe('Recherche spécifique ou vide pour les tendances'),
   }),
   callback: async (input) => {
+    var tmdbToken = process.env.TMDB_READ_TOKEN || '';
+    var tmdbKey = process.env.TMDB_API_KEY || '';
+    var langs = (process.env.MOVIE_LANGUAGES || process.env.MOVIE_LANGUAGE || 'fr').split(',').map(l => l.trim());
     var movies = [];
-    // NYT Movies RSS
-    try {
-      var res = await fetch('https://rss.nytimes.com/services/xml/rss/nyt/Movies.xml', {
-        headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
-      });
-      if (res.ok) {
-        var xml = await res.text();
-        var regex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<description>([\s\S]*?)<\/description>/g;
-        var m;
-        while ((m = regex.exec(xml)) !== null && movies.length < 6) {
-          var title = m[1].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").trim();
-          var desc = m[2].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, '').trim();
-          if (title.includes('Review') || title.match(/^['']/)) {
-            movies.push(title + '\n   ' + desc.slice(0, 120));
+
+    // TMDB API (French titles)
+    if (tmdbToken || tmdbKey) {
+      for (var lang of langs) {
+        if (movies.length >= 8) break;
+        try {
+          var url = input.query
+            ? 'https://api.themoviedb.org/3/search/movie?language=' + lang + '&query=' + encodeURIComponent(input.query)
+            : 'https://api.themoviedb.org/3/trending/movie/week?language=' + lang;
+          var headers = {};
+          if (tmdbToken) headers['Authorization'] = 'Bearer ' + tmdbToken;
+          else url += '&api_key=' + tmdbKey;
+          var res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+          if (res.ok) {
+            var data = await res.json();
+            for (var mv of (data.results || []).slice(0, 5)) {
+              if (movies.length >= 8) break;
+              movies.push(mv.title + (mv.release_date ? ' (' + mv.release_date.slice(0, 4) + ')' : '') +
+                (mv.vote_average ? ' — ' + mv.vote_average.toFixed(1) + '/10' : '') +
+                (mv.overview ? '\n   ' + mv.overview.slice(0, 150) : ''));
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Fallback: NYT RSS
+    if (movies.length < 3) {
+      try {
+        var nytRes = await fetch('https://rss.nytimes.com/services/xml/rss/nyt/Movies.xml', {
+          headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
+        });
+        if (nytRes.ok) {
+          var xml = await nytRes.text();
+          var regex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>/g;
+          var m;
+          while ((m = regex.exec(xml)) !== null && movies.length < 8) {
+            var title = m[1].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').trim();
+            var movieName = title.match(/^['']([^'']+)['']/);
+            if (movieName) movies.push(movieName[1]);
           }
         }
-      }
-    } catch {}
-    if (movies.length === 0) return 'Aucun film trouvé.';
-    return 'Films recommandés:\n' + movies.map((m, i) => (i + 1) + '. ' + m).join('\n');
+      } catch {}
+    }
+
+    if (movies.length === 0) return 'Aucun film trouvé. Configurez TMDB_READ_TOKEN pour des résultats en français.';
+    var prefGenres = (process.env.MOVIE_GENRES || '').split(',').filter(Boolean);
+    var output = 'Films recommandés:\n\n' + movies.map((m, i) => (i + 1) + '. ' + m).join('\n\n');
+    if (prefGenres.length > 0) output += '\n\nGenres préférés: ' + prefGenres.join(', ');
+    return output;
   },
 });
 
