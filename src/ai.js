@@ -796,6 +796,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
 
   var maxIterations = 5;
   var executedVoiceCalls = new Set();
+  var executedToolCalls = new Map(); // toolName → count
 
   for (var i = 0; i < maxIterations; i++) {
     var data = await withRetry(async function() {
@@ -855,7 +856,24 @@ async function chatOllama(message, sessionId, modelOverride, image) {
 
     for (var j = 0; j < msg.tool_calls.length; j++) {
       var tc = msg.tool_calls[j];
-      // Deduplicate voice tool calls — prevent speaking the same text multiple times
+
+      // Detect repeated tool calls — if same tool called 2+ times, return last result directly
+      var callCount = (executedToolCalls.get(tc.function.name) || 0) + 1;
+      executedToolCalls.set(tc.function.name, callCount);
+      if (callCount > 2) {
+        log.info('Tool ' + tc.function.name + ' called ' + callCount + ' times, breaking loop');
+        // Return the last tool result as the final response
+        var lastResult = '';
+        for (var mi = messages.length - 1; mi >= 0; mi--) {
+          if (messages[mi].role === 'tool' && messages[mi].content) {
+            lastResult = typeof messages[mi].content === 'string' ? messages[mi].content : JSON.stringify(messages[mi].content);
+            break;
+          }
+        }
+        return lastResult || 'Voici les résultats.';
+      }
+
+      // Deduplicate voice tool calls
       var isVoiceTool = tc.function.name === 'echo_speak' || tc.function.name === 'echo_speak_all' || tc.function.name === 'sonos_speak' || tc.function.name === 'sonos_speak_all';
       if (isVoiceTool) {
         var voiceKey = tc.function.name + ':' + (tc.function.arguments?.text || '').slice(0, 100) + ':' + (tc.function.arguments?.device || tc.function.arguments?.room || '');
@@ -878,7 +896,19 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     messages = buildMessages(sessionId);
   }
 
-  return 'Trop d\'itérations. Réessayez.';
+  // If we hit max iterations, return the last assistant message or tool result
+  var lastContent = '';
+  for (var li = messages.length - 1; li >= 0; li--) {
+    if (messages[li].role === 'assistant' && messages[li].content) {
+      lastContent = messages[li].content;
+      break;
+    }
+    if (messages[li].role === 'tool' && messages[li].content) {
+      lastContent = typeof messages[li].content === 'string' ? messages[li].content : '';
+      break;
+    }
+  }
+  return lastContent || 'La requête a pris trop de temps. Réessayez avec une demande plus simple.';
 }
 
 /**
