@@ -952,7 +952,23 @@ async function maybeSummarize(sessionId) {
  *   5. If Claude fails → return Gemma 4's response anyway
  */
 export async function chat(message, sessionId, image) {
-  // Orchestrate multi-step tasks (news+speak, weather+speak, etc.)
+  // Try Strands agents first (if enabled and no image)
+  if (!image && process.env.USE_STRANDS !== 'false') {
+    try {
+      var { strandsChat } = await import('./strands-agents.js');
+      var strandsResponse = await strandsChat(message);
+      if (strandsResponse && strandsResponse.length > 5) {
+        // Queue async thinker review
+        try { var { queueReview: qr } = await import('./thinker.js'); qr(message, strandsResponse, 'strands'); } catch {}
+        return strandsResponse;
+      }
+      log.debug('Strands returned empty, falling back to native');
+    } catch (err) {
+      log.debug('Strands unavailable: ' + err.message + ', using native');
+    }
+  }
+
+  // Orchestrate multi-step tasks
   if (!image) {
     try {
       var { orchestrate } = await import('./orchestrator.js');

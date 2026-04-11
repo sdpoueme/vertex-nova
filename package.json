@@ -11,6 +11,7 @@
     "build:web": "cd web && npm run build"
   },
   "dependencies": {
+    "@strands-agents/sdk": "^1.0.0-rc.3",
     "telegraf": "^4.16.3"
   }
 }

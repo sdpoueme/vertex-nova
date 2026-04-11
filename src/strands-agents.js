@@ -1,0 +1,369 @@
+/**
+ * Strands Agents Integration — multi-agent system using @strands-agents/sdk.
+ *
+ * Uses the OpenAI provider pointed at local Ollama for free inference.
+ * Each specialist agent has its own tools and system prompt.
+ * Tool-only agents don't need a model at all — they execute directly.
+ */
+import { Agent, tool } from '@strands-agents/sdk';
+import { OpenAIModel } from '@strands-agents/sdk/models/openai';
+import { z } from '@strands-agents/sdk';
+import { config } from './home-config.js';
+import { logger } from './log.js';
+
+var log = logger('strands');
+
+var OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
+var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
+
+/**
+ * Create an Ollama-backed model via OpenAI-compatible API.
+ */
+function createOllamaModel(modelId) {
+  return new OpenAIModel({
+    modelId: modelId || OLLAMA_MODEL,
+    clientOptions: {
+      baseURL: OLLAMA_URL + '/v1',
+      apiKey: 'ollama', // Ollama doesn't need a real key
+    },
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// Tool definitions using Strands tool() with Zod schemas
+// ═══════════════════════════════════════════════════════
+
+import { execFile } from 'node:child_process';
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, appendFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+var vaultPath = resolve(config.vaultPath || join(config.projectDir, 'vault'));
+
+// --- News tool (no model needed — direct RSS fetch) ---
+var newsSearchTool = tool({
+  name: 'news_search',
+  description: 'Fetch latest news from Google News RSS. Returns real article titles and summaries.',
+  inputSchema: z.object({
+    topic: z.string().optional().describe('Topic to search for, or empty for top news'),
+  }),
+  callback: async (input) => {
+    var locale = config.newsLocale || 'fr-CA';
+    var country = config.newsCountry || 'CA';
+    var url = input.topic
+      ? 'https://news.google.com/rss/search?q=' + encodeURIComponent(input.topic) + '&hl=' + locale + '&gl=' + country + '&ceid=' + country + ':fr'
+      : 'https://news.google.com/rss?hl=' + locale + '&gl=' + country + '&ceid=' + country + ':fr';
+
+    var res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return 'Erreur: ' + res.status;
+    var xml = await res.text();
+    var items = [];
+    var regex = /<item>([\s\S]*?)<\/item>/g;
+    var m;
+    while ((m = regex.exec(xml)) !== null && items.length < 5) {
+      var title = (m[1].match(/<title>([\s\S]*?)<\/title>/) || [])[1] || '';
+      var source = (m[1].match(/<source[^>]*>([\s\S]*?)<\/source>/) || [])[1] || '';
+      title = title.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+      if (title) items.push((items.length + 1) + '. ' + title + (source ? ' (' + source + ')' : ''));
+    }
+    return items.length > 0 ? items.join('\n') : 'Aucune nouvelle trouvée.';
+  },
+});
+
+// --- Web search tool ---
+var webSearchTool = tool({
+  name: 'web_search',
+  description: 'Search the web via DuckDuckGo.',
+  inputSchema: z.object({
+    query: z.string().describe('Search query'),
+  }),
+  callback: async (input) => {
+    var res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(input.query), {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (!res.ok) return 'Search failed: ' + res.status;
+    var html = await res.text();
+    var regex = /<a rel="nofollow" class="result__a" href="([^"]+)"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    var results = [];
+    var m;
+    while ((m = regex.exec(html)) !== null && results.length < 5) {
+      results.push((results.length + 1) + '. ' + m[2].replace(/<[^>]+>/g, '').trim() + '\n   ' + m[3].replace(/<[^>]+>/g, '').trim().slice(0, 150));
+    }
+    return results.length > 0 ? results.join('\n\n') : 'Aucun résultat.';
+  },
+});
+
+// --- Echo speak tool (no model needed — direct API call) ---
+var echoSpeakTool = tool({
+  name: 'echo_speak',
+  description: 'Speak text on an Echo device via Voice Monkey.' +
+    (config.voiceMonkeyDefaultDevice ? ' Default: ' + config.voiceMonkeyDefaultDevice : ''),
+  inputSchema: z.object({
+    text: z.string().describe('Text to speak'),
+    device: z.string().optional().describe('Voice Monkey device ID'),
+  }),
+  callback: async (input) => {
+    var device = input.device || config.voiceMonkeyDefaultDevice || '';
+    var token = config.voiceMonkeyToken || '';
+    if (!device || !token) return 'Echo non configuré.';
+    var res = await fetch('https://api-v2.voicemonkey.io/announcement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token: token, device: device, text: input.text.slice(0, 1000) }),
+    });
+    var data = await res.json();
+    return data.success ? 'Annoncé sur Echo ' + device : 'Erreur Echo: ' + JSON.stringify(data);
+  },
+});
+
+// --- Sonos speak tool (no model needed — direct CLI call) ---
+var sonosSpeakTool = tool({
+  name: 'sonos_speak',
+  description: 'Speak text on a Sonos speaker.' +
+    (config.sonosDayRoom ? ' Day: ' + config.sonosDayRoom + '.' : '') +
+    (config.sonosNightRoom ? ' Night: ' + config.sonosNightRoom + '.' : ''),
+  inputSchema: z.object({
+    text: z.string().describe('Text to speak'),
+    room: z.string().optional().describe('Speaker name'),
+  }),
+  callback: async (input) => {
+    var h = new Date().getHours();
+    var room = input.room || ((h >= 22 || h < 7) ? (config.sonosNightRoom || config.sonosDefaultRoom) : (config.sonosDayRoom || config.sonosDefaultRoom));
+    if (!room) return 'Sonos non configuré.';
+    return new Promise((resolve) => {
+      var cliPath = join(config.projectDir, 'scripts/sonos-cli.js');
+      execFile('node', [cliPath, 'speak', input.text.slice(0, 800), room], { timeout: 30000 }, (err) => {
+        resolve(err ? 'Erreur Sonos: ' + err.message : 'Annoncé sur Sonos ' + room);
+      });
+    });
+  },
+});
+
+// --- Vault tools ---
+var vaultReadTool = tool({
+  name: 'vault_read',
+  description: 'Read a note from the vault.',
+  inputSchema: z.object({ path: z.string().describe('Note path') }),
+  callback: (input) => {
+    var p = join(vaultPath, input.path);
+    if (!p.endsWith('.md')) p += '.md';
+    try { return readFileSync(p, 'utf8'); } catch { return 'Note not found: ' + input.path; }
+  },
+});
+
+var vaultSearchTool = tool({
+  name: 'vault_search',
+  description: 'Search across vault notes.',
+  inputSchema: z.object({ query: z.string().describe('Search query') }),
+  callback: async (input) => {
+    return new Promise((resolve) => {
+      execFile('grep', ['-rl', '--include=*.md', '-i', input.query, vaultPath], { timeout: 10000 }, (err, stdout) => {
+        if (!stdout?.trim()) { resolve('Aucun résultat pour: ' + input.query); return; }
+        var files = stdout.trim().split('\n').slice(0, 5);
+        var results = files.map((f) => {
+          var rel = f.replace(vaultPath + '/', '');
+          try { return '📄 ' + rel + ':\n' + readFileSync(f, 'utf8').slice(0, 300); } catch { return ''; }
+        }).filter(Boolean);
+        resolve(results.join('\n---\n') || 'Aucun résultat.');
+      });
+    });
+  },
+});
+
+// --- KB search tool ---
+var kbSearchTool = tool({
+  name: 'kb_search',
+  description: 'Search family knowledge bases (genealogy, biographies).',
+  inputSchema: z.object({ query: z.string().describe('Search query') }),
+  callback: async (input) => {
+    try {
+      var { searchKb } = await import('./knowledgebase.js');
+      var results = searchKb(input.query, 5);
+      if (results.length === 0) return 'Aucun résultat KB pour: ' + input.query;
+      return results.map((r, i) => (i + 1) + '. [' + r.kb + '] ' + r.text.slice(0, 400)).join('\n\n');
+    } catch { return 'KB non disponible.'; }
+  },
+});
+
+// --- Movie tool ---
+var movieTool = tool({
+  name: 'movie_recommend',
+  description: 'Recommend movies to watch. Uses TMDB and NYT reviews.',
+  inputSchema: z.object({
+    query: z.string().optional().describe('Search query or empty for trending'),
+  }),
+  callback: async (input) => {
+    var movies = [];
+    // NYT Movies RSS
+    try {
+      var res = await fetch('https://rss.nytimes.com/services/xml/rss/nyt/Movies.xml', {
+        headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(6000),
+      });
+      if (res.ok) {
+        var xml = await res.text();
+        var regex = /<item>[\s\S]*?<title>([\s\S]*?)<\/title>[\s\S]*?<description>([\s\S]*?)<\/description>/g;
+        var m;
+        while ((m = regex.exec(xml)) !== null && movies.length < 6) {
+          var title = m[1].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/&amp;/g, '&').replace(/&#x27;/g, "'").trim();
+          var desc = m[2].replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, '').trim();
+          if (title.includes('Review') || title.match(/^['']/)) {
+            movies.push(title + '\n   ' + desc.slice(0, 120));
+          }
+        }
+      }
+    } catch {}
+    if (movies.length === 0) return 'Aucun film trouvé.';
+    return 'Films recommandés:\n' + movies.map((m, i) => (i + 1) + '. ' + m).join('\n');
+  },
+});
+
+// --- Memory tools ---
+var memoryViewTool = tool({
+  name: 'memory_view',
+  description: 'View memory files.',
+  inputSchema: z.object({ path: z.string().describe('Path or "/" for root') }),
+  callback: (input) => {
+    var memDir = join(vaultPath, 'memories');
+    mkdirSync(memDir, { recursive: true });
+    var p = join(memDir, input.path === '/' ? '' : input.path);
+    try {
+      var stat = require('node:fs').statSync(p);
+      if (stat.isDirectory()) return readdirSync(p, { recursive: true }).join('\n') || 'Mémoire vide.';
+      return readFileSync(p, 'utf8');
+    } catch { return 'Non trouvé: ' + input.path; }
+  },
+});
+
+var reminderSetTool = tool({
+  name: 'reminder_set',
+  description: 'Set a reminder.',
+  inputSchema: z.object({
+    text: z.string().describe('What to remind about'),
+    date: z.string().describe('Date YYYY-MM-DD'),
+    time: z.string().describe('Time HH:MM'),
+  }),
+  callback: (input) => {
+    var remDir = join(vaultPath, 'home', 'reminders');
+    mkdirSync(remDir, { recursive: true });
+    var id = input.date + '-' + Date.now().toString(36);
+    var content = '---\ndate: ' + input.date + '\ntime: "' + input.time + '"\nreminder: "' + input.text.replace(/"/g, '\\"') + '"\nstatus: pending\n---\n\n# Rappel\n\n' + input.text;
+    writeFileSync(join(remDir, id + '.md'), content);
+    return 'Rappel créé pour le ' + input.date + ' à ' + input.time;
+  },
+});
+
+// ═══════════════════════════════════════════════════════
+// Specialist Agents
+// ═══════════════════════════════════════════════════════
+
+var agents = {};
+
+/**
+ * Initialize all Strands agents.
+ */
+export function initStrandsAgents() {
+  var model = createOllamaModel();
+
+  agents.news = new Agent({
+    model: model,
+    tools: [newsSearchTool, webSearchTool],
+    systemPrompt: 'Tu es un agent actualités. Utilise news_search pour les nouvelles. Réponds en français, concis.',
+    printer: false,
+  });
+
+  agents.media = new Agent({
+    model: model,
+    tools: [movieTool, echoSpeakTool, sonosSpeakTool],
+    systemPrompt: 'Tu es un agent média. Pour les films utilise movie_recommend. Pour parler sur les appareils utilise echo_speak ou sonos_speak directement.',
+    printer: false,
+  });
+
+  agents.home = new Agent({
+    model: model,
+    tools: [vaultReadTool, vaultSearchTool, kbSearchTool],
+    systemPrompt: 'Tu es un agent maison. Utilise vault et kb pour trouver des informations. Réponds en français.',
+    printer: false,
+  });
+
+  agents.memory = new Agent({
+    model: model,
+    tools: [memoryViewTool, reminderSetTool],
+    systemPrompt: 'Tu es un agent mémoire. Gère les rappels et la mémoire.',
+    printer: false,
+  });
+
+  agents.general = new Agent({
+    model: model,
+    tools: [newsSearchTool, webSearchTool, echoSpeakTool, sonosSpeakTool, vaultReadTool, vaultSearchTool, kbSearchTool, movieTool, memoryViewTool, reminderSetTool],
+    systemPrompt: 'Tu es Vertex Nova, assistant maison. Réponds en français. Sois concis. Utilise les outils quand pertinent.',
+    printer: false,
+  });
+
+  log.info('Strands agents initialized: ' + Object.keys(agents).join(', '));
+  return agents;
+}
+
+// ═══════════════════════════════════════════════════════
+// Router — dispatch to the right agent
+// ═══════════════════════════════════════════════════════
+
+var NEWS_RE = /(?:nouvelles?|news|actualit[ée]s?|briefing|journal)/i;
+var MEDIA_RE = /(?:film|movie|cin[ée]|regarder|watch|sonos|echo|parle|speak|annonce|lis.*sur)/i;
+var HOME_RE = /(?:vault|note|maison|famille|g[ée]n[ée]alogie|poueme|cherche dans)/i;
+var MEMORY_RE = /(?:rappel|remind|souviens|m[ée]moire|n.oublie pas)/i;
+
+function pickAgent(message) {
+  if (NEWS_RE.test(message) && MEDIA_RE.test(message)) return 'media'; // news + speak = media handles both
+  if (NEWS_RE.test(message)) return 'news';
+  if (MEDIA_RE.test(message)) return 'media';
+  if (HOME_RE.test(message)) return 'home';
+  if (MEMORY_RE.test(message)) return 'memory';
+  return 'general';
+}
+
+/**
+ * Chat using Strands agents.
+ * @param {string} message - User message
+ * @returns {Promise<string>} Agent response
+ */
+export async function strandsChat(message) {
+  if (!agents.general) initStrandsAgents();
+
+  var agentKey = pickAgent(message);
+  var agent = agents[agentKey];
+  log.info('Strands agent: ' + agentKey);
+
+  try {
+    var result = await agent.invoke(message);
+    var response = result.lastMessage || '';
+    // Extract text from content blocks if needed
+    if (typeof response === 'object') {
+      if (Array.isArray(response)) {
+        response = response.map(function(b) { return b.text || ''; }).join('\n');
+      } else if (response.content) {
+        response = Array.isArray(response.content)
+          ? response.content.map(function(b) { return b.text || ''; }).join('\n')
+          : String(response.content);
+      } else {
+        response = JSON.stringify(response);
+      }
+    }
+    return response || 'Pas de réponse.';
+  } catch (err) {
+    log.error('Strands agent error (' + agentKey + '): ' + err.message);
+    return null; // Return null to fall back to native AI
+  }
+}
+
+/**
+ * Check if Strands is available and working.
+ */
+export async function testStrands() {
+  try {
+    if (!agents.general) initStrandsAgents();
+    var result = await agents.general.invoke('Dis OK');
+    return !!result;
+  } catch (err) {
+    log.warn('Strands test failed: ' + err.message);
+    return false;
+  }
+}
