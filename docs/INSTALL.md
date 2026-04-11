@@ -230,10 +230,13 @@ Note: The temporary test token expires every 24 hours.
 | `STT_MODEL` | If voice | — | Path to whisper GGML model |
 | `VAULT_PATH` | No | `vault` | Path to Obsidian vault |
 | `DASHBOARD_PORT` | No | `3080` | Web dashboard port |
+| `USE_STRANDS` | No | `true` | Enable Strands multi-agent system |
+| `MOVIE_LANGUAGES` | No | `fr` | Movie languages (comma-separated: fr,en,es) |
+| `TMDB_READ_TOKEN` | No | — | TMDB Read Access Token (v4 bearer) |
 
 ### Config Files
 
-- `config/routing.yaml` — Model routing rules (which model handles which queries)
+- `config/routing.yaml` — Model routing rules
 - `config/proactive.yaml` — Scheduled proactive actions and notification routing
 - `config/knowledgebases.yaml` — Family knowledge base git repos for RAG
 - `config/devices.yaml` — Device notification monitoring (sources, security levels, anomaly rules)
