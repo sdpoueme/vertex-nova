@@ -111,10 +111,14 @@ export async function orchestrate(message) {
   var deviceParam = intent.deviceType === 'echo' ? 'device' : 'room';
 
   return {
-    rewrittenMessage: '[Données pré-chargées — utilise ' + speakTool + ' avec ' + deviceParam + '="' + intent.device + '" pour annoncer]\n\n' +
-      'Voici les données à annoncer:\n\n' + prefetched + '\n\n' +
-      'Résume ces informations en 2-3 phrases naturelles en français, puis utilise ' + speakTool + ' pour les annoncer sur ' + intent.device + '. ' +
-      'Après l\'annonce, confirme brièvement.',
+    rewrittenMessage: '<context>\n' +
+      '<task>' + intent.task + '</task>\n' +
+      '<target_device type="' + intent.deviceType + '">' + intent.device + '</target_device>\n' +
+      '<prefetched_data>\n' + prefetched + '\n</prefetched_data>\n' +
+      '</context>\n\n' +
+      'Résume ces données en 2-3 phrases naturelles en français. ' +
+      'Utilise ' + speakTool + ' avec ' + deviceParam + '="' + intent.device + '" pour annoncer. ' +
+      'Après, confirme brièvement.',
     intent: intent,
   };
 }
