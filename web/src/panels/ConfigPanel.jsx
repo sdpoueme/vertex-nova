@@ -173,6 +173,8 @@ function ModelsPanel({ api }) {
     claudeOptions.unshift({ value: currentClaude, label: currentClaude + ' (actuel)' });
   }
 
+  const pick = (options, value) => options.find(o => o.value === value) || options[0] || { value: '', label: '—' };
+
   return (
     <SpaceBetween size="l">
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
