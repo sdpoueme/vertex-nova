@@ -263,6 +263,17 @@ var tools = [
     name: 'kb_list',
     description: 'Liste les bases de connaissances familiales disponibles et leur statut.',
     input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'movie_recommend',
+    description: 'Recommande des films à regarder. Utilise TMDB pour trouver les films tendance, populaires ou par genre. Utilise TOUJOURS cet outil quand on demande des films, des recommandations cinéma, ou quoi regarder.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Recherche spécifique (ex: "action 2026") ou vide pour les tendances' },
+        genre: { type: 'string', description: 'Genre: action, comedy, drama, thriller, animation, horror, family, romance, sci-fi' }
+      }
+    }
   }
 ];
 
@@ -626,6 +637,95 @@ async function executeTool(name, input) {
     appendMem(memAppendPath, '\n' + input.content);
     log.info('Memory appended: ' + input.path);
     return 'Ajouté à: ' + input.path;
+  }
+
+  // Movie recommendations via TMDB
+  if (name === 'movie_recommend') {
+    try {
+      var tmdbKey = process.env.TMDB_API_KEY || '';
+      var movieLang = process.env.MOVIE_LANGUAGE || 'fr';
+      var movieRegion = process.env.MOVIE_REGION || 'CA';
+      var prefGenres = (process.env.MOVIE_GENRES || '').split(',').map(function(g) { return g.trim(); }).filter(Boolean);
+      var movies = [];
+
+      if (tmdbKey) {
+        // Use TMDB API
+        var tmdbUrl = '';
+        if (input.query) {
+          tmdbUrl = 'https://api.themoviedb.org/3/search/movie?api_key=' + tmdbKey + '&language=' + movieLang + '&query=' + encodeURIComponent(input.query) + '&region=' + movieRegion;
+        } else {
+          tmdbUrl = 'https://api.themoviedb.org/3/trending/movie/week?api_key=' + tmdbKey + '&language=' + movieLang;
+        }
+        var tmdbRes = await fetch(tmdbUrl, { signal: AbortSignal.timeout(8000) });
+        if (tmdbRes.ok) {
+          var tmdbData = await tmdbRes.json();
+          var results = (tmdbData.results || []).slice(0, 8);
+          for (var mi = 0; mi < results.length; mi++) {
+            var mv = results[mi];
+            movies.push({
+              title: mv.title,
+              year: (mv.release_date || '').slice(0, 4),
+              rating: mv.vote_average ? mv.vote_average.toFixed(1) + '/10' : '',
+              overview: (mv.overview || '').slice(0, 150),
+            });
+          }
+        }
+      }
+
+      // Fallback: scrape TMDB trending page
+      if (movies.length === 0) {
+        var trendRes = await fetch('https://www.themoviedb.org/trending?language=' + movieLang, {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (trendRes.ok) {
+          var trendHtml = await trendRes.text();
+          var titleRegex = /<h2><a[^>]*>([^<]+)<\/a><\/h2>/g;
+          var tm;
+          var tCount = 0;
+          while ((tm = titleRegex.exec(trendHtml)) !== null && tCount < 8) {
+            movies.push({ title: tm[1].trim(), year: '', rating: '', overview: '' });
+            tCount++;
+          }
+        }
+      }
+
+      // Also try web search as additional source
+      if (movies.length < 3) {
+        var searchRes = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent('best movies streaming ' + movieRegion + ' ' + new Date().getFullYear()), {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(8000),
+        });
+        if (searchRes.ok) {
+          var sHtml = await searchRes.text();
+          var sRegex = /<a rel="nofollow" class="result__a"[^>]*>([^<]+)<\/a>/g;
+          var sm;
+          while ((sm = sRegex.exec(sHtml)) !== null && movies.length < 8) {
+            movies.push({ title: sm[1].replace(/<[^>]+>/g, '').trim(), year: '', rating: '', overview: '' });
+          }
+        }
+      }
+
+      if (movies.length === 0) return 'Aucun film trouvé. Essayez avec un genre spécifique.';
+
+      var output = 'Films recommandés:\n\n';
+      for (var fi = 0; fi < movies.length; fi++) {
+        var f = movies[fi];
+        output += (fi + 1) + '. ' + f.title;
+        if (f.year) output += ' (' + f.year + ')';
+        if (f.rating) output += ' — ' + f.rating;
+        output += '\n';
+        if (f.overview) output += '   ' + f.overview + '\n';
+      }
+
+      if (prefGenres.length > 0) {
+        output += '\nPréférences du foyer: ' + prefGenres.join(', ');
+      }
+
+      return output;
+    } catch (err) {
+      return 'Erreur recherche films: ' + err.message;
+    }
   }
 
   // Knowledge base tools

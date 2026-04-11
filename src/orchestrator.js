@@ -69,6 +69,8 @@ function detectIntent(message) {
     if (topicMatch) intent.topic = topicMatch[1].trim();
   } else if (WEATHER_PATTERN.test(message)) {
     intent.task = 'weather';
+  } else if (/(?:film|movie|cinema|cin[ée]|regarder|watch)/i.test(message)) {
+    intent.task = 'movies';
   } else if (SUMMARY_PATTERN.test(message) && WEEK_PATTERN.test(message)) {
     intent.task = 'weekly-summary';
   } else if (SUMMARY_PATTERN.test(message)) {
@@ -98,6 +100,8 @@ export async function orchestrate(message) {
     prefetched = await prefetchNews(intent.topic);
   } else if (intent.task === 'weather') {
     prefetched = await prefetchWeather();
+  } else if (intent.task === 'movies') {
+    prefetched = await prefetchMovies();
   } else if (intent.task === 'weekly-summary') {
     prefetched = await prefetchWeeklySummary();
   } else if (intent.task === 'summary') {
@@ -165,6 +169,53 @@ async function prefetchNews(topic) {
     return allItems.join('\n');
   } catch (err) {
     log.warn('News prefetch failed: ' + err.message);
+    return null;
+  }
+}
+
+async function prefetchMovies() {
+  try {
+    var tmdbKey = process.env.TMDB_API_KEY || '';
+    var lang = process.env.MOVIE_LANGUAGE || 'fr';
+    var region = process.env.MOVIE_REGION || 'CA';
+    var prefGenres = (process.env.MOVIE_GENRES || '').split(',').filter(Boolean).map(function(g) { return g.trim(); });
+    var movies = [];
+
+    if (tmdbKey) {
+      var res = await fetch('https://api.themoviedb.org/3/trending/movie/week?api_key=' + tmdbKey + '&language=' + lang, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        var data = await res.json();
+        movies = (data.results || []).slice(0, 8).map(function(m, i) {
+          return (i + 1) + '. ' + m.title + (m.release_date ? ' (' + m.release_date.slice(0, 4) + ')' : '') +
+            (m.vote_average ? ' — ' + m.vote_average.toFixed(1) + '/10' : '') +
+            (m.overview ? '\n   ' + m.overview.slice(0, 120) : '');
+        });
+      }
+    }
+
+    if (movies.length === 0) {
+      // Fallback: web search
+      var sRes = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent('meilleurs films streaming ' + region + ' ' + new Date().getFullYear()), {
+        headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000),
+      });
+      if (sRes.ok) {
+        var html = await sRes.text();
+        var regex = /<a rel="nofollow" class="result__a"[^>]*>([^<]+)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+        var m; var c = 0;
+        while ((m = regex.exec(html)) !== null && c < 5) {
+          movies.push((c + 1) + '. ' + m[1].replace(/<[^>]+>/g, '').trim() + '\n   ' + m[2].replace(/<[^>]+>/g, '').trim().slice(0, 120));
+          c++;
+        }
+      }
+    }
+
+    if (movies.length === 0) return null;
+    var result = movies.join('\n');
+    if (prefGenres.length > 0) result += '\n\nPréférences du foyer: ' + prefGenres.join(', ');
+    log.info('Pre-fetched ' + movies.length + ' movie recommendations');
+    return result;
+  } catch (err) {
+    log.warn('Movie prefetch failed: ' + err.message);
     return null;
   }
 }
