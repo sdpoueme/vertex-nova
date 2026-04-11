@@ -818,6 +818,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
           messages: ollamaMessages,
           tools: ollamaTools,
           stream: false,
+          think: false, // Fast response — thinking happens async in background
         }),
       });
       if (!res.ok) throw new Error('Ollama error: ' + res.status);
@@ -970,11 +971,14 @@ export async function chat(message, sessionId, image) {
 
   // Images: try Claude first, fall back to vision model
   if (image) {
-    if (CLAUDE_API_KEY) {
+    if (CLAUDE_API_KEY && Date.now() >= claudeDisabledUntil) {
       try {
         return await chatClaude(message, sessionId, image);
       } catch (err) {
         log.warn('Claude vision failed: ' + err.message + ', trying local vision model');
+        if (err.message.includes('credit') || err.message.includes('billing')) {
+          claudeDisabledUntil = Date.now() + 60 * 60 * 1000;
+        }
       }
     }
     return chatOllama(message, sessionId, 'gemma4:e2b', image);
@@ -982,7 +986,19 @@ export async function chat(message, sessionId, image) {
 
   // Explicit route to Claude (from proactive scheduler)
   if (routing.model === 'claude') {
-    return chatClaude(message, sessionId, null);
+    if (Date.now() < claudeDisabledUntil) {
+      log.debug('Claude on cooldown, using local model instead');
+      return chatOllama(message, sessionId, OLLAMA_MODEL);
+    }
+    try {
+      return await chatClaude(message, sessionId, null);
+    } catch (err) {
+      if (err.message.includes('credit') || err.message.includes('billing')) {
+        claudeDisabledUntil = Date.now() + 60 * 60 * 1000; // 1 hour cooldown
+        log.info('Claude disabled for 1 hour (no credits)');
+      }
+      return chatOllama(message, sessionId, OLLAMA_MODEL);
+    }
   }
 
   // Default: try local model first
@@ -1010,6 +1026,9 @@ export async function chat(message, sessionId, image) {
         return localResponse;
       }
     }
+
+    // Queue async review by thinker agent (non-blocking)
+    try { var { queueReview } = await import('./thinker.js'); queueReview(message, localResponse, routing.route); } catch {}
 
     return localResponse;
   } catch (localErr) {
