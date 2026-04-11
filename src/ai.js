@@ -776,7 +776,20 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     "Exécute le plan directement sans expliquer ton raisonnement.\n" +
     "</reasoning_protocol>";
 
-  var ollamaTools = tools.map(function(t) {
+  // Route to specialist agent for fewer tools = faster inference
+  var agentTools = tools;
+  try {
+    var { routeToAgent, getCombinedTools, getCombinedPrompt } = await import('./agents.js');
+    var agentRoute = routeToAgent(message);
+    if (agentRoute.primary !== 'general') {
+      agentTools = getCombinedTools(agentRoute.primary, agentRoute.secondary, tools);
+      var agentPrompt = getCombinedPrompt(agentRoute.primary, agentRoute.secondary);
+      if (agentPrompt) ollamaSystemPrompt += '\n\n' + agentPrompt;
+      log.info('Agent: ' + agentRoute.primary + (agentRoute.secondary ? ' + ' + agentRoute.secondary : '') + ' (' + agentTools.length + ' tools)');
+    }
+  } catch {}
+
+  var ollamaTools = agentTools.map(function(t) {
     return { type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } };
   });
 
