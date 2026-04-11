@@ -13,6 +13,7 @@ import { createServer as createHttpsServer } from 'node:https';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { networkInterfaces } from 'node:os';
 import { chat } from '../ai.js';
 import { reloadRouting } from '../model-router.js';
 import { logger } from '../log.js';
@@ -499,7 +500,6 @@ export function startDashboard(config, port) {
 
 function getLocalIp() {
   try {
-    var { networkInterfaces } = require('node:os');
     var nets = networkInterfaces();
     for (var name of Object.keys(nets)) {
       for (var net of nets[name]) {
