@@ -701,6 +701,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
       var res = await fetch(OLLAMA_URL + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(60000), // 60s per iteration
         body: JSON.stringify({
           model: modelName,
           messages: ollamaMessages,
@@ -790,6 +791,20 @@ async function maybeSummarize(sessionId) {
  *   5. If Claude fails → return Gemma 4's response anyway
  */
 export async function chat(message, sessionId, image) {
+  // Orchestrate multi-step tasks (news+speak, weather+speak, etc.)
+  if (!image) {
+    try {
+      var { orchestrate } = await import('./orchestrator.js');
+      var orchestrated = await orchestrate(message);
+      if (orchestrated) {
+        log.info('Orchestrated: ' + orchestrated.intent.task + ' → ' + orchestrated.intent.deviceType);
+        message = orchestrated.rewrittenMessage;
+      }
+    } catch (err) {
+      log.debug('Orchestration skipped: ' + err.message);
+    }
+  }
+
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 

@@ -173,7 +173,7 @@ export default function ChatPanel({ api }) {
               disabled={recording}
             />
           </div>
-          <Button variant="primary" iconName="send" onClick={send} loading={loading} disabled={recording}>Envoyer</Button>
+          <Button variant="primary" iconName="send" onClick={send} loading={loading} disabled={loading || recording}>Envoyer</Button>
         </div>
       </SpaceBetween>
     </Container>
