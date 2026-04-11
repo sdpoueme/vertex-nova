@@ -678,6 +678,8 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     "- Sois concis\n" +
     "- Ne demande PAS les IDs d'appareils, utilise les valeurs par défaut\n" +
     "- Quand on demande de parler sur Echo/Sonos, utilise directement l'outil\n" +
+    "- Ne RÉPÈTE PAS une réponse précédente quand on te demande de la lire sur un appareil\n" +
+    "- Pour les outils vocaux, envoie du texte SIMPLE sans emoji ni formatage\n" +
     "- Pour un résumé de semaine, lis les notes dans 'daily' ou 'weekly' du vault\n" +
     "</rules>\n\n" +
     "<reasoning_protocol>\n" +
@@ -727,8 +729,28 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     messages = buildMessages(sessionId);
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
+      // Detect raw tool calls in text output (Qwen3 sometimes does this)
+      var rawContent = msg.content || '';
+      var rawToolMatch = rawContent.match(/<tools?>\s*(\{[\s\S]*?\})\s*<\/tools?>/);
+      if (rawToolMatch) {
+        try {
+          var rawTool = JSON.parse(rawToolMatch[1]);
+          var toolName = rawTool.function?.name || rawTool.name || '';
+          var toolArgs = rawTool.function?.arguments || rawTool.arguments || rawTool.input || {};
+          if (typeof toolArgs === 'string') toolArgs = JSON.parse(toolArgs);
+          if (toolName) {
+            log.info('Detected raw tool call in text: ' + toolName);
+            var rawResult = await executeTool(toolName, toolArgs);
+            addToolResult(sessionId, { role: 'tool', content: String(rawResult) });
+            // Clean the raw tool JSON from the response
+            var cleanContent = rawContent.replace(/<tools?>[\s\S]*?<\/tools?>/g, '').trim();
+            if (cleanContent) return cleanContent;
+            return 'Fait.';
+          }
+        } catch {}
+      }
       maybeSummarize(sessionId);
-      return msg.content || 'Pas de réponse.';
+      return rawContent || 'Pas de réponse.';
     }
 
     for (var j = 0; j < msg.tool_calls.length; j++) {
