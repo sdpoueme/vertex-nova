@@ -9,8 +9,10 @@
  * - System status
  */
 import { createServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { chat } from '../ai.js';
 import { reloadRouting } from '../model-router.js';
 import { logger } from '../log.js';
@@ -53,8 +55,28 @@ export function startDashboard(config, port) {
   var projectDir = config.projectDir;
   loadInteractions(projectDir);
 
-  var server = createServer(async function(req, res) {
-    var url = new URL(req.url, 'http://localhost');
+  // Generate self-signed cert if not present
+  var certDir = join(projectDir, '.sessions');
+  var keyPath = join(certDir, 'server.key');
+  var certPath = join(certDir, 'server.crt');
+
+  if (!existsSync(keyPath) || !existsSync(certPath)) {
+    try {
+      log.info('Generating self-signed HTTPS certificate...');
+      execFileSync('openssl', [
+        'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+        '-keyout', keyPath, '-out', certPath,
+        '-days', '365', '-subj', '/CN=vertex-nova',
+        '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1,IP:' + getLocalIp(),
+      ], { timeout: 10000 });
+      log.info('HTTPS certificate generated');
+    } catch (err) {
+      log.warn('Could not generate HTTPS cert: ' + err.message + '. Falling back to HTTP.');
+    }
+  }
+
+  var requestHandler = async function(req, res) {
+    var url = new URL(req.url, 'https://localhost');
     var path = url.pathname;
 
     // CORS
@@ -447,13 +469,45 @@ export function startDashboard(config, port) {
 
     res.writeHead(404);
     res.end('Not found');
-  });
+  };
 
-  server.listen(port, function() {
-    log.info('Dashboard running at http://localhost:' + port);
-  });
+  // Use HTTPS if cert available, otherwise HTTP
+  var server;
+  if (existsSync(keyPath) && existsSync(certPath)) {
+    try {
+      server = createHttpsServer({
+        key: readFileSync(keyPath),
+        cert: readFileSync(certPath),
+      }, requestHandler);
+      server.listen(port, function() {
+        var ip = getLocalIp();
+        log.info('Dashboard running at https://localhost:' + port + ' (LAN: https://' + ip + ':' + port + ')');
+        log.info('First visit: accept the self-signed certificate warning in your browser');
+      });
+    } catch (err) {
+      log.warn('HTTPS failed: ' + err.message + '. Falling back to HTTP.');
+      server = createServer(requestHandler);
+      server.listen(port, function() { log.info('Dashboard running at http://localhost:' + port); });
+    }
+  } else {
+    server = createServer(requestHandler);
+    server.listen(port, function() { log.info('Dashboard running at http://localhost:' + port); });
+  }
 
   return server;
+}
+
+function getLocalIp() {
+  try {
+    var { networkInterfaces } = require('node:os');
+    var nets = networkInterfaces();
+    for (var name of Object.keys(nets)) {
+      for (var net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) return net.address;
+      }
+    }
+  } catch {}
+  return '127.0.0.1';
 }
 
 function readBody(req) {
