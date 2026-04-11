@@ -167,13 +167,24 @@ export function startDashboard(config, port) {
     if (path === '/api/models' && req.method === 'GET') {
       json(res, 200, {
         ollama_model: process.env.OLLAMA_MODEL || 'qwen3:8b',
-        ollama_fast_model: process.env.OLLAMA_FAST_MODEL || 'mistral',
-        claude_model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+        ollama_fast_model: process.env.OLLAMA_FAST_MODEL || '',
+        claude_model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-6',
         ollama_url: process.env.OLLAMA_URL || 'http://localhost:11434',
         has_claude_key: !!process.env.ANTHROPIC_API_KEY,
         sonos_default_room: process.env.SONOS_DEFAULT_ROOM || '',
+        sonos_day_room: process.env.SONOS_DAY_ROOM || process.env.SONOS_DEFAULT_ROOM || '',
+        sonos_night_room: process.env.SONOS_NIGHT_ROOM || process.env.SONOS_DEFAULT_ROOM || '',
         sonos_tts_volume: Number(process.env.SONOS_TTS_VOLUME) || 30,
         voice_monkey_default_device: process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+        echo_devices: process.env.ECHO_DEVICES || '',
+        echo_morning_device: process.env.ECHO_MORNING_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+        echo_workday_device: process.env.ECHO_WORKDAY_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+        echo_evening_device: process.env.ECHO_EVENING_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+        home_location: process.env.HOME_LOCATION || '',
+        home_country: process.env.HOME_COUNTRY || '',
+        news_locale: process.env.NEWS_LOCALE || 'fr-CA',
+        news_country: process.env.NEWS_COUNTRY || 'CA',
+        news_extra_topics: process.env.NEWS_EXTRA_TOPICS || '',
         telegram_enabled: (process.env.TELEGRAM_ENABLED || 'false') === 'true',
         telegram_bot_token: process.env.TELEGRAM_BOT_TOKEN ? '***' + process.env.TELEGRAM_BOT_TOKEN.slice(-6) : '',
         telegram_allowed_user_ids: process.env.TELEGRAM_ALLOWED_USER_IDS || '',
@@ -191,7 +202,9 @@ export function startDashboard(config, port) {
         var modelsData = JSON.parse(modelsBody);
         var allowed_keys = [
           'OLLAMA_MODEL', 'OLLAMA_FAST_MODEL', 'CLAUDE_MODEL',
-          'SONOS_DEFAULT_ROOM', 'SONOS_TTS_VOLUME', 'VOICE_MONKEY_DEFAULT_DEVICE',
+          'SONOS_DEFAULT_ROOM', 'SONOS_DAY_ROOM', 'SONOS_NIGHT_ROOM', 'SONOS_TTS_VOLUME',
+          'VOICE_MONKEY_DEFAULT_DEVICE', 'ECHO_DEVICES', 'ECHO_MORNING_DEVICE', 'ECHO_WORKDAY_DEVICE', 'ECHO_EVENING_DEVICE',
+          'HOME_LOCATION', 'HOME_COUNTRY', 'NEWS_LOCALE', 'NEWS_COUNTRY', 'NEWS_EXTRA_TOPICS',
           'TELEGRAM_ENABLED', 'TELEGRAM_ALLOWED_USER_IDS',
           'WHATSAPP_ENABLED', 'WHATSAPP_PHONE_ID', 'WHATSAPP_WEBHOOK_PORT',
         ];

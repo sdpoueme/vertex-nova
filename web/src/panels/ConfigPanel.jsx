@@ -168,26 +168,10 @@ function ModelsPanel({ api }) {
     { value: 'claude-sonnet-4-20250514', label: 'Claude Sonnet 4 (ancien)' },
     { value: 'claude-opus-4-20250514', label: 'Claude Opus 4 (ancien)' },
   ];
-  const currentClaude = models.claude_model || 'claude-sonnet-4-20250514';
+  const currentClaude = models.claude_model || 'claude-sonnet-4-6';
   if (!claudeOptions.find(o => o.value === currentClaude)) {
     claudeOptions.unshift({ value: currentClaude, label: currentClaude + ' (actuel)' });
   }
-
-  const currentSonos = models.sonos_default_room || '';
-  const sonosOptions = currentSonos
-    ? [{ value: currentSonos, label: currentSonos }]
-    : [{ value: '', label: '(non configuré)' }];
-
-  const currentEcho = models.voice_monkey_default_device || '';
-  const echoOptions = currentEcho
-    ? [{ value: currentEcho, label: currentEcho }]
-    : [{ value: '', label: '(non configuré)' }];
-
-  // Helper: find option by value, guaranteed to return a matching object from the options array
-  const pick = (options, value) => {
-    const found = options.find(o => o.value === value);
-    return found || options[0] || { value: '', label: '—' };
-  };
 
   return (
     <SpaceBetween size="l">
@@ -217,24 +201,59 @@ function ModelsPanel({ api }) {
         </SpaceBetween>
       </Container>
 
-      <Container header={<Header variant="h3">Appareils</Header>}>
-        <ColumnLayout columns={3}>
-          <FormField label="Sonos — pièce par défaut">
-            <Select
-              selectedOption={pick(sonosOptions, currentSonos)}
-              onChange={({ detail }) => save('SONOS_DEFAULT_ROOM', detail.selectedOption.value)}
-              options={sonosOptions}
-            />
+      <Container header={<Header variant="h3">Sonos</Header>}>
+        <ColumnLayout columns={2}>
+          <FormField label="Pièce par défaut">
+            <Input value={models.sonos_default_room || ''} onChange={({ detail }) => save('SONOS_DEFAULT_ROOM', detail.value)} placeholder="Living Room" />
           </FormField>
-          <FormField label="Sonos — volume TTS (0-100)">
+          <FormField label="Volume TTS (0-100)">
             <Input type="number" value={String(models.sonos_tts_volume || 30)} onChange={({ detail }) => save('SONOS_TTS_VOLUME', detail.value)} />
           </FormField>
-          <FormField label="Echo — appareil par défaut">
-            <Select
-              selectedOption={pick(echoOptions, currentEcho)}
-              onChange={({ detail }) => save('VOICE_MONKEY_DEFAULT_DEVICE', detail.selectedOption.value)}
-              options={echoOptions}
-            />
+          <FormField label="Pièce de jour" description="Utilisée entre 7h et 22h">
+            <Input value={models.sonos_day_room || ''} onChange={({ detail }) => save('SONOS_DAY_ROOM', detail.value)} placeholder="Living Room" />
+          </FormField>
+          <FormField label="Pièce de nuit" description="Utilisée entre 22h et 7h">
+            <Input value={models.sonos_night_room || ''} onChange={({ detail }) => save('SONOS_NIGHT_ROOM', detail.value)} placeholder="Basement" />
+          </FormField>
+        </ColumnLayout>
+      </Container>
+
+      <Container header={<Header variant="h3">Echo (Voice Monkey)</Header>}>
+        <ColumnLayout columns={2}>
+          <FormField label="Appareil par défaut">
+            <Input value={models.voice_monkey_default_device || ''} onChange={({ detail }) => save('VOICE_MONKEY_DEFAULT_DEVICE', detail.value)} placeholder="my-echo-device" />
+          </FormField>
+          <FormField label="Tous les appareils" description="IDs séparés par virgules">
+            <Input value={models.echo_devices || ''} onChange={({ detail }) => save('ECHO_DEVICES', detail.value)} placeholder="kitchen,office,garage" />
+          </FormField>
+          <FormField label="Appareil matin (7-9h)">
+            <Input value={models.echo_morning_device || ''} onChange={({ detail }) => save('ECHO_MORNING_DEVICE', detail.value)} />
+          </FormField>
+          <FormField label="Appareil bureau (9-17h)">
+            <Input value={models.echo_workday_device || ''} onChange={({ detail }) => save('ECHO_WORKDAY_DEVICE', detail.value)} />
+          </FormField>
+          <FormField label="Appareil soir (17-19h)">
+            <Input value={models.echo_evening_device || ''} onChange={({ detail }) => save('ECHO_EVENING_DEVICE', detail.value)} />
+          </FormField>
+        </ColumnLayout>
+      </Container>
+
+      <Container header={<Header variant="h3">Maison & Actualités</Header>}>
+        <ColumnLayout columns={2}>
+          <FormField label="Localisation" description="Pour météo et actions proactives">
+            <Input value={models.home_location || ''} onChange={({ detail }) => save('HOME_LOCATION', detail.value)} placeholder="Montreal, QC" />
+          </FormField>
+          <FormField label="Pays">
+            <Input value={models.home_country || ''} onChange={({ detail }) => save('HOME_COUNTRY', detail.value)} placeholder="Canada" />
+          </FormField>
+          <FormField label="Locale Google News">
+            <Input value={models.news_locale || ''} onChange={({ detail }) => save('NEWS_LOCALE', detail.value)} placeholder="fr-CA" />
+          </FormField>
+          <FormField label="Code pays Google News">
+            <Input value={models.news_country || ''} onChange={({ detail }) => save('NEWS_COUNTRY', detail.value)} placeholder="CA" />
+          </FormField>
+          <FormField label="Sujets d'actualité supplémentaires" description="Séparés par virgules">
+            <Input value={models.news_extra_topics || ''} onChange={({ detail }) => save('NEWS_EXTRA_TOPICS', detail.value)} placeholder="Cameroun, Technology" />
           </FormField>
         </ColumnLayout>
       </Container>
@@ -247,11 +266,11 @@ function ModelsPanel({ api }) {
                 <Toggle checked={models.telegram_enabled === true} onChange={({ detail }) => save('TELEGRAM_ENABLED', detail.checked ? 'true' : 'false')}>
                   {models.telegram_enabled ? 'Activé' : 'Désactivé'}
                 </Toggle>
-                <FormField label="Bot token" description="Masqué pour sécurité">
+                <FormField label="Bot token" description="Masqué pour sécurité (modifier dans .env)">
                   <Input value={models.telegram_bot_token || ''} disabled />
                 </FormField>
-                <FormField label="User IDs autorisés">
-                  <Input value={models.telegram_allowed_user_ids || ''} onChange={({ detail }) => save('TELEGRAM_ALLOWED_USER_IDS', detail.value)} placeholder="your-user-id" />
+                <FormField label="User IDs autorisés" description="Séparés par virgules pour plusieurs utilisateurs">
+                  <Input value={models.telegram_allowed_user_ids || ''} onChange={({ detail }) => save('TELEGRAM_ALLOWED_USER_IDS', detail.value)} placeholder="123456789,987654321" />
                 </FormField>
               </SpaceBetween>
             </Container>
@@ -270,7 +289,7 @@ function ModelsPanel({ api }) {
             </Container>
           </ColumnLayout>
           <Alert type="info">
-            Les changements de canaux sont sauvegardés dans .env mais nécessitent un redémarrage de l'agent pour prendre effet.
+            Les changements de canaux nécessitent un redémarrage. Les User IDs Telegram acceptent plusieurs valeurs séparées par virgules.
           </Alert>
         </SpaceBetween>
       </Container>
