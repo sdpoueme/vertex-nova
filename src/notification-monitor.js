@@ -224,11 +224,6 @@ function checkLog() {
     });
   });
 }
-      if (seenNotifIds.size > MAX_SEEN) seenNotifIds = new Set(Array.from(seenNotifIds).slice(-100));
-      resolve(events);
-    });
-  });
-}
 
 /**
  * Start the notification monitor.
