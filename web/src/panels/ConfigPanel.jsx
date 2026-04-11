@@ -300,16 +300,31 @@ function ModelsPanel({ api }) {
         </ColumnLayout>
       </Container>
 
+      <Container header={<Header variant="h3">Agent IA (Strands)</Header>}>
+        <Toggle checked={models.use_strands === true} onChange={({ detail }) => save('USE_STRANDS', detail.checked ? 'true' : 'false')}>
+          {models.use_strands ? 'Strands activé — agents spécialisés avec Ollama' : 'Strands désactivé — mode natif'}
+        </Toggle>
+      </Container>
+
       <Container header={<Header variant="h3">Films & Divertissement</Header>}>
-        <ColumnLayout columns={2}>
-          <FormField label="Clé API TMDB" description="Gratuite sur themoviedb.org">
-            <Input value={models.tmdb_api_key || ''} onChange={({ detail }) => save('TMDB_API_KEY', detail.value)} placeholder="Votre clé TMDB" type={models.tmdb_api_key ? 'text' : 'text'} />
-          </FormField>
-          <FormField label="Langue des films">
-            <Input value={models.movie_language || 'fr'} onChange={({ detail }) => save('MOVIE_LANGUAGE', detail.value)} placeholder="fr" />
-          </FormField>
-          <FormField label="Région">
-            <Input value={models.movie_region || 'CA'} onChange={({ detail }) => save('MOVIE_REGION', detail.value)} placeholder="CA" />
+        <SpaceBetween size="m">
+          <ColumnLayout columns={2}>
+            <FormField label="Clé API TMDB (v3)" description="Gratuite sur themoviedb.org">
+              <Input value={models.tmdb_api_key || ''} onChange={({ detail }) => save('TMDB_API_KEY', detail.value)} placeholder="Clé API v3" />
+            </FormField>
+            <FormField label="Token TMDB (Read Access)" description="Bearer token pour l'API v4">
+              <Input value={models.tmdb_read_token || ''} onChange={({ detail }) => save('TMDB_READ_TOKEN', detail.value)} placeholder="eyJhbGci..." />
+            </FormField>
+            <FormField label="Région">
+              <Input value={models.movie_region || 'CA'} onChange={({ detail }) => save('MOVIE_REGION', detail.value)} placeholder="CA" />
+            </FormField>
+          </ColumnLayout>
+          <FormField label="Langues des films" description="Ajoutez les codes langue (fr, en, es...)">
+            <TagListEditor
+              items={(models.movie_languages || 'fr').split(',').filter(Boolean).map(s => s.trim())}
+              onChange={(items) => save('MOVIE_LANGUAGES', items.join(','))}
+              placeholder="fr, en, es..."
+            />
           </FormField>
           <FormField label="Genres préférés">
             <TagListEditor
@@ -318,7 +333,7 @@ function ModelsPanel({ api }) {
               placeholder="action, comedy, drama..."
             />
           </FormField>
-        </ColumnLayout>
+        </SpaceBetween>
       </Container>
 
       <Container header={<Header variant="h3">Canaux de communication</Header>}>

@@ -150,10 +150,14 @@ function analyzeEvent(bundleId, app) {
     severity = 'warning';
   }
 
-  return { anomalies: anomalies, severity: severity, isAnomaly: anomalies.length > 0, hour: hour, isNight: isNight, isWeekend: isWeekend, recentBurst: recentCount, totalHistory: pattern.totalCount };
+  return { anomalies: anomalies, severity: severity, isAnomaly: anomalies.length > 0, hour: hour, isNight: isNight, isWeekend: isWeekend, recentBurst: recentCount, totalHistory: pattern.totalCount, avgNotifCount: pattern.typicalCounts ? (pattern.typicalCounts.reduce(function(a,b){return a+b;},0) / pattern.typicalCounts.length).toFixed(1) : '?' };
 }
 
-// --- Log reading ---
+// --- Log reading with deduplication ---
+// Multiple notifications from the same device within 60s = 1 logical event
+// Track notification counts per device action to learn normal patterns
+var lastDeviceEvent = {}; // bundleId → { timestamp, count }
+
 function checkLog() {
   return new Promise(function(resolve) {
     execFile('log', ['show',
@@ -161,7 +165,9 @@ function checkLog() {
       '--last', '2m', '--style', 'compact'
     ], { timeout: 15000, maxBuffer: 512 * 1024 }, function(err, stdout) {
       if (err) { resolve([]); return; }
-      var events = [];
+
+      // First pass: collect all new notifications per device
+      var deviceNotifs = {}; // bundleId → [notifIds]
       var lines = stdout.split('\n');
       for (var i = 0; i < lines.length; i++) {
         var match = lines[i].match(/Re-add\s+([^:]+):([A-F0-9]+),\s+(\S+)\s+with visibility:\s*\[([^\]]*)\]/);
@@ -171,8 +177,53 @@ function checkLog() {
         var app = deviceApps[bundleId];
         if (!app || seenNotifIds.has(notifId)) continue;
         seenNotifIds.add(notifId);
-        events.push({ bundleId: bundleId, notifId: notifId, app: app });
+        if (!deviceNotifs[bundleId]) deviceNotifs[bundleId] = [];
+        deviceNotifs[bundleId].push(notifId);
       }
+
+      // Second pass: deduplicate — multiple notifs from same device in same poll = 1 event
+      var events = [];
+      var now = Date.now();
+      for (var bid in deviceNotifs) {
+        var notifCount = deviceNotifs[bid].length;
+        var app2 = deviceApps[bid];
+        var last = lastDeviceEvent[bid];
+
+        // If we saw this device within 60s, it's the same logical event — skip
+        if (last && (now - last.timestamp) < 60000) {
+          last.count += notifCount;
+          log.debug('Dedup: ' + app2.name + ' +' + notifCount + ' notifs (same event, total: ' + last.count + ')');
+          continue;
+        }
+
+        // New logical event
+        lastDeviceEvent[bid] = { timestamp: now, count: notifCount };
+
+        // Learn: track typical notification count per event for this device
+        var pattern = ensurePattern(bid);
+        if (!pattern.typicalCounts) pattern.typicalCounts = [];
+        pattern.typicalCounts.push(notifCount);
+        if (pattern.typicalCounts.length > 20) pattern.typicalCounts.shift();
+
+        // Detect unusual count: if this event has a very different count than typical
+        var avgCount = pattern.typicalCounts.reduce(function(a, b) { return a + b; }, 0) / pattern.typicalCounts.length;
+        var isUnusualCount = pattern.typicalCounts.length > 3 && Math.abs(notifCount - avgCount) > avgCount * 0.5;
+
+        events.push({
+          bundleId: bid,
+          notifId: deviceNotifs[bid][0],
+          app: app2,
+          notifCount: notifCount,
+          isUnusualCount: isUnusualCount,
+          avgCount: Math.round(avgCount * 10) / 10,
+        });
+      }
+
+      if (seenNotifIds.size > MAX_SEEN) seenNotifIds = new Set(Array.from(seenNotifIds).slice(-100));
+      resolve(events);
+    });
+  });
+}
       if (seenNotifIds.size > MAX_SEEN) seenNotifIds = new Set(Array.from(seenNotifIds).slice(-100));
       resolve(events);
     });
@@ -220,7 +271,14 @@ export function startNotificationMonitor(onAlert, projectDir, vaultPath) {
       for (var ev of events) {
         var analysis = analyzeEvent(ev.bundleId, ev.app);
 
-        log.info('Device: ' + ev.app.name + ' | severity: ' + analysis.severity +
+        // Add unusual count anomaly from dedup analysis
+        if (ev.isUnusualCount) {
+          analysis.anomalies.push('Nombre de notifications inhabituel (' + ev.notifCount + ' vs moyenne ' + ev.avgCount + ')');
+          if (analysis.severity === 'info') analysis.severity = 'warning';
+          analysis.isAnomaly = true;
+        }
+
+        log.info('Device: ' + ev.app.name + ' | count: ' + ev.notifCount + ' | severity: ' + analysis.severity +
           (analysis.anomalies.length > 0 ? ' | anomalies: ' + analysis.anomalies.join(', ') : ' | normal') +
           ' | history: ' + analysis.totalHistory);
 
