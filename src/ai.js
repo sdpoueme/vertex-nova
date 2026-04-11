@@ -25,6 +25,7 @@ var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 var OLLAMA_FAST_MODEL = process.env.OLLAMA_FAST_MODEL || 'mistral';
 var usingFallback = false;
 var MAX_TOKENS = 4096;
+var claudeDisabledUntil = 0; // Timestamp — skip Claude if recently failed with credit error
 
 // Load system prompt from agent.md + CLAUDE.md
 function loadSystemPrompt() {
@@ -816,6 +817,11 @@ export async function chat(message, sessionId, image) {
 
     // Check if response seems bad (too short, confused, or error-like)
     if (shouldEscalate(localResponse, message)) {
+      // Skip Claude if recently failed with credit/billing error (cooldown 30 min)
+      if (Date.now() < claudeDisabledUntil) {
+        log.debug('Claude on cooldown, using local response');
+        return localResponse;
+      }
       log.info('Escalating to Claude — local model response was weak');
       try {
         var claudeResponse = await chatClaude(message, sessionId, null);
@@ -823,6 +829,10 @@ export async function chat(message, sessionId, image) {
         return claudeResponse;
       } catch (claudeErr) {
         log.warn('Claude escalation failed: ' + claudeErr.message + ', using local response');
+        if (claudeErr.message.includes('credit') || claudeErr.message.includes('billing') || claudeErr.message.includes('balance')) {
+          claudeDisabledUntil = Date.now() + 30 * 60 * 1000; // 30 min cooldown
+          log.info('Claude disabled for 30 min (no credits)');
+        }
         return localResponse;
       }
     }
@@ -830,10 +840,16 @@ export async function chat(message, sessionId, image) {
     return localResponse;
   } catch (localErr) {
     log.warn('Local model failed: ' + localErr.message + ', escalating to Claude');
+    if (Date.now() < claudeDisabledUntil) {
+      return 'Désolé, je rencontre des difficultés techniques. Réessayez dans un moment.';
+    }
     try {
       return await chatClaude(message, sessionId, null);
     } catch (claudeErr) {
       log.error('Both models failed. Local: ' + localErr.message + ', Claude: ' + claudeErr.message);
+      if (claudeErr.message.includes('credit') || claudeErr.message.includes('billing')) {
+        claudeDisabledUntil = Date.now() + 30 * 60 * 1000;
+      }
       return 'Désolé, je rencontre des difficultés techniques. Réessayez dans un moment.';
     }
   }
@@ -843,14 +859,12 @@ export async function chat(message, sessionId, image) {
  * Detect if Gemma 4's response should be escalated to Claude.
  */
 function shouldEscalate(response, originalMessage) {
-  if (!response || response.length < 10) return true;
+  // Only escalate on clear failures, not just "weak" responses
+  if (!response || response.length < 5) return true;
   if (response.includes('Unknown tool') || response.includes('Trop d\'itérations')) return true;
   // Response is just the system prompt regurgitated
-  if (response.includes('Vertex Nova') && response.includes('assistant') && response.length > 500 && originalMessage.length < 100) return true;
-  // Response is in wrong language (asked in French, got English)
-  var askedInFrench = /[àâéèêëïîôùûüÿçœæ]|bonjour|merci|maison|comment|quoi|quel/i.test(originalMessage);
-  var respondedInEnglish = /\b(the|this|that|with|from|have|been|would|could|should)\b/i.test(response.slice(0, 200));
-  if (askedInFrench && respondedInEnglish && !/\b(le|la|les|des|une|est|dans|pour|avec)\b/i.test(response.slice(0, 200))) return true;
+  if (response.includes('Vertex Nova') && response.includes('assistant maison') && response.length > 500 && originalMessage.length < 100) return true;
+  // Don't escalate for language mismatch — Qwen3 handles French well enough
   return false;
 }
 
