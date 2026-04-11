@@ -73,6 +73,10 @@ export default function ChatPanel({ api }) {
   };
 
   const startRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert('Le microphone nécessite HTTPS ou localhost. Accédez au dashboard via http://localhost:3080 ou ajoutez cette adresse aux exceptions Chrome (chrome://flags/#unsafely-treat-insecure-origin-as-secure).');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
