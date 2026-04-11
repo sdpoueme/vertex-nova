@@ -186,6 +186,9 @@ function writeDreamJournal(vaultPath, phases) {
   if (phases.tomorrow) {
     entry += '## Préparation demain\n\n' + phases.tomorrow + '\n\n';
   }
+  if (phases.weekly) {
+    entry += '## Résumé hebdomadaire\n\n' + phases.weekly + '\n\n';
+  }
 
   var filePath = join(journalDir, date + '.md');
   writeFileSync(filePath, entry);
@@ -215,6 +218,83 @@ async function applyLearnings(vaultPath, review) {
       writeFileSync(learnPath, '# Apprentissages des rêves\n' + entry);
     }
   } catch {}
+}
+
+/**
+ * Dream phase 5: Weekly summary (runs on Sunday nights).
+ * Reads all daily notes from the past 7 days and creates a digest.
+ */
+async function buildWeeklySummary(vaultPath) {
+  var today = new Date();
+  if (today.getDay() !== 0) return null; // Only on Sundays
+
+  log.info('Dream: building weekly summary...');
+  var dailyDir = join(vaultPath, 'daily');
+  if (!existsSync(dailyDir)) return null;
+
+  // Collect last 7 days of daily notes
+  var weekContent = '';
+  for (var d = 0; d < 7; d++) {
+    var date = new Date(today);
+    date.setDate(date.getDate() - d);
+    var dateStr = date.toISOString().slice(0, 10);
+    var filePath = join(dailyDir, dateStr + '.md');
+    if (existsSync(filePath)) {
+      var content = readFileSync(filePath, 'utf8');
+      if (content.trim().length > 10) {
+        weekContent += '\n--- ' + dateStr + ' ---\n' + content.slice(0, 1000);
+      }
+    }
+  }
+
+  // Also include dream journals from the week
+  var dreamDir = join(vaultPath, 'dreams');
+  if (existsSync(dreamDir)) {
+    for (var d2 = 0; d2 < 7; d2++) {
+      var date2 = new Date(today);
+      date2.setDate(date2.getDate() - d2);
+      var dateStr2 = date2.toISOString().slice(0, 10);
+      var dreamPath = join(dreamDir, dateStr2 + '.md');
+      if (existsSync(dreamPath)) {
+        var dreamContent = readFileSync(dreamPath, 'utf8');
+        if (dreamContent.trim().length > 10) {
+          weekContent += '\n--- Rêve ' + dateStr2 + ' ---\n' + dreamContent.slice(0, 500);
+        }
+      }
+    }
+  }
+
+  if (weekContent.length < 50) return null;
+
+  var prompt = '[DREAM MODE — résumé hebdomadaire]\n\n' +
+    'Voici les notes et activités de la semaine:\n' + weekContent.slice(0, 5000) +
+    '\n\nCrée un résumé hebdomadaire structuré en français:\n' +
+    '1. Faits marquants de la semaine\n' +
+    '2. Interactions et demandes principales\n' +
+    '3. Événements maison notables\n' +
+    '4. Points à retenir pour la semaine prochaine\n' +
+    'Sois concis mais complet.';
+
+  try {
+    var response = await chat(prompt, 'dream-weekly-' + todayStr());
+    if (response && !response.includes('SKIP')) {
+      // Save weekly summary
+      var weeklyDir = join(vaultPath, 'weekly');
+      mkdirSync(weeklyDir, { recursive: true });
+      var weekStart = new Date(today);
+      weekStart.setDate(weekStart.getDate() - 6);
+      var fileName = weekStart.toISOString().slice(0, 10) + '_' + todayStr() + '.md';
+      var summaryContent = '---\ntype: weekly-summary\nweek_start: ' + weekStart.toISOString().slice(0, 10) +
+        '\nweek_end: ' + todayStr() + '\n---\n\n# Résumé de la semaine\n\n' + response;
+      writeFileSync(join(weeklyDir, fileName), summaryContent);
+      log.info('Weekly summary written: ' + fileName);
+      return response;
+    }
+    return null;
+  } catch (err) {
+    log.warn('Weekly summary failed: ' + err.message);
+    return null;
+  }
 }
 
 /**
@@ -254,8 +334,11 @@ async function dream(vaultPath) {
   // Phase 4: Prepare for tomorrow
   phases.tomorrow = await prepareForTomorrow(vaultPath);
 
+  // Phase 5: Weekly summary (Sundays only)
+  phases.weekly = await buildWeeklySummary(vaultPath);
+
   // Write journal
-  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow;
+  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly;
   if (hasContent) {
     writeDreamJournal(vaultPath, phases);
     await applyLearnings(vaultPath, phases.review);
