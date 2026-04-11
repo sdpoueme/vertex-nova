@@ -103,6 +103,14 @@ async function handleMessage(msg) {
       userContext = '[User: propriétaire] ';
     }
 
+    // Identity tracking
+    try {
+      var { recordInteraction, buildIdentityContext, queueFactExtraction } = await import('./identity.js');
+      recordInteraction(userId, text);
+      var identityCtx = buildIdentityContext(userId);
+      if (identityCtx) userContext = identityCtx + '\n';
+    } catch {}
+
     var stamped = '[Current time: ' + localTimestamp() + '] [Channel: ' + channel + '] ' + userContext + '\n' + text;
 
     log.info('[' + channel + '] Message from ' + userId + ': ' + text.slice(0, 100));
@@ -120,6 +128,12 @@ async function handleMessage(msg) {
     try {
       var { logInteraction: logOut } = await import('./web/server.js');
       logOut(channel, 'out', response);
+    } catch {}
+
+    // Queue async fact extraction from this interaction
+    try {
+      var { queueFactExtraction: qfe } = await import('./identity.js');
+      qfe(userId, text, response);
     } catch {}
 
     if (channel === 'telegram' && telegramChannel) {
@@ -336,6 +350,10 @@ async function main() {
   // Knowledge bases — sync repos and build RAG index
   var { startKnowledgeBases } = await import('./knowledgebase.js');
   await startKnowledgeBases(config.projectDir, vaultPath);
+
+  // Identity layer — user profiles and fact extraction
+  var { seedUsers } = await import('./identity.js');
+  seedUsers();
 
   startReminders(vaultPath, async function(text, route) {
     try {
