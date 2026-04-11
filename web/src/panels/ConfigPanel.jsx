@@ -300,6 +300,27 @@ function ModelsPanel({ api }) {
         </ColumnLayout>
       </Container>
 
+      <Container header={<Header variant="h3">Films & Divertissement</Header>}>
+        <ColumnLayout columns={2}>
+          <FormField label="Clé API TMDB" description="Gratuite sur themoviedb.org">
+            <Input value={models.tmdb_api_key || ''} onChange={({ detail }) => save('TMDB_API_KEY', detail.value)} placeholder="Votre clé TMDB" type={models.tmdb_api_key ? 'text' : 'text'} />
+          </FormField>
+          <FormField label="Langue des films">
+            <Input value={models.movie_language || 'fr'} onChange={({ detail }) => save('MOVIE_LANGUAGE', detail.value)} placeholder="fr" />
+          </FormField>
+          <FormField label="Région">
+            <Input value={models.movie_region || 'CA'} onChange={({ detail }) => save('MOVIE_REGION', detail.value)} placeholder="CA" />
+          </FormField>
+          <FormField label="Genres préférés">
+            <TagListEditor
+              items={(models.movie_genres || '').split(',').filter(Boolean).map(s => s.trim())}
+              onChange={(items) => save('MOVIE_GENRES', items.join(','))}
+              placeholder="action, comedy, drama..."
+            />
+          </FormField>
+        </ColumnLayout>
+      </Container>
+
       <Container header={<Header variant="h3">Canaux de communication</Header>}>
         <SpaceBetween size="m">
           <ColumnLayout columns={2}>

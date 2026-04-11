@@ -210,6 +210,10 @@ export function startDashboard(config, port) {
         news_locale: process.env.NEWS_LOCALE || 'fr-CA',
         news_country: process.env.NEWS_COUNTRY || 'CA',
         news_extra_topics: process.env.NEWS_EXTRA_TOPICS || '',
+        tmdb_api_key: process.env.TMDB_API_KEY ? '***' + process.env.TMDB_API_KEY.slice(-4) : '',
+        movie_genres: process.env.MOVIE_GENRES || '',
+        movie_language: process.env.MOVIE_LANGUAGE || 'fr',
+        movie_region: process.env.MOVIE_REGION || 'CA',
         telegram_enabled: (process.env.TELEGRAM_ENABLED || 'false') === 'true',
         telegram_bot_token: process.env.TELEGRAM_BOT_TOKEN ? '***' + process.env.TELEGRAM_BOT_TOKEN.slice(-6) : '',
         telegram_allowed_user_ids: process.env.TELEGRAM_ALLOWED_USER_IDS || '',
@@ -230,6 +234,7 @@ export function startDashboard(config, port) {
           'SONOS_DEFAULT_ROOM', 'SONOS_DAY_ROOM', 'SONOS_NIGHT_ROOM', 'SONOS_TTS_VOLUME',
           'VOICE_MONKEY_DEFAULT_DEVICE', 'ECHO_DEVICES', 'ECHO_MORNING_DEVICE', 'ECHO_WORKDAY_DEVICE', 'ECHO_EVENING_DEVICE',
           'HOME_LOCATION', 'HOME_COUNTRY', 'NEWS_LOCALE', 'NEWS_COUNTRY', 'NEWS_EXTRA_TOPICS',
+          'TMDB_API_KEY', 'MOVIE_GENRES', 'MOVIE_LANGUAGE', 'MOVIE_REGION',
           'TELEGRAM_ENABLED', 'TELEGRAM_ALLOWED_USER_IDS',
           'WHATSAPP_ENABLED', 'WHATSAPP_PHONE_ID', 'WHATSAPP_WEBHOOK_PORT',
         ];
