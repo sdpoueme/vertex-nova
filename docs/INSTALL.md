@@ -270,6 +270,8 @@ The agent starts:
 - Reminder engine
 - Email monitor
 - Knowledge base sync
+- Identity layer (user profiles and fact extraction)
+- Dream engine (1-5 AM)
 
 ---
 

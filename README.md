@@ -43,6 +43,7 @@ Or manually: `git clone`, `npm install`, `cp .env.home.example .env`, edit crede
 | Reminders | Natural language, smart delivery by time of day |
 | Proactive | Scheduled news, weather, maintenance, movies — persistent schedule |
 | Dream Engine | Nightly self-improvement: conversation review, memory consolidation, weekly summaries |
+| Identity Layer | Per-user profiles with fact extraction, topic tracking, identity context injection |
 | Email Monitor | Gmail polling for device alerts |
 | Device Monitor | macOS unified log + email + webhook API, pattern-based anomaly detection |
 | Knowledge Bases | Git-synced repos with relationship-aware RAG for genealogy |
@@ -86,6 +87,16 @@ Toggle Strands on/off in the dashboard (Configuration → Agent IA) or `.env`: `
 ### Async Thinker
 
 After every response, a background agent reviews the interaction with `think: true` enabled and saves learnings to `vault/memories/thinker-learnings.md`. Never blocks the user.
+
+### Identity Layer
+
+Per-user profiles stored in `vault/identities/<userId>.json`. Each profile contains:
+- Static info: name, relationship, location, language
+- Learned facts: automatically extracted from conversations by a background agent
+- Topic tracking: counts which subjects the user asks about most
+- Interaction stats: message count, last seen
+
+Every AI call includes a `<user_identity>` XML block so the agent always knows who it's talking to. After each interaction, a background fact extraction agent analyzes the conversation and adds new facts to the profile (preferences, habits, family info). The more you interact, the better the agent knows you.
 
 ### Tools (22)
 
