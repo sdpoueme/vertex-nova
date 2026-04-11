@@ -13,6 +13,38 @@ import Toggle from '@cloudscape-design/components/toggle';
 import Alert from '@cloudscape-design/components/alert';
 import Box from '@cloudscape-design/components/box';
 import Spinner from '@cloudscape-design/components/spinner';
+import TokenGroup from '@cloudscape-design/components/token-group';
+
+// Reusable tag list editor: type in the input, press Enter to add, click X to remove
+function TagListEditor({ items, onChange, placeholder }) {
+  const [inputVal, setInputVal] = useState('');
+  const tokens = (items || []).filter(Boolean).map(v => ({ label: v, dismissLabel: 'Retirer ' + v }));
+  return (
+    <SpaceBetween size="xs">
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <div style={{ flex: 1 }}>
+          <Input value={inputVal} onChange={({ detail }) => setInputVal(detail.value)}
+            onKeyDown={({ detail }) => {
+              if (detail.key === 'Enter' && inputVal.trim()) {
+                onChange([...(items || []), inputVal.trim()]);
+                setInputVal('');
+              }
+            }}
+            placeholder={placeholder || 'Tapez et appuyez Entrée'}
+          />
+        </div>
+        <Button onClick={() => { if (inputVal.trim()) { onChange([...(items || []), inputVal.trim()]); setInputVal(''); } }} iconName="add-plus">Ajouter</Button>
+      </div>
+      {tokens.length > 0 && (
+        <TokenGroup items={tokens} onDismiss={({ detail }) => {
+          const newItems = [...(items || [])];
+          newItems.splice(detail.itemIndex, 1);
+          onChange(newItems);
+        }} />
+      )}
+    </SpaceBetween>
+  );
+}
 
 // --- Minimal YAML helpers for our config shapes ---
 function parseRoutingYaml(text) {
@@ -225,8 +257,12 @@ function ModelsPanel({ api }) {
           <FormField label="Appareil par défaut">
             <Input value={models.voice_monkey_default_device || ''} onChange={({ detail }) => save('VOICE_MONKEY_DEFAULT_DEVICE', detail.value)} placeholder="my-echo-device" />
           </FormField>
-          <FormField label="Tous les appareils" description="IDs séparés par virgules">
-            <Input value={models.echo_devices || ''} onChange={({ detail }) => save('ECHO_DEVICES', detail.value)} placeholder="kitchen,office,garage" />
+          <FormField label="Tous les appareils Echo">
+            <TagListEditor
+              items={(models.echo_devices || '').split(',').filter(Boolean)}
+              onChange={(items) => save('ECHO_DEVICES', items.join(','))}
+              placeholder="Entrez un device ID et appuyez Entrée"
+            />
           </FormField>
           <FormField label="Appareil matin (7-9h)">
             <Input value={models.echo_morning_device || ''} onChange={({ detail }) => save('ECHO_MORNING_DEVICE', detail.value)} />
@@ -254,8 +290,12 @@ function ModelsPanel({ api }) {
           <FormField label="Code pays Google News">
             <Input value={models.news_country || ''} onChange={({ detail }) => save('NEWS_COUNTRY', detail.value)} placeholder="CA" />
           </FormField>
-          <FormField label="Sujets d'actualité supplémentaires" description="Séparés par virgules">
-            <Input value={models.news_extra_topics || ''} onChange={({ detail }) => save('NEWS_EXTRA_TOPICS', detail.value)} placeholder="Cameroun, Technology" />
+          <FormField label="Sujets d'actualité supplémentaires">
+            <TagListEditor
+              items={(models.news_extra_topics || '').split(',').filter(Boolean).map(s => s.trim())}
+              onChange={(items) => save('NEWS_EXTRA_TOPICS', items.join(','))}
+              placeholder="Ex: Cameroun, Technology..."
+            />
           </FormField>
         </ColumnLayout>
       </Container>
@@ -271,8 +311,12 @@ function ModelsPanel({ api }) {
                 <FormField label="Bot token" description="Masqué pour sécurité (modifier dans .env)">
                   <Input value={models.telegram_bot_token || ''} disabled />
                 </FormField>
-                <FormField label="User IDs autorisés" description="Séparés par virgules pour plusieurs utilisateurs">
-                  <Input value={models.telegram_allowed_user_ids || ''} onChange={({ detail }) => save('TELEGRAM_ALLOWED_USER_IDS', detail.value)} placeholder="123456789,987654321" />
+                <FormField label="User IDs autorisés" description="Ajoutez les IDs Telegram des utilisateurs autorisés">
+                  <TagListEditor
+                    items={(models.telegram_allowed_user_ids || '').split(',').filter(Boolean)}
+                    onChange={(items) => save('TELEGRAM_ALLOWED_USER_IDS', items.join(','))}
+                    placeholder="Entrez un User ID et appuyez Entrée"
+                  />
                 </FormField>
               </SpaceBetween>
             </Container>
