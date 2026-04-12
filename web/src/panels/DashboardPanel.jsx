@@ -125,9 +125,9 @@ export default function DashboardPanel({ api, onNavigate }) {
                     const statusBadge = caps.map(([k, v]) => formatCapShort(k, v)).filter(Boolean).join(' ') || '—';
                     return (
                       <Box key={i} padding="xs">
-                        <SpaceBetween size="xxxs">
+                        <SpaceBetween size="xxs">
                           <Box variant="h4">{(CAT_ICONS[d.category] || '🔒') + ' ' + d.friendlyName}</Box>
-                          <Box fontSize="heading-xl">{statusBadge}</Box>
+                          <Box fontSize="heading-l">{statusBadge}</Box>
                         </SpaceBetween>
                       </Box>
                     );
@@ -146,7 +146,7 @@ export default function DashboardPanel({ api, onNavigate }) {
                     const isOn = power === 'ON';
                     return (
                       <Box key={i} padding="xs">
-                        <SpaceBetween size="xxxs">
+                        <SpaceBetween size="xxs">
                           <Box variant="h4">{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
                           <StatusIndicator type={isOn ? 'in-progress' : 'stopped'}>
                             {isOn ? 'En marche' : power === 'OFF' ? 'Éteint' : 'En attente'}
@@ -242,7 +242,7 @@ export default function DashboardPanel({ api, onNavigate }) {
           <SpaceBetween size="xs">
             {history.slice(0, 8).map((h, i) => (
               <SpaceBetween key={i} direction="horizontal" size="xs">
-                <Icon name={h.direction === 'in' ? 'arrow-right' : 'arrow-left'} variant={h.direction === 'in' ? 'subtle' : 'success'} />
+                <Icon name={h.direction === 'in' ? 'arrow-right' : 'arrow-left'} />
                 <Box variant="small" color="text-body-secondary">{h.channel}</Box>
                 <Box variant="small">{(h.text || '').slice(0, 120)}</Box>
               </SpaceBetween>
