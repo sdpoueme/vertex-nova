@@ -1,7 +1,7 @@
 # Vertex Nova
 
 <p align="center">
-  <img src="assets/synapse.gif" alt="Vertex Nova" width="400" />
+  <img src="assets/vertex-nova-hero.png" alt="Vertex Nova — Smart Home Central Control" width="700" />
 </p>
 
 <p align="center">
