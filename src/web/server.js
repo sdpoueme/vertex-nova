@@ -535,6 +535,7 @@ export function startDashboard(config, port) {
         telegram: config.telegramEnabled,
         whatsapp: config.whatsappEnabled,
         sonos: config.sonosEnabled,
+        email: !!config.emailMonitorAddress,
         memory: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB',
       });
       return;
