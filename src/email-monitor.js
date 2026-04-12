@@ -113,10 +113,10 @@ export class EmailMonitor {
       var { join: joinEM } = await import('node:path');
       var emYaml = '';
       try { emYaml = readEFS(joinEM(process.cwd(), 'config/devices.yaml'), 'utf8'); } catch {}
-      var emBlocks = emYaml.split(/^\s+-\s+bundle_id:/m);
+      var emBlocks = emYaml.split(/^\s+-\s+device_id:/m);
       for (var emi = 1; emi < emBlocks.length; emi++) {
         var emb = emBlocks[emi];
-        var emName = (emb.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+        var emDevId = (emb.match(/device_id:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
         // Check email sources
         var emailSrcBlocks = emb.split(/- type:/g);
         for (var esi = 1; esi < emailSrcBlocks.length; esi++) {
@@ -128,7 +128,7 @@ export class EmailMonitor {
           var fromMatch = esFrom && fromLower.includes(esFrom.toLowerCase());
           var keywordMatch = esKeywords.length > 0 && esKeywords.some(function(kw) { return fromLower.includes(kw.toLowerCase()); });
           if (fromMatch || keywordMatch) {
-            matchedDevice = { name: emName };
+            matchedDevice = { name: emDevId };
             break;
           }
         }

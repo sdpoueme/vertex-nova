@@ -1,74 +1,9 @@
-# Vertex Nova — Device Notification Monitoring
-# Devices are monitored via Alexa Smart Home API (state polling).
-# Additional sources: email alerts, webhook API.
+# Vertex Nova — Device Alert Rules
+# Devices are identified by their friendly name (from Alexa, email, or webhook).
+# The agent auto-discovers devices via Alexa API every 6 hours.
 
 settings:
   vocal_alerts: false
   poll_interval_seconds: 60
 
-devices:
-  - bundle_id: com.myliftmaster.myq
-    name: MyQ
-    icon: "🚗"
-    description: "Porte de garage (MyQ/Chamberlain)"
-    security_level: high
-    normal_hours: [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]
-    context: "La porte de garage a été activée. Si personne ne devrait entrer ou sortir, cela pourrait indiquer une intrusion."
-    sources:
-      - type: alexa_api
-    enabled: true
-
-  - bundle_id: com.honeywell.acs.lyric
-    name: Honeywell
-    icon: "🌡️"
-    description: "Thermostat Honeywell Lyric/Home"
-    security_level: low
-    normal_hours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
-    context: "Alerte thermostat. Possibles causes: température extrême, panne chauffage/clim, changement de mode."
-    sources:
-      - type: alexa_api
-    enabled: true
-
-  - bundle_id: com.telus.smarthome
-    name: Telus
-    icon: "🔒"
-    description: "Sécurité Telus SmartHome"
-    security_level: critical
-    normal_hours: [6,7,8,17,18,22,23]
-    context: "Alerte sécurité. Possibles causes: intrusion, capteur déclenché, armement/désarmement inattendu."
-    sources:
-      - type: alexa_api
-    enabled: true
-
-  - bundle_id: com.lgeha.nuts
-    name: LG ThinQ
-    icon: "👕"
-    description: "Électroménagers LG (laveuse/sécheuse)"
-    security_level: low
-    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]
-    context: "Notification LG ThinQ. Cycle terminé, erreur appareil, ou alerte maintenance."
-    sources:
-      - type: alexa_api
-    enabled: true
-
-  - bundle_id: com.bshg.homeconnect
-    name: Bosch
-    icon: "🧊"
-    description: "Bosch Home Connect (frigo)"
-    security_level: medium
-    normal_hours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
-    context: "Alerte Bosch. Porte frigo ouverte, température anormale, ou erreur."
-    sources:
-      - type: alexa_api
-    enabled: true
-
-  - bundle_id: com.ring.ring
-    name: Ring
-    icon: "🔔"
-    description: "Sonnette/caméra Ring"
-    security_level: high
-    normal_hours: [8,9,10,11,12,13,14,15,16,17,18,19]
-    context: "Mouvement détecté ou quelqu'un a sonné. Vérifier si un visiteur est attendu."
-    sources:
-      - type: alexa_api
-    enabled: true
+rules: []

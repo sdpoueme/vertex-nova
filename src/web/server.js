@@ -326,28 +326,22 @@ export function startDashboard(config, port) {
     // --- API: Device monitoring ---
     if (path === '/api/devices' && req.method === 'GET') {
       try {
-        // Parse devices directly from YAML config + pattern data from disk
+        // Parse rules from YAML config (new device_id-based schema)
         var devContent = readFileSync(join(projectDir, 'config/devices.yaml'), 'utf8');
-        var patFile = join(projectDir, 'vault/memories/device-patterns.json');
-        var patterns = {};
-        try { patterns = JSON.parse(readFileSync(patFile, 'utf8')); } catch {}
-        var devBlocks = devContent.split(/^\s+-\s+bundle_id:/m);
-        var devices = [];
-        for (var dbi = 1; dbi < devBlocks.length; dbi++) {
-          var db = devBlocks[dbi];
-          var bid = (db.match(/bundle_id:\s*(\S+)/) || ['',''])[1]?.trim() || '';
-          var dName = (db.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+        var ruleBlocks = devContent.split(/^\s+-\s+device_id:/m);
+        var rules = [];
+        for (var dbi = 1; dbi < ruleBlocks.length; dbi++) {
+          var db = ruleBlocks[dbi];
+          var devId = (db.match(/device_id:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
           var dIcon = (db.match(/icon:\s*"([^"]*)"/) || [])[1] || '📱';
-          var dDesc = (db.match(/description:\s*"([^"]*)"/) || [])[1] || '';
           var dSec = (db.match(/security_level:\s*(\S+)/) || [])[1]?.trim() || 'low';
           var dEnabled = (db.match(/enabled:\s*(\S+)/) || [])[1]?.trim() !== 'false';
-          var pat = patterns[bid] || { totalCount: 0, lastSeen: null, hourCounts: new Array(24).fill(0) };
-          devices.push({ bundle_id: bid, name: dName, icon: dIcon, description: dDesc, security_level: dSec, enabled: dEnabled, totalNotifications: pat.totalCount || 0, lastSeen: pat.lastSeen || null, hourCounts: pat.hourCounts || new Array(24).fill(0) });
+          if (devId) rules.push({ device_id: devId, icon: dIcon, security_level: dSec, enabled: dEnabled });
         }
         var vocalMatch = devContent.match(/vocal_alerts:\s*(true|false)/);
-        json(res, 200, { devices: devices, settings: { vocal_alerts: vocalMatch ? vocalMatch[1] === 'true' : false } });
+        json(res, 200, { rules: rules, settings: { vocal_alerts: vocalMatch ? vocalMatch[1] === 'true' : false } });
       } catch (err) {
-        json(res, 200, { devices: [], settings: { vocal_alerts: false } });
+        json(res, 200, { rules: [], settings: { vocal_alerts: false } });
       }
       return;
     }
