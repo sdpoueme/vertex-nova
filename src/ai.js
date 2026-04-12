@@ -273,6 +273,34 @@ var tools = [
         genre: { type: 'string', description: 'Genre: action, comedy, drama, thriller, animation, horror, family, romance, sci-fi' }
       }
     }
+  },
+  {
+    name: 'email_list',
+    description: 'Liste les emails récents en attente de réponse. Utilise quand l\'utilisateur demande ses emails, sa boîte de réception, ou les messages en attente.',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'email_draft',
+    description: 'Rédige un brouillon de réponse à un email. Nécessite le code de l\'email (fourni dans la notification). Utilise quand l\'utilisateur veut répondre à un email.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email_key: { type: 'string', description: 'Code de l\'email (ex: abc123def456)' },
+        instructions: { type: 'string', description: 'Instructions pour la réponse (optionnel, ex: "dis que je suis disponible mardi")' }
+      },
+      required: ['email_key']
+    }
+  },
+  {
+    name: 'email_send',
+    description: 'Envoie un brouillon de réponse approuvé. Utilise UNIQUEMENT après que l\'utilisateur a approuvé le brouillon.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        email_key: { type: 'string', description: 'Code de l\'email à envoyer' }
+      },
+      required: ['email_key']
+    }
   }
 ];
 
@@ -788,6 +816,38 @@ async function executeTool(name, input) {
     return kbs.map(function(kb) {
       return '📚 ' + kb.name + (kb.enabled ? ' ✅' : ' ❌') + '\n   ' + kb.description + '\n   ' + (kb.synced ? kb.chunks + ' chunks indexés' : 'Non synchronisé') + '\n   Repo: ' + kb.repo;
     }).join('\n\n');
+  }
+
+  // Email tools
+  if (name === 'email_list') {
+    try {
+      var { getEmailAgent } = await import('./email-agent.js');
+      var ea = getEmailAgent();
+      if (!ea) return 'Agent email non configuré. Ajoutez EMAIL_MONITOR_ADDRESS dans .env';
+      var pending = ea.listPending();
+      if (pending.length === 0) return 'Aucun email en attente de réponse.';
+      return pending.map(function(p) {
+        return '📧 [' + p.key + '] De: ' + p.from + (p.fromEmail ? ' <' + p.fromEmail + '>' : '') + '\n   Sujet: ' + p.subject + (p.hasDraft ? ' ✏️ brouillon prêt' : '');
+      }).join('\n\n');
+    } catch (err) { return 'Erreur: ' + err.message; }
+  }
+
+  if (name === 'email_draft') {
+    try {
+      var { getEmailAgent: getEA2 } = await import('./email-agent.js');
+      var ea2 = getEA2();
+      if (!ea2) return 'Agent email non configuré.';
+      return await ea2.draftReply(input.email_key, input.instructions || '');
+    } catch (err) { return 'Erreur: ' + err.message; }
+  }
+
+  if (name === 'email_send') {
+    try {
+      var { getEmailAgent: getEA3 } = await import('./email-agent.js');
+      var ea3 = getEA3();
+      if (!ea3) return 'Agent email non configuré.';
+      return await ea3.sendReply(input.email_key);
+    } catch (err) { return 'Erreur: ' + err.message; }
   }
 
   return 'Unknown tool: ' + name;

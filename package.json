@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@strands-agents/sdk": "^1.0.0-rc.3",
+    "nodemailer": "^8.0.5",
     "telegraf": "^4.16.3"
   }
 }

@@ -109,6 +109,34 @@ async function handleMessage(msg) {
     }
   }
 
+  // Email reply workflow commands
+  var replyMatch = text.match(/^(?:répondre|reply|repondre)\s+([a-zA-Z0-9]+)(?:\s+(.+))?$/i);
+  var sendMatch = text.match(/^(?:envoyer|send|approuver|approve)\s+([a-zA-Z0-9]+)$/i);
+  if (replyMatch || sendMatch) {
+    try {
+      var { getEmailAgent } = await import('./email-agent.js');
+      var ea = getEmailAgent();
+      if (!ea) {
+        if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Agent email non configuré.');
+        return;
+      }
+      if (replyMatch) {
+        var draftResult = await ea.draftReply(replyMatch[1], replyMatch[2] || '');
+        if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, draftResult);
+        return;
+      }
+      if (sendMatch) {
+        var sendResult = await ea.sendReply(sendMatch[1]);
+        if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, sendResult);
+        return;
+      }
+    } catch (err) {
+      log.error('Email command error: ' + err.message);
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Erreur: ' + err.message);
+      return;
+    }
+  }
+
   // Log interaction for dashboard
   try {
     var { logInteraction } = await import('./web/server.js');
@@ -371,27 +399,15 @@ async function main() {
     log.info('IFTTT/webhook server listening on port ' + iftttPort);
   });
 
-  // Email monitor for device notifications
+  // Email agent — monitors inbox, notifies, drafts replies, sends on approval
   if (config.emailMonitorAddress) {
-    var { EmailMonitor } = await import('./email-monitor.js');
-    var emailMonitor = new EmailMonitor(config, async function(event) {
-      // Process through AI and log to vault
-      try {
-        var sessionId = getSessionId('email-monitor');
-        var response = await chat(event.text, sessionId);
-        log.info('[email] AI processed alert from ' + event.source + ': ' + response.slice(0, 100));
-
-        // Notify owner on Telegram if it's an anomaly
-        if (response.toLowerCase().includes('anomal') || response.toLowerCase().includes('urgent') ||
-            response.toLowerCase().includes('attention') || response.toLowerCase().includes('alerte')) {
-          var emailIcon = '📧';
-          await sendTelegram(emailIcon + ' ' + response);
-        }
-      } catch (err) {
-        log.error('[email] Processing error: ' + err.message);
-      }
+    var { EmailAgent, setEmailAgent } = await import('./email-agent.js');
+    var emailAgent = new EmailAgent(config, {
+      onNotify: async function(text) { await sendTelegram(text); },
+      onAskAI: async function(prompt, sessionId) { return chat(prompt, sessionId); },
     });
-    await emailMonitor.start();
+    setEmailAgent(emailAgent);
+    await emailAgent.start();
   }
 
   // Reminder engine
