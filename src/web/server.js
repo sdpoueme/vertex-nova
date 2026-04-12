@@ -472,6 +472,30 @@ export function startDashboard(config, port) {
       return;
     }
 
+    // Persisted discovered devices (instant, no API call)
+    if (path === '/api/alexa/discovered' && req.method === 'GET') {
+      try {
+        var { getDiscoveredDevices } = await import('../alexa-monitor.js');
+        var discovered = getDiscoveredDevices();
+        // Also try reading from disk if in-memory is empty (monitor not started yet)
+        if (discovered.length === 0) {
+          try {
+            var devFile = join(projectDir, 'vault/memories/alexa-discovered-devices.json');
+            if (existsSync(devFile)) discovered = JSON.parse(readFileSync(devFile, 'utf8'));
+          } catch {}
+        }
+        json(res, 200, { devices: discovered, configured: !!(process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN) });
+      } catch (err) {
+        // Fallback: read directly from disk
+        try {
+          var devFile2 = join(projectDir, 'vault/memories/alexa-discovered-devices.json');
+          var devList = existsSync(devFile2) ? JSON.parse(readFileSync(devFile2, 'utf8')) : [];
+          json(res, 200, { devices: devList, configured: !!(process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN) });
+        } catch { json(res, 200, { devices: [], configured: false }); }
+      }
+      return;
+    }
+
     // --- API: Logs ---
     if (path === '/api/logs' && req.method === 'GET') {
       try {

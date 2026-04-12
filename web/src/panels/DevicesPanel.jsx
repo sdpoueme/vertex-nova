@@ -12,38 +12,18 @@ import FormField from '@cloudscape-design/components/form-field';
 import Alert from '@cloudscape-design/components/alert';
 import Box from '@cloudscape-design/components/box';
 import StatusIndicator from '@cloudscape-design/components/status-indicator';
+import Spinner from '@cloudscape-design/components/spinner';
 
-function timeAgo(ts) {
-  if (!ts) return 'jamais';
-  const s = Math.floor((Date.now() - ts) / 1000);
-  if (s < 60) return s + 's';
-  if (s < 3600) return Math.floor(s / 60) + ' min';
-  if (s < 86400) return Math.floor(s / 3600) + 'h';
-  return Math.floor(s / 86400) + 'j';
-}
-
-function groupDevices(devices) {
-  const groups = {};
-  for (const d of devices) {
-    if (!groups[d.name]) {
-      groups[d.name] = { ...d, bundleIds: [d.bundle_id], totalNotifications: d.totalNotifications || 0, hourCounts: [...(d.hourCounts || new Array(24).fill(0))] };
-    } else {
-      groups[d.name].bundleIds.push(d.bundle_id);
-      groups[d.name].totalNotifications += (d.totalNotifications || 0);
-      if (d.lastSeen && (!groups[d.name].lastSeen || d.lastSeen > groups[d.name].lastSeen)) groups[d.name].lastSeen = d.lastSeen;
-      if (d.hourCounts) { for (let h = 0; h < 24; h++) groups[d.name].hourCounts[h] += (d.hourCounts[h] || 0); }
-    }
-  }
-  return Object.values(groups);
-}
+const SKIP_CATEGORIES = new Set(['ALEXA_VOICE_ENABLED', 'TV', 'GAME_CONSOLE', 'SPEAKERS', 'PRINTER']);
+const CAT_ICONS = { WASHER: '👕', DRYER: '👕', THERMOSTAT: '🌡️', SMARTLOCK: '🔐', SECURITY_PANEL: '🔒', CAMERA: '📹', LIGHT: '💡', SMARTPLUG: '🔌', SWITCH: '🔌', OVEN: '🍳', OTHER: '📱', DOORBELL: '🔔', GARAGE_DOOR: '🚗' };
+const CAT_SEC = { SECURITY_PANEL: 'critical', SMARTLOCK: 'critical', CAMERA: 'high', GARAGE_DOOR: 'high', DOORBELL: 'high' };
 
 function parseDevicesYaml(text) {
-  const result = { vocal_alerts: false, poll_interval_seconds: 30, devices: [] };
+  const result = { vocal_alerts: false, poll_interval_seconds: 60, devices: [] };
   const vm = text.match(/vocal_alerts:\s*(true|false)/);
   if (vm) result.vocal_alerts = vm[1] === 'true';
   const pm = text.match(/poll_interval_seconds:\s*(\d+)/);
   if (pm) result.poll_interval_seconds = parseInt(pm[1]);
-
   const blocks = text.split(/^\s+-\s+bundle_id:/m);
   for (let i = 1; i < blocks.length; i++) {
     const b = '  - bundle_id:' + blocks[i];
@@ -56,7 +36,6 @@ function parseDevicesYaml(text) {
     const enabled = (b.match(/enabled:\s*(\S+)/) || [])[1]?.trim() !== 'false';
     const hm = b.match(/normal_hours:\s*\[([^\]]*)\]/);
     const normalHours = hm ? hm[1].split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h)) : [];
-    // Parse sources
     const sources = [];
     const srcParts = b.split(/- type:/g);
     for (let si = 1; si < srcParts.length; si++) {
@@ -85,7 +64,7 @@ function buildDevicesYaml(data) {
     y += '    security_level: ' + d.security_level + '\n';
     y += '    normal_hours: [' + (d.normal_hours || []).join(',') + ']\n';
     y += '    context: "' + (d.context || '').replace(/"/g, '\\"') + '"\n';
-    if (d.sources && d.sources.length > 0) {
+    if (d.sources?.length > 0) {
       y += '    sources:\n';
       for (const s of d.sources) {
         y += '      - type: ' + s.type + '\n';
@@ -114,14 +93,9 @@ const SRC_TYPE_OPTIONS = [
 ];
 
 function SourceEditor({ sources, onChange }) {
-  const update = (idx, field, val) => {
-    const ns = [...sources];
-    ns[idx] = { ...ns[idx], [field]: val };
-    onChange(ns);
-  };
+  const update = (idx, field, val) => { const ns = [...sources]; ns[idx] = { ...ns[idx], [field]: val }; onChange(ns); };
   const remove = (idx) => onChange(sources.filter((_, i) => i !== idx));
   const add = (type) => onChange([...sources, { type, from: '', token: '', keywords: [] }]);
-
   const srcLabels = { alexa_api: 'Alexa API', email: 'Email', webhook: 'Webhook' };
   const srcStatus = { alexa_api: 'success', email: 'info', webhook: 'warning' };
 
@@ -136,29 +110,19 @@ function SourceEditor({ sources, onChange }) {
         }>
           <SpaceBetween size="xs">
             <FormField label="Type">
-              <Select
-                selectedOption={SRC_TYPE_OPTIONS.find(o => o.value === s.type) || SRC_TYPE_OPTIONS[0]}
-                onChange={({ detail }) => update(i, 'type', detail.selectedOption.value)}
-                options={SRC_TYPE_OPTIONS}
-              />
+              <Select selectedOption={SRC_TYPE_OPTIONS.find(o => o.value === s.type) || SRC_TYPE_OPTIONS[0]} onChange={({ detail }) => update(i, 'type', detail.selectedOption.value)} options={SRC_TYPE_OPTIONS} />
             </FormField>
             {s.type === 'email' && (
               <ColumnLayout columns={2}>
-                <FormField label="Expéditeur (from)">
-                  <Input value={s.from || ''} onChange={({ detail }) => update(i, 'from', detail.value)} placeholder="noreply@myqdevice.com" />
-                </FormField>
-                <FormField label="Mots-clés (virgules)">
-                  <Input value={(s.keywords || []).join(', ')} onChange={({ detail }) => update(i, 'keywords', detail.value.split(',').map(k => k.trim()).filter(Boolean))} placeholder="garage, door, opened" />
-                </FormField>
+                <FormField label="Expéditeur"><Input value={s.from || ''} onChange={({ detail }) => update(i, 'from', detail.value)} placeholder="noreply@myqdevice.com" /></FormField>
+                <FormField label="Mots-clés"><Input value={(s.keywords || []).join(', ')} onChange={({ detail }) => update(i, 'keywords', detail.value.split(',').map(k => k.trim()).filter(Boolean))} /></FormField>
               </ColumnLayout>
             )}
             {s.type === 'webhook' && (
-              <FormField label="Token d'authentification">
-                <Input value={s.token || ''} onChange={({ detail }) => update(i, 'token', detail.value)} placeholder="myq-secret" />
-              </FormField>
+              <FormField label="Token"><Input value={s.token || ''} onChange={({ detail }) => update(i, 'token', detail.value)} /></FormField>
             )}
             {s.type === 'alexa_api' && (
-              <Box variant="small" color="text-body-secondary">Surveillance automatique via l'API Alexa Smart Home (état des appareils).</Box>
+              <Box variant="small" color="text-body-secondary">Surveillance automatique via l'API Alexa Smart Home.</Box>
             )}
           </SpaceBetween>
         </Container>
@@ -172,100 +136,101 @@ function SourceEditor({ sources, onChange }) {
   );
 }
 
-function AlexaDevicesSection({ api }) {
-  const [alexaDevices, setAlexaDevices] = useState(null);
-  const [loading, setLoading] = useState(false);
+export default function DevicesPanel({ api }) {
+  const [yaml, setYaml] = useState('');
+  const [parsed, setParsed] = useState({ vocal_alerts: false, poll_interval_seconds: 60, devices: [] });
+  const [alexaDevices, setAlexaDevices] = useState(null); // null = loading, [] = empty
+  const [alexaLoading, setAlexaLoading] = useState(true);
+  const [alert, setAlert] = useState(null);
 
-  const discover = async () => {
-    setLoading(true);
+  const loadConfig = useCallback(async () => {
+    try {
+      const res = await fetch(api + '/api/devices/config');
+      if (res.ok) { const d = await res.json(); setYaml(d.content || ''); setParsed(parseDevicesYaml(d.content || '')); }
+    } catch {}
+  }, [api]);
+
+  const loadAlexaDevices = useCallback(async () => {
+    setAlexaLoading(true);
+    try {
+      const res = await fetch(api + '/api/alexa/discovered');
+      if (res.ok) { const d = await res.json(); setAlexaDevices(d); }
+    } catch {} finally { setAlexaLoading(false); }
+  }, [api]);
+
+  const forceRediscover = async () => {
+    setAlexaLoading(true);
     try {
       const res = await fetch(api + '/api/alexa/devices');
       if (res.ok) {
-        const data = await res.json();
-        setAlexaDevices(data);
+        const d = await res.json();
+        setAlexaDevices(d);
+        setAlert({ type: 'success', text: d.devices?.length + ' appareils découverts via Alexa' });
       }
-    } catch {} finally { setLoading(false); }
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+    finally { setAlexaLoading(false); }
   };
 
-  const catIcons = { WASHER: '👕', DRYER: '👕', THERMOSTAT: '🌡️', SMARTLOCK: '🔐', SECURITY_PANEL: '🔒', CAMERA: '📹', LIGHT: '💡', SMARTPLUG: '🔌', SWITCH: '🔌', OVEN: '🍳', OTHER: '📱', DOORBELL: '🔔' };
-
-  return (
-    <Container variant="stacked" header={
-      <Header variant="h4" actions={<Button loading={loading} onClick={discover} iconName="refresh">Découvrir</Button>}>
-        Alexa Smart Home {alexaDevices?.configured === false && <StatusIndicator type="warning">Non configuré</StatusIndicator>}
-      </Header>
-    }>
-      {!alexaDevices ? (
-        <Box variant="small" color="text-body-secondary">Cliquez Découvrir pour lister les appareils connectés à Alexa</Box>
-      ) : alexaDevices.error ? (
-        <Alert type="error">{alexaDevices.error}</Alert>
-      ) : alexaDevices.devices?.length === 0 ? (
-        <Box variant="small">Aucun appareil trouvé. Vérifiez les cookies Alexa dans Configuration.</Box>
-      ) : (
-        <SpaceBetween size="xxs">
-          <Box variant="small">{alexaDevices.devices.length} appareils détectés via Alexa</Box>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {alexaDevices.devices.filter(d => !['ALEXA_VOICE_ENABLED', 'TV', 'GAME_CONSOLE', 'SPEAKERS', 'PRINTER'].includes(d.category)).map((d, i) => (
-              <Box key={i} padding={{ horizontal: 'xs', vertical: 'xxs' }} display="inline-block">
-                <StatusIndicator type={d.category === 'SECURITY_PANEL' || d.category === 'CAMERA' ? 'warning' : 'success'}>
-                  {(catIcons[d.category] || '📱') + ' ' + d.friendlyName}
-                </StatusIndicator>
-              </Box>
-            ))}
-          </div>
-        </SpaceBetween>
-      )}
-    </Container>
-  );
-}
-
-export default function DevicesPanel({ api }) {
-  const [yaml, setYaml] = useState('');
-  const [parsed, setParsed] = useState({ vocal_alerts: false, poll_interval_seconds: 30, devices: [] });
-  const [stats, setStats] = useState([]);
-  const [alert, setAlert] = useState(null);
-
-  const load = useCallback(async () => {
-    try {
-      const [devRes, cfgRes] = await Promise.all([
-        fetch(api + '/api/devices').then(r => r.ok ? r.json() : { devices: [] }),
-        fetch(api + '/api/devices/config').then(r => r.ok ? r.json() : { content: '' }),
-      ]);
-      setStats(groupDevices(devRes.devices || []));
-      setYaml(cfgRes.content || '');
-      setParsed(parseDevicesYaml(cfgRes.content || ''));
-    } catch (err) { setAlert({ type: 'error', text: err.message }); }
-  }, [api]);
-
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadConfig(); loadAlexaDevices(); }, [loadConfig, loadAlexaDevices]);
 
   const updateFromForm = (p) => { setParsed(p); setYaml(buildDevicesYaml(p)); };
   const updateFromYaml = (y) => { setYaml(y); try { setParsed(parseDevicesYaml(y)); } catch {} };
 
   const save = async () => {
     try {
-      const res = await fetch(api + '/api/devices/config', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: yaml }),
-      });
+      const res = await fetch(api + '/api/devices/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: yaml }) });
       if (!res.ok) { setAlert({ type: 'error', text: 'Erreur: ' + res.status }); return; }
-      setAlert({ type: 'success', text: 'Sauvegardé et rechargé' });
-      load();
+      setAlert({ type: 'success', text: 'Configuration sauvegardée' });
+      loadConfig();
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
 
-  const updateDevice = (idx, field, value) => {
-    const nd = [...parsed.devices]; nd[idx] = { ...nd[idx], [field]: value }; updateFromForm({ ...parsed, devices: nd });
-  };
+  const updateDevice = (idx, field, value) => { const nd = [...parsed.devices]; nd[idx] = { ...nd[idx], [field]: value }; updateFromForm({ ...parsed, devices: nd }); };
   const removeDevice = (idx) => updateFromForm({ ...parsed, devices: parsed.devices.filter((_, i) => i !== idx) });
   const addDevice = () => updateFromForm({ ...parsed, devices: [...parsed.devices, {
     bundle_id: 'com.example.app', name: 'Nouvel appareil', icon: '📱', description: '', security_level: 'low',
-    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21], context: '', enabled: true, sources: [{ type: 'alexa_api', from: '', token: '', keywords: [] }],
+    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21], context: '', enabled: true, sources: [{ type: 'alexa_api' }],
   }]});
+
+  // Filter Alexa devices to monitorable ones
+  const monitorable = (alexaDevices?.devices || []).filter(d => !SKIP_CATEGORIES.has(d.category));
 
   return (
     <SpaceBetween size="l">
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
+
+      <Container header={
+        <Header variant="h3" actions={
+          <SpaceBetween direction="horizontal" size="xs">
+            <Button loading={alexaLoading} onClick={forceRediscover} iconName="refresh">Redécouvrir</Button>
+          </SpaceBetween>
+        }>Appareils Alexa Smart Home</Header>
+      }>
+        {alexaLoading && !alexaDevices ? (
+          <Box textAlign="center" padding="l"><Spinner size="large" /> Chargement des appareils...</Box>
+        ) : alexaDevices?.configured === false ? (
+          <Alert type="warning">Alexa non configuré. Ajoutez les cookies dans Configuration → Alexa Smart Home API.</Alert>
+        ) : monitorable.length === 0 ? (
+          <Box variant="small">Aucun appareil détecté. Cliquez Redécouvrir ou vérifiez les cookies Alexa.</Box>
+        ) : (
+          <SpaceBetween size="s">
+            <Box variant="small">{monitorable.length} appareils surveillés (redécouverte automatique toutes les 6h)</Box>
+            <ColumnLayout columns={Math.min(monitorable.length, 4)}>
+              {monitorable.map((d, i) => (
+                <Container key={i} variant="stacked">
+                  <SpaceBetween size="xxs">
+                    <Box variant="h4">{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
+                    <StatusIndicator type={CAT_SEC[d.category] ? 'warning' : 'success'}>
+                      {d.category}
+                    </StatusIndicator>
+                    <Box variant="small" color="text-body-secondary">{d.description}</Box>
+                  </SpaceBetween>
+                </Container>
+              ))}
+            </ColumnLayout>
+          </SpaceBetween>
+        )}
+      </Container>
 
       <Container header={<Header variant="h3">Paramètres</Header>}>
         <ColumnLayout columns={2}>
@@ -275,38 +240,14 @@ export default function DevicesPanel({ api }) {
             </Toggle>
           </FormField>
           <FormField label="Intervalle de vérification (sec)">
-            <Input type="number" value={String(parsed.poll_interval_seconds)} onChange={({ detail }) => updateFromForm({ ...parsed, poll_interval_seconds: parseInt(detail.value) || 30 })} />
+            <Input type="number" value={String(parsed.poll_interval_seconds)} onChange={({ detail }) => updateFromForm({ ...parsed, poll_interval_seconds: parseInt(detail.value) || 60 })} />
           </FormField>
         </ColumnLayout>
       </Container>
 
-      {stats.length > 0 && (
-        <Container header={<Header variant="h3">Activité</Header>}>
-          <ColumnLayout columns={Math.min(stats.length, 4)}>
-            {stats.map(d => (
-              <Container key={d.name} variant="stacked">
-                <SpaceBetween size="xxs">
-                  <Box variant="h4">{d.icon + ' ' + d.name}</Box>
-                  <Box variant="small">{d.totalNotifications} notifications — dernière: {timeAgo(d.lastSeen)}</Box>
-                  {d.hourCounts?.some(c => c > 0) && (
-                    <Box>
-                      <Box variant="awsui-key-label">Activité par heure (rouge = nuit)</Box>
-                      <div style={{ display: 'flex', gap: '1px', height: '20px', alignItems: 'flex-end', marginTop: '4px' }}>
-                        {d.hourCounts.map((c, h) => (<div key={h} title={h + 'h: ' + c} style={{ width: '9px', height: Math.max(1, (c / Math.max(...d.hourCounts, 1)) * 18) + 'px', background: c === 0 ? '#1a1f2e' : (h >= 22 || h < 6) ? '#d13212' : '#0972d3', borderRadius: '1px' }} />))}
-                      </div>
-                    </Box>
-                  )}
-                </SpaceBetween>
-              </Container>
-            ))}
-          </ColumnLayout>
-        </Container>
-      )}
-
       <ColumnLayout columns={2}>
         <SpaceBetween size="m">
-          <Header variant="h3" actions={<Button onClick={addDevice} iconName="add-plus">Ajouter</Button>}>Appareils ({parsed.devices.length})</Header>
-          <AlexaDevicesSection api={api} />
+          <Header variant="h3" actions={<Button onClick={addDevice} iconName="add-plus">Ajouter</Button>}>Règles d'alerte ({parsed.devices.length})</Header>
           {parsed.devices.map((d, i) => (
             <Container key={i} header={
               <Header variant="h4" actions={
@@ -329,7 +270,7 @@ export default function DevicesPanel({ api }) {
                   </FormField>
                 </ColumnLayout>
                 <FormField label="Contexte IA"><Input value={d.context} onChange={({ detail }) => updateDevice(i, 'context', detail.value)} /></FormField>
-                <FormField label="Heures normales (0-23, séparées par virgules)">
+                <FormField label="Heures normales (0-23, virgules)">
                   <Input value={(d.normal_hours || []).join(', ')} onChange={({ detail }) => updateDevice(i, 'normal_hours', detail.value.split(',').map(h => parseInt(h.trim())).filter(h => !isNaN(h)))} />
                 </FormField>
                 <SourceEditor sources={d.sources || []} onChange={(s) => updateDevice(i, 'sources', s)} />

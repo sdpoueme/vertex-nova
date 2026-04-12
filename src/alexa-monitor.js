@@ -13,8 +13,12 @@ import { discoverDevices, getDeviceStates, getCategoryInfo, getMonitorableDevice
 var log = logger('alexa-monitor');
 
 var previousStates = {};  // entityId → { capabilities, timestamp }
+var discoveredDevices = []; // persisted list of all discovered devices
 var statesFile = null;
+var devicesFile = null;
 var pollTimer = null;
+var rediscoverTimer = null;
+var REDISCOVERY_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 
 function loadPreviousStates() {
   if (!statesFile) return;
@@ -26,6 +30,18 @@ function loadPreviousStates() {
 function savePreviousStates() {
   if (!statesFile) return;
   try { writeFileSync(statesFile, JSON.stringify(previousStates, null, 2)); } catch {}
+}
+
+function loadDiscoveredDevices() {
+  if (!devicesFile) return;
+  try {
+    if (existsSync(devicesFile)) discoveredDevices = JSON.parse(readFileSync(devicesFile, 'utf8'));
+  } catch {}
+}
+
+function saveDiscoveredDevices() {
+  if (!devicesFile) return;
+  try { writeFileSync(devicesFile, JSON.stringify(discoveredDevices, null, 2)); } catch {}
 }
 
 /**
@@ -136,19 +152,28 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs) {
   var memDir = join(vaultPath, 'memories');
   mkdirSync(memDir, { recursive: true });
   statesFile = join(memDir, 'alexa-device-states.json');
+  devicesFile = join(memDir, 'alexa-discovered-devices.json');
   loadPreviousStates();
+  loadDiscoveredDevices();
+
+  // Discovery function — called on startup and every 6 hours
+  async function runDiscovery() {
+    try {
+      var monitorable = await getMonitorableDevices(env);
+      discoveredDevices = monitorable;
+      saveDiscoveredDevices();
+      log.info('Alexa discovery: ' + monitorable.length + ' monitorable devices');
+      return monitorable;
+    } catch (err) {
+      log.error('Alexa device discovery failed: ' + err.message);
+      return discoveredDevices; // return cached
+    }
+  }
 
   // Initial discovery
-  var monitorable = [];
-  try {
-    monitorable = await getMonitorableDevices(env);
-    log.info('Alexa monitor: ' + monitorable.length + ' devices to monitor');
-    monitorable.forEach(function(d) {
-      log.debug('  ' + d.icon + ' ' + d.friendlyName + ' [' + d.category + ']');
-    });
-  } catch (err) {
-    log.error('Alexa device discovery failed: ' + err.message);
-    return null;
+  var monitorable = await runDiscovery();
+  if (monitorable.length === 0 && discoveredDevices.length === 0) {
+    log.warn('No Alexa devices found');
   }
 
   // Seed initial states (no alerts on first run)
@@ -252,12 +277,23 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs) {
   setTimeout(poll, 30000);
   pollTimer = setInterval(poll, interval);
 
-  log.info('Alexa state monitor started (polling every ' + (interval / 1000) + 's)');
+  // Rediscover devices every 6 hours to catch new ones
+  rediscoverTimer = setInterval(async function() {
+    log.info('Periodic device rediscovery...');
+    var newDevices = await runDiscovery();
+    if (newDevices.length > discoveredDevices.length) {
+      log.info('New devices found: ' + (newDevices.length - discoveredDevices.length) + ' added');
+    }
+  }, REDISCOVERY_INTERVAL);
+
+  log.info('Alexa monitor started (state poll: ' + (interval / 1000) + 's, rediscovery: every 6h)');
   return pollTimer;
 }
 
 export function stopAlexaMonitor() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (rediscoverTimer) { clearInterval(rediscoverTimer); rediscoverTimer = null; }
 }
 
 export function getAlexaStates() { return previousStates; }
+export function getDiscoveredDevices() { return discoveredDevices; }
