@@ -424,7 +424,6 @@ function RoutingPanel({ api }) {
     setParsed(newParsed);
     const newYaml = buildRoutingYaml(newParsed);
     setYaml(newYaml);
-    setYamlDirty(false);
   };
 
   // YAML → Form sync
