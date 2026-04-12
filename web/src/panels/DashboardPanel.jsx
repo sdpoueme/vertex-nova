@@ -109,22 +109,23 @@ export default function DashboardPanel({ api, onNavigate }) {
             Appareils ({devicesWithState.length})
           </Header>
         }>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' }}>
+          <ColumnLayout columns={3}>
             {devicesWithState.map((d, i) => {
               const caps = Object.entries(d.capabilities).filter(([k]) => !k.includes('EndpointHealth'));
               const badge = caps.map(([k, v]) => formatCapShort(k, v)).filter(Boolean).join(' ');
               const isSecurity = ['SECURITY_PANEL', 'SMARTLOCK', 'CAMERA'].includes(d.category);
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', background: isSecurity ? '#1a2332' : '#0f1b2d', border: '1px solid ' + (isSecurity ? '#2a3f5f' : '#1a2744') }}>
-                  <span style={{ fontSize: '18px', flexShrink: 0 }}>{CAT_ICONS[d.category] || '📱'}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.friendlyName}</div>
-                    {badge && <div style={{ fontSize: '12px', opacity: 0.7 }}>{badge}</div>}
-                  </div>
-                </div>
+                <SpaceBetween key={i} direction="horizontal" size="xs">
+                  <Box>{CAT_ICONS[d.category] || '📱'}</Box>
+                  <Box>
+                    <Box variant="small">{d.friendlyName}</Box>
+                    {badge && <Box variant="small" color="text-body-secondary">{badge}</Box>}
+                  </Box>
+                  {isSecurity && <StatusIndicator type="warning" />}
+                </SpaceBetween>
               );
             })}
-          </div>
+          </ColumnLayout>
         </Container>
       )}
 
