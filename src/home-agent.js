@@ -368,9 +368,16 @@ async function main() {
       if (route.channel === 'telegram') {
         await sendTelegram(text);
       } else if (route.channel === 'echo') {
-        var { VoiceMonkey: VMRem } = await import('./outputs/voicemonkey.js');
-        var vmRem = new VMRem(config);
-        await vmRem.speak(text.slice(0, 500), route.device);
+        // Try Alexa native, fallback to Voice Monkey
+        var echoOk = false;
+        if (process.env.ALEXA_AT_MAIN) {
+          try { var { alexaSpeak: asRem } = await import('./outputs/alexa-speak.js'); echoOk = await asRem(text.slice(0, 500), route.device); } catch {}
+        }
+        if (!echoOk) {
+          var { VoiceMonkey: VMRem } = await import('./outputs/voicemonkey.js');
+          var vmRem = new VMRem(config);
+          await vmRem.speak(text.slice(0, 500), route.device);
+        }
         await sendTelegram(text);
       } else if (route.channel === 'sonos') {
         var { execFile: execRem } = await import('node:child_process');
@@ -443,9 +450,15 @@ async function main() {
       if (route.channel === 'telegram') {
         await sendTelegram(icon + ' ' + response);
       } else if (route.channel === 'echo') {
-        var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
-        var vm = new VoiceMonkey(config);
-        await vm.speak(cleanForVoice(response).slice(0, 800), route.device);
+        var echoOk2 = false;
+        if (process.env.ALEXA_AT_MAIN) {
+          try { var { alexaSpeak: asPro } = await import('./outputs/alexa-speak.js'); echoOk2 = await asPro(cleanForVoice(response).slice(0, 800), route.device); } catch {}
+        }
+        if (!echoOk2) {
+          var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
+          var vm = new VoiceMonkey(config);
+          await vm.speak(cleanForVoice(response).slice(0, 800), route.device);
+        }
       } else if (route.channel === 'sonos') {
         var { execFile } = await import('node:child_process');
         var { join: joinPath } = await import('node:path');

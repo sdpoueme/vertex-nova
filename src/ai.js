@@ -142,21 +142,20 @@ var tools = [
   },
   {
     name: 'echo_speak',
-    description: 'Make an Alexa Echo device speak text via Voice Monkey.' +
-      (config.echoDevices.length > 0 ? ' Available devices: ' + config.echoDevices.join(', ') + '.' : '') +
-      (config.voiceMonkeyDefaultDevice ? ' Default: ' + config.voiceMonkeyDefaultDevice + '.' : ''),
+    description: 'Make an Alexa Echo device speak text. Uses Alexa native API (direct) with Voice Monkey fallback.' +
+      ' Use the device friendly name (e.g. "Bureau Serge", "Serge\'s Echo Show", "Garage").',
     input_schema: {
       type: 'object',
       properties: {
         text: { type: 'string', description: 'Text to speak' },
-        device: { type: 'string', description: 'Voice Monkey device ID' + (config.voiceMonkeyDefaultDevice ? '. Default: ' + config.voiceMonkeyDefaultDevice : '') }
+        device: { type: 'string', description: 'Echo device friendly name (e.g. "Bureau Serge", "Serge\'s Echo Show")' }
       },
       required: ['text']
     }
   },
   {
     name: 'echo_speak_all',
-    description: 'Make ALL Echo devices speak the same text simultaneously.',
+    description: 'Make ALL online Echo devices speak the same text simultaneously.',
     input_schema: {
       type: 'object',
       properties: {
@@ -407,8 +406,15 @@ async function executeTool(name, input) {
     }
   }
 
-  // Echo speak via Voice Monkey
+  // Echo speak — Alexa native TTS (fallback to Voice Monkey if no Alexa cookies)
   if (name === 'echo_speak') {
+    // Try Alexa native first
+    if (process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN) {
+      var { alexaSpeak } = await import('./outputs/alexa-speak.js');
+      var ok = await alexaSpeak(input.text, input.device);
+      if (ok) return 'Annonce envoyée sur Echo: ' + input.text.slice(0, 100);
+      log.warn('Alexa native speak failed, trying Voice Monkey fallback');
+    }
     var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
     var vm = new VoiceMonkey(config);
     var success = await vm.speak(input.text, input.device);
@@ -416,6 +422,12 @@ async function executeTool(name, input) {
   }
 
   if (name === 'echo_speak_all') {
+    if (process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN) {
+      var { alexaSpeakAll } = await import('./outputs/alexa-speak.js');
+      var allResults = await alexaSpeakAll(input.text);
+      var allOk = allResults.filter(function(r) { return r; }).length;
+      if (allOk > 0) return 'Annonce envoyée sur ' + allOk + ' appareils Echo';
+    }
     var { VoiceMonkey: VM } = await import('./outputs/voicemonkey.js');
     var vmAll = new VM(config);
     var devices = config.echoDevices.length > 0 ? config.echoDevices : [config.voiceMonkeyDefaultDevice].filter(Boolean);
