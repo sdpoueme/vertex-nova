@@ -294,16 +294,14 @@ export default function DevicesPanel({ api }) {
                 const state = deviceStates.find(s => s.friendlyName === d.friendlyName);
                 const caps = state?.capabilities || {};
                 const capEntries = Object.entries(caps).filter(([k]) => !k.includes('EndpointHealth'));
-                const connectivity = caps['Alexa.EndpointHealth.connectivity'];
-                const isOnline = connectivity && (typeof connectivity === 'object' ? connectivity.value === 'OK' : connectivity === 'OK');
+                const hasState = state?.hasState;
+                // Extract capability interface names from discovery data for display
+                const interfaces = (d.capabilities || []).map(c => typeof c === 'string' ? c : c.interfaceName).filter(Boolean).filter(n => n !== 'Alexa' && n !== 'Alexa.EndpointHealth');
                 return (
                   <Container key={i} variant="stacked">
                     <SpaceBetween size="xxs">
-                      <SpaceBetween direction="horizontal" size="xs">
-                        <Box variant="h4">{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
-                        {connectivity && <StatusIndicator type={isOnline ? 'success' : 'error'}>{isOnline ? 'En ligne' : 'Hors ligne'}</StatusIndicator>}
-                      </SpaceBetween>
-                      {capEntries.length > 0 ? (
+                      <Box variant="h4">{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
+                      {hasState && capEntries.length > 0 ? (
                         <Box>
                           {capEntries.map(([k, v]) => (
                             <Box key={k} variant="small">{friendlyCapName(k)}: {formatCapValue(k, v)}</Box>
@@ -311,7 +309,10 @@ export default function DevicesPanel({ api }) {
                           {state?.lastUpdated && <Box variant="small" color="text-body-secondary">Mis à jour il y a {timeAgo(state.lastUpdated)}</Box>}
                         </Box>
                       ) : (
-                        <Box variant="small" color="text-body-secondary">{d.category} — en attente de données</Box>
+                        <Box>
+                          <Box variant="small" color="text-body-secondary">{d.category}</Box>
+                          {interfaces.length > 0 && <Box variant="small" color="text-body-secondary">Capacités: {interfaces.map(n => n.replace('Alexa.', '')).join(', ')}</Box>}
+                        </Box>
                       )}
                       <StatusIndicator type={hasRule ? 'success' : 'stopped'}>{hasRule ? 'Règle active' : 'Pas de règle'}</StatusIndicator>
                       {!hasRule && <Button variant="link" onClick={() => addRule(d.friendlyName)}>Ajouter une règle</Button>}
