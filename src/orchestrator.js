@@ -39,7 +39,7 @@ function detectIntent(message) {
   var deviceType = null;
   if (ECHO_PATTERN.test(message)) {
     deviceType = 'echo';
-    device = config.voiceMonkeyDefaultDevice || '';
+    device = config.echoMorningDevice || '';
     // Check for specific room
     var roomMatch = message.match(ROOM_PATTERN);
     if (roomMatch) {

@@ -95,23 +95,15 @@ var webSearchTool = tool({
 // --- Echo speak tool (no model needed — direct API call) ---
 var echoSpeakTool = tool({
   name: 'echo_speak',
-  description: 'Speak text on an Echo device via Voice Monkey.' +
-    (config.voiceMonkeyDefaultDevice ? ' Default: ' + config.voiceMonkeyDefaultDevice : ''),
+  description: 'Speak text on an Echo device via the Alexa API.',
   inputSchema: z.object({
     text: z.string().describe('Text to speak'),
-    device: z.string().optional().describe('Voice Monkey device ID'),
+    device: z.string().optional().describe('Echo device friendly name'),
   }),
   callback: async (input) => {
-    var device = input.device || config.voiceMonkeyDefaultDevice || '';
-    var token = config.voiceMonkeyToken || '';
-    if (!device || !token) return 'Echo non configuré.';
-    var res = await fetch('https://api-v2.voicemonkey.io/announcement', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token: token, device: device, text: input.text.slice(0, 1000) }),
-    });
-    var data = await res.json();
-    return data.success ? 'Annoncé sur Echo ' + device : 'Erreur Echo: ' + JSON.stringify(data);
+    var { alexaSpeak } = await import('./outputs/alexa-speak.js');
+    var ok = await alexaSpeak(input.text.slice(0, 1000), input.device || '');
+    return ok ? 'Annoncé sur Echo ' + (input.device || 'default') : 'Erreur Echo: Alexa cookies may have expired.';
   },
 });
 

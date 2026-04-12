@@ -252,11 +252,8 @@ function ModelsPanel({ api }) {
         </ColumnLayout>
       </Container>
 
-      <Container header={<Header variant="h3">Echo (Voice Monkey)</Header>}>
+      <Container header={<Header variant="h3">Echo (Alexa API)</Header>}>
         <ColumnLayout columns={2}>
-          <FormField label="Appareil par défaut">
-            <Input value={models.voice_monkey_default_device || ''} onChange={({ detail }) => save('VOICE_MONKEY_DEFAULT_DEVICE', detail.value)} placeholder="my-echo-device" />
-          </FormField>
           <FormField label="Tous les appareils Echo">
             <TagListEditor
               items={(models.echo_devices || '').split(',').filter(Boolean)}

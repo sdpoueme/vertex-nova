@@ -2,7 +2,8 @@
  * Alexa Native TTS — make Echo devices speak directly via Alexa Behavior API.
  * No Voice Monkey needed. Uses the same cookie-based auth as the device monitor.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { logger } from '../log.js';
 
 var log = logger('alexa-speak');
@@ -11,6 +12,9 @@ var cachedCustomerId = null;
 var cachedDevices = null; // { friendlyName → { serial, deviceType } }
 var cacheTs = 0;
 var CACHE_TTL = 30 * 60 * 1000; // 30 min
+var cookiesExpired = false;
+
+export function areCookiesExpired() { return cookiesExpired; }
 
 function getEnv() {
   var atMain = process.env.ALEXA_AT_MAIN || '';
@@ -134,6 +138,10 @@ export async function alexaSpeak(text, deviceName, locale) {
       return true;
     } else {
       var errText = await res.text().catch(function() { return ''; });
+      if (res.status === 401 || res.status === 403) {
+        cookiesExpired = true;
+        log.warn('Alexa cookies expired (speak returned ' + res.status + ')');
+      }
       log.error('Alexa speak failed (' + res.status + '): ' + errText.slice(0, 200));
       return false;
     }
@@ -232,3 +240,35 @@ export async function listEchoDevices() {
 }
 
 export function clearAlexaCache() { cachedCustomerId = null; cachedDevices = null; cacheTs = 0; }
+
+/**
+ * Update Alexa cookies at runtime and persist to .env file.
+ */
+export function updateAlexaCookies(atMain, ubidMain) {
+  process.env.ALEXA_AT_MAIN = atMain;
+  process.env.ALEXA_UBID_MAIN = ubidMain;
+
+  // Persist to .env file
+  try {
+    var envPath = join(import.meta.dirname, '..', '.env');
+    var content = readFileSync(envPath, 'utf8');
+    if (content.includes('ALEXA_AT_MAIN=')) {
+      content = content.replace(/^ALEXA_AT_MAIN=.*/m, 'ALEXA_AT_MAIN=' + atMain);
+    } else {
+      content += '\nALEXA_AT_MAIN=' + atMain;
+    }
+    if (content.includes('ALEXA_UBID_MAIN=')) {
+      content = content.replace(/^ALEXA_UBID_MAIN=.*/m, 'ALEXA_UBID_MAIN=' + ubidMain);
+    } else {
+      content += '\nALEXA_UBID_MAIN=' + ubidMain;
+    }
+    writeFileSync(envPath, content);
+  } catch (err) {
+    log.error('Failed to persist cookies to .env: ' + err.message);
+  }
+
+  clearAlexaCache();
+  cookiesExpired = false;
+  log.info('Alexa cookies updated and cache cleared');
+  return true;
+}

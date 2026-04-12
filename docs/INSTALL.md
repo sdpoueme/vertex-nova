@@ -162,19 +162,15 @@ This opens a browser for Sonos login and saves tokens to `.sonos-tokens.json`. T
 
 ## Echo Devices Setup
 
-Uses [Voice Monkey](https://voicemonkey.io) to make Echo devices speak.
+Echo devices speak directly via the Alexa API. Configure `ALEXA_AT_MAIN` and `ALEXA_UBID_MAIN` cookies (see [Alexa Smart Home API Setup](#alexa-smart-home-api-setup) above).
 
-1. Create a Voice Monkey account at [voicemonkey.io](https://voicemonkey.io)
-2. Link your Alexa account
-3. Create a "speaker" device for each Echo
-4. For each device, create an Alexa Routine:
-   - Trigger: Smart Home → Voice Monkey device
-   - Action: Voice Monkey skill → target Echo device
-5. Add to `.env`:
+Optionally configure time-based device routing in `.env`:
 
 ```env
-VOICE_MONKEY_TOKEN=your-token
-VOICE_MONKEY_DEFAULT_DEVICE=your-device-name
+ECHO_DEVICES=Bureau Serge,Garage,Cuisine
+ECHO_MORNING_DEVICE=Cuisine
+ECHO_WORKDAY_DEVICE=Bureau Serge
+ECHO_EVENING_DEVICE=Cuisine
 ```
 
 ---
@@ -236,8 +232,6 @@ Note: The temporary test token expires every 24 hours.
 | `SONOS_CLIENT_SECRET` | If Sonos | — | Sonos developer app secret |
 | `SONOS_DEFAULT_ROOM` | No | — | Default Sonos speaker name |
 | `SONOS_TTS_VOLUME` | No | `30` | TTS volume (0-100) |
-| `VOICE_MONKEY_TOKEN` | If Echo | — | Voice Monkey API token |
-| `VOICE_MONKEY_DEFAULT_DEVICE` | No | — | Default Echo device ID |
 | `ANTHROPIC_API_KEY` | No | — | Claude API key (for escalation) |
 | `CLAUDE_MODEL` | No | `claude-sonnet-4-20250514` | Claude model name |
 | `OLLAMA_URL` | No | `http://localhost:11434` | Ollama server URL |

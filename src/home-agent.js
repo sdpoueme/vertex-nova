@@ -64,6 +64,51 @@ async function handleMessage(msg) {
 
   if (!text) return;
 
+  // Detect Alexa cookie update messages
+  if (text.includes('ALEXA_AT_MAIN=') && text.includes('ALEXA_UBID_MAIN=')) {
+    try {
+      var atMatch = text.match(/ALEXA_AT_MAIN=(\S+)/);
+      var ubidMatch = text.match(/ALEXA_UBID_MAIN=(\S+)/);
+      if (atMatch && ubidMatch) {
+        var { updateAlexaCookies } = await import('./outputs/alexa-speak.js');
+        updateAlexaCookies(atMatch[1], ubidMatch[1]);
+        // Restart Alexa monitor
+        try {
+          var { stopAlexaMonitor, startAlexaMonitor: restartMonitor } = await import('./alexa-monitor.js');
+          stopAlexaMonitor();
+          var vp = config.vaultPath || join(config.projectDir, 'vault');
+          await restartMonitor(async function(alert) {
+            try {
+              var sid = getSessionId('alexa-monitor');
+              var resp = await chat(alert.prompt, sid);
+              if (resp.includes('difficultés techniques') || resp.includes('SKIP')) return;
+              var pfx = alert.analysis.severity === 'critical' ? '🚨' : alert.analysis.severity === 'warning' ? '⚠️' : alert.icon;
+              await sendTelegram(pfx + ' ' + resp);
+              if (alert.analysis.severity === 'critical') {
+                var ah = new Date().getHours();
+                if (ah >= 7 && ah < 22) {
+                  try {
+                    var { alexaSpeak: asR } = await import('./outputs/alexa-speak.js');
+                    var ad = config.echoWorkdayDevice || config.echoMorningDevice || '';
+                    if (ad) await asR(resp.slice(0, 500), ad);
+                  } catch {}
+                }
+              }
+            } catch (err) { log.error('Alexa alert processing error: ' + err.message); }
+          }, vp, 60000, function() {
+            sendTelegram('🔑 Les cookies Alexa ont expiré. Envoyez-moi les nouveaux cookies au format:\n\nALEXA_UBID_MAIN=xxx\nALEXA_AT_MAIN=xxx');
+          });
+        } catch (err) { log.error('Alexa monitor restart failed: ' + err.message); }
+        if (channel === 'telegram' && telegramChannel) {
+          await telegramChannel.sendText(replyTo, '✅ Cookies Alexa mis à jour. Surveillance des appareils reprise.');
+        }
+        return;
+      }
+    } catch (err) {
+      log.error('Cookie update failed: ' + err.message);
+    }
+  }
+
   // Log interaction for dashboard
   try {
     var { logInteraction } = await import('./web/server.js');
@@ -368,15 +413,13 @@ async function main() {
       if (route.channel === 'telegram') {
         await sendTelegram(text);
       } else if (route.channel === 'echo') {
-        // Try Alexa native, fallback to Voice Monkey
-        var echoOk = false;
-        if (process.env.ALEXA_AT_MAIN) {
-          try { var { alexaSpeak: asRem } = await import('./outputs/alexa-speak.js'); echoOk = await asRem(text.slice(0, 500), route.device); } catch {}
-        }
-        if (!echoOk) {
-          var { VoiceMonkey: VMRem } = await import('./outputs/voicemonkey.js');
-          var vmRem = new VMRem(config);
-          await vmRem.speak(text.slice(0, 500), route.device);
+        // Use Alexa native API
+        try {
+          var { alexaSpeak: asRem } = await import('./outputs/alexa-speak.js');
+          var echoOk = await asRem(text.slice(0, 500), route.device);
+          if (!echoOk) log.warn('Alexa speak failed for reminder');
+        } catch (err) {
+          log.error('Alexa speak error for reminder: ' + err.message);
         }
         await sendTelegram(text);
       } else if (route.channel === 'sonos') {
@@ -410,10 +453,27 @@ async function main() {
 
         var prefix = alert.analysis.severity === 'critical' ? '🚨' : alert.analysis.severity === 'warning' ? '⚠️' : alert.icon;
         await sendTelegram(prefix + ' ' + response);
+
+        // For critical alerts during daytime, also speak on nearest Echo
+        if (alert.analysis.severity === 'critical') {
+          var alertHour = new Date().getHours();
+          if (alertHour >= 7 && alertHour < 22) {
+            try {
+              var { alexaSpeak: asAlert } = await import('./outputs/alexa-speak.js');
+              var alertDevice = config.echoWorkdayDevice || config.echoMorningDevice || '';
+              if (alertDevice) await asAlert(response.slice(0, 500), alertDevice);
+            } catch (err) {
+              log.error('Critical alert Echo speak failed: ' + err.message);
+            }
+          }
+        }
       } catch (err) {
         log.error('Alexa alert processing error: ' + err.message);
       }
-    }, vaultPath, 60000);
+    }, vaultPath, 60000, function() {
+      // onCookieExpiry callback
+      sendTelegram('🔑 Les cookies Alexa ont expiré. Envoyez-moi les nouveaux cookies au format:\n\nALEXA_UBID_MAIN=xxx\nALEXA_AT_MAIN=xxx');
+    });
   } catch (err) {
     log.debug('Alexa monitor not started: ' + err.message);
   }
@@ -450,14 +510,12 @@ async function main() {
       if (route.channel === 'telegram') {
         await sendTelegram(icon + ' ' + response);
       } else if (route.channel === 'echo') {
-        var echoOk2 = false;
-        if (process.env.ALEXA_AT_MAIN) {
-          try { var { alexaSpeak: asPro } = await import('./outputs/alexa-speak.js'); echoOk2 = await asPro(cleanForVoice(response).slice(0, 800), route.device); } catch {}
-        }
-        if (!echoOk2) {
-          var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
-          var vm = new VoiceMonkey(config);
-          await vm.speak(cleanForVoice(response).slice(0, 800), route.device);
+        try {
+          var { alexaSpeak: asPro } = await import('./outputs/alexa-speak.js');
+          var echoOk2 = await asPro(cleanForVoice(response).slice(0, 800), route.device);
+          if (!echoOk2) log.warn('Alexa speak failed for proactive');
+        } catch (err) {
+          log.error('Alexa speak error for proactive: ' + err.message);
         }
       } else if (route.channel === 'sonos') {
         var { execFile } = await import('node:child_process');

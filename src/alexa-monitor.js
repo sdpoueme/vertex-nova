@@ -136,8 +136,9 @@ function assessSeverity(change, device) {
  * @param {function} onAlert - callback({ device, icon, description, changes, severity, prompt })
  * @param {string} vaultPath - for persisting state
  * @param {number} pollIntervalMs - polling interval (default 60s)
+ * @param {function} [onCookieExpiry] - callback when cookies expire (401/403)
  */
-export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs) {
+export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs, onCookieExpiry) {
   var atMain = process.env.ALEXA_AT_MAIN || '';
   var ubidMain = process.env.ALEXA_UBID_MAIN || '';
 
@@ -229,29 +230,46 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs) {
           var hour = new Date().getHours();
           var isNight = hour >= 22 || hour < 6;
 
-          var prompt = '[Alexa Smart Home: ' + device.friendlyName + ']\n' +
-            'Appareil: ' + info.desc + ' (' + device.category + ')\n' +
-            'Changements: ' + descriptions.join('; ') + '\n' +
-            'Heure: ' + hour + 'h' + (isNight ? ' (nuit)' : '') + '\n' +
-            'Niveau sécurité: ' + info.security + '\n';
+          log.info('State change: ' + device.friendlyName + ' → ' + descriptions.join(', ') + ' [' + maxSeverity + ']');
 
-          if (maxSeverity !== 'info') {
-            prompt += 'SÉVÉRITÉ: ' + maxSeverity.toUpperCase() + '\n';
-            prompt += 'Analyse cette situation et donne un avis concis en français.';
-          } else {
-            prompt += 'Activité normale. Informe brièvement en français (1 phrase).';
+          // Low-severity info changes: just log, don't send to AI
+          if (maxSeverity === 'info') {
+            continue;
           }
 
-          log.info('State change: ' + device.friendlyName + ' → ' + descriptions.join(', ') + ' [' + maxSeverity + ']');
+          // Build smart, actionable prompts based on device category
+          var prompt = '';
+          var SECURITY_CATS = new Set(['SECURITY_PANEL', 'SMARTLOCK', 'CAMERA']);
+          var isPowerOff = changes.some(function(c) { return c.property.includes('powerState') && c.newValue === 'OFF' && c.oldValue === 'ON'; });
+          var isWasherDryer = device.category === 'WASHER' || device.category === 'DRYER';
+          var isThermostat = device.category === 'THERMOSTAT';
+          var isFridgeOven = device.category === 'REFRIGERATOR' || device.category === 'OVEN' || device.category === 'MICROWAVE';
+
+          if (SECURITY_CATS.has(device.category) && isNight) {
+            prompt = 'ALERTE SÉCURITÉ URGENTE. ' + device.friendlyName + ': ' + descriptions.join('; ') + '. Évalue le risque et recommande une action immédiate.';
+          } else if (isWasherDryer && isPowerOff) {
+            prompt = 'Le cycle de ' + device.friendlyName + ' est terminé. Informe le propriétaire brièvement.';
+          } else if (isThermostat) {
+            prompt = 'Changement thermostat: ' + descriptions.join('; ') + '. Si la température est anormale (trop haute ou trop basse), alerte le propriétaire. Sinon, note silencieusement.';
+          } else if (isFridgeOven) {
+            prompt = 'Changement ' + device.friendlyName + ': ' + descriptions.join('; ') + '. Si c\'est une alerte (porte ouverte, température anormale), informe le propriétaire. Sinon, ignore.';
+          } else {
+            prompt = '[Alexa Smart Home: ' + device.friendlyName + ']\n' +
+              'Appareil: ' + info.desc + ' (' + device.category + ')\n' +
+              'Changements: ' + descriptions.join('; ') + '\n' +
+              'Heure: ' + hour + 'h' + (isNight ? ' (nuit)' : '') + '\n' +
+              'SÉVÉRITÉ: ' + maxSeverity.toUpperCase() + '\n' +
+              'Analyse cette situation et donne un avis concis en français.';
+          }
 
           try {
             await onAlert({
               device: device.friendlyName.toLowerCase().replace(/\s+/g, '-'),
               icon: info.icon,
               description: info.desc,
-              analysis: { severity: maxSeverity, isAnomaly: maxSeverity !== 'info', anomalies: descriptions, hour: hour, isNight: isNight },
+              analysis: { severity: maxSeverity, isAnomaly: true, anomalies: descriptions, hour: hour, isNight: isNight },
               prompt: prompt,
-              vocalEnabled: false, // Respect global setting from devices.yaml
+              vocalEnabled: false,
               source: 'alexa_api',
             });
           } catch (err) {
@@ -267,6 +285,10 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs) {
     } catch (err) {
       if (err.message.includes('401') || err.message.includes('403')) {
         log.warn('Alexa cookies may have expired. Re-extract from alexa.amazon.com');
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (onCookieExpiry) {
+          try { onCookieExpiry(); } catch (e) { log.error('Cookie expiry callback error: ' + e.message); }
+        }
       } else {
         log.error('Alexa poll error: ' + err.message);
       }

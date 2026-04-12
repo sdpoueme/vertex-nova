@@ -57,10 +57,9 @@ function markDone(filePath) {
  * Same guardrails as proactive scheduler.
  */
 function getBestChannel(hour) {
-  var defaultEcho = config.voiceMonkeyDefaultDevice || '';
-  var morningEcho = config.echoMorningDevice || defaultEcho;
-  var workEcho = config.echoWorkdayDevice || defaultEcho;
-  var eveningEcho = config.echoEveningDevice || defaultEcho;
+  var morningEcho = config.echoMorningDevice || '';
+  var workEcho = config.echoWorkdayDevice || '';
+  var eveningEcho = config.echoEveningDevice || '';
   var nightRoom = config.sonosNightRoom || config.sonosDefaultRoom || '';
 
   if (hour >= 22 || hour < 7) return { channel: 'telegram', device: null, room: null };
@@ -127,7 +126,7 @@ export function startReminders(vaultPath, notify) {
       if (reminder.channel) {
         if (reminder.channel === 'telegram') route = { channel: 'telegram', device: null, room: null };
         else if (reminder.channel === 'sonos') route = { channel: 'sonos', device: null, room: config.sonosDefaultRoom || '' };
-        else if (reminder.channel === 'echo') route = { channel: 'echo', device: config.voiceMonkeyDefaultDevice || '', room: null };
+        else if (reminder.channel === 'echo') route = { channel: 'echo', device: config.echoMorningDevice || '', room: null };
 
         // Night guardrail: override voice channels to telegram
         if ((hour >= 22 || hour < 7) && route.channel !== 'telegram') {

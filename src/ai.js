@@ -408,32 +408,18 @@ async function executeTool(name, input) {
 
   // Echo speak — Alexa native TTS (fallback to Voice Monkey if no Alexa cookies)
   if (name === 'echo_speak') {
-    // Try Alexa native first
-    if (process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN) {
-      var { alexaSpeak } = await import('./outputs/alexa-speak.js');
-      var ok = await alexaSpeak(input.text, input.device);
-      if (ok) return 'Annonce envoyée sur Echo: ' + input.text.slice(0, 100);
-      log.warn('Alexa native speak failed, trying Voice Monkey fallback');
-    }
-    var { VoiceMonkey } = await import('./outputs/voicemonkey.js');
-    var vm = new VoiceMonkey(config);
-    var success = await vm.speak(input.text, input.device);
-    return success ? 'Annonce envoyée sur Echo: ' + input.text.slice(0, 100) : 'Erreur: impossible de parler sur Echo';
+    var { alexaSpeak } = await import('./outputs/alexa-speak.js');
+    var ok = await alexaSpeak(input.text, input.device);
+    if (ok) return 'Annonce envoyée sur Echo: ' + input.text.slice(0, 100);
+    return 'Erreur: Alexa cookies may have expired. Send me the new cookies on Telegram.';
   }
 
   if (name === 'echo_speak_all') {
-    if (process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN) {
-      var { alexaSpeakAll } = await import('./outputs/alexa-speak.js');
-      var allResults = await alexaSpeakAll(input.text);
-      var allOk = allResults.filter(function(r) { return r; }).length;
-      if (allOk > 0) return 'Annonce envoyée sur ' + allOk + ' appareils Echo';
-    }
-    var { VoiceMonkey: VM } = await import('./outputs/voicemonkey.js');
-    var vmAll = new VM(config);
-    var devices = config.echoDevices.length > 0 ? config.echoDevices : [config.voiceMonkeyDefaultDevice].filter(Boolean);
-    var results = await vmAll.speakAll(input.text, devices);
-    var successCount = results.filter(function(r) { return r; }).length;
-    return 'Annonce envoyée sur ' + successCount + '/' + devices.length + ' appareils Echo';
+    var { alexaSpeakAll } = await import('./outputs/alexa-speak.js');
+    var allResults = await alexaSpeakAll(input.text);
+    var allOk = allResults.filter(function(r) { return r; }).length;
+    if (allOk > 0) return 'Annonce envoyée sur ' + allOk + ' appareils Echo';
+    return 'Erreur: Alexa cookies may have expired. Send me the new cookies on Telegram.';
   }
 
   // Google News search + Business Insider + Cameroon

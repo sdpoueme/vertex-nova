@@ -83,11 +83,6 @@ export const config = {
   alexaSmartHomeEnabled: !!process.env.ALEXA_API_URL,
   alexaApiUrl: process.env.ALEXA_API_URL || '',
 
-  // --- Voice Monkey (Echo TTS) ---
-  voiceMonkeyEnabled: !!process.env.VOICE_MONKEY_TOKEN,
-  voiceMonkeyToken: process.env.VOICE_MONKEY_TOKEN || '',
-  voiceMonkeyDefaultDevice: process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
-
   // --- Core ---
   sessionExpiry,
   claudeTimeout: Number(process.env.CLAUDE_TIMEOUT) || 300_000,
@@ -131,9 +126,9 @@ export const config = {
 
   // --- Echo devices ---
   echoDevices: (process.env.ECHO_DEVICES || '').split(',').map(d => d.trim()).filter(Boolean),
-  echoMorningDevice: process.env.ECHO_MORNING_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
-  echoWorkdayDevice: process.env.ECHO_WORKDAY_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
-  echoEveningDevice: process.env.ECHO_EVENING_DEVICE || process.env.VOICE_MONKEY_DEFAULT_DEVICE || '',
+  echoMorningDevice: process.env.ECHO_MORNING_DEVICE || '',
+  echoWorkdayDevice: process.env.ECHO_WORKDAY_DEVICE || '',
+  echoEveningDevice: process.env.ECHO_EVENING_DEVICE || '',
 
   // --- News sources ---
   newsLocale: process.env.NEWS_LOCALE || 'fr-CA',
