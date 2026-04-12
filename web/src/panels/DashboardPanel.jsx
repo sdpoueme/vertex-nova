@@ -69,11 +69,6 @@ export default function DashboardPanel({ api, onNavigate }) {
     return { ...d, capabilities: state?.capabilities || {}, hasState: state?.hasState || false };
   });
 
-  // Separate security-critical devices from others for priority display
-  const securityDevices = devicesWithState.filter(d => ['SECURITY_PANEL', 'SMARTLOCK', 'CAMERA'].includes(d.category));
-  const applianceDevices = devicesWithState.filter(d => ['WASHER', 'DRYER', 'OVEN'].includes(d.category));
-  const otherDevices = devicesWithState.filter(d => !['SECURITY_PANEL', 'SMARTLOCK', 'CAMERA', 'WASHER', 'DRYER', 'OVEN'].includes(d.category));
-
   return (
     <SpaceBetween size="l">
       <Header variant="h1" description="Assistant maison intelligent">Vertex Nova</Header>
@@ -107,83 +102,33 @@ export default function DashboardPanel({ api, onNavigate }) {
         </Container>
       </ColumnLayout>
 
-      {/* Devices widget — the main info panel */}
+      {/* Devices — compact status grid */}
       {devicesWithState.length > 0 && (
         <Container header={
-          <Header variant="h3" counter={'(' + devicesWithState.length + ')'} actions={
-            <Button variant="link" onClick={() => onNavigate('devices')}>Voir tout</Button>
-          }>Appareils connectés</Header>
+          <Header variant="h3" actions={<Button variant="link" onClick={() => onNavigate('devices')}>Détails</Button>}>
+            Appareils ({devicesWithState.length})
+          </Header>
         }>
-          <SpaceBetween size="m">
-            {/* Security devices — always shown first with prominent status */}
-            {securityDevices.length > 0 && (
-              <Box>
-                <Box variant="awsui-key-label" padding={{ bottom: 'xs' }}>Sécurité</Box>
-                <ColumnLayout columns={Math.min(securityDevices.length, 3)}>
-                  {securityDevices.map((d, i) => {
-                    const caps = Object.entries(d.capabilities).filter(([k]) => !k.includes('EndpointHealth'));
-                    const statusBadge = caps.map(([k, v]) => formatCapShort(k, v)).filter(Boolean).join(' ') || '—';
-                    return (
-                      <Box key={i} padding="xs">
-                        <SpaceBetween size="xxs">
-                          <Box variant="h4">{(CAT_ICONS[d.category] || '🔒') + ' ' + d.friendlyName}</Box>
-                          <Box fontSize="heading-l">{statusBadge}</Box>
-                        </SpaceBetween>
-                      </Box>
-                    );
-                  })}
-                </ColumnLayout>
-              </Box>
-            )}
-
-            {/* Appliances — washer, dryer, oven with power status */}
-            {applianceDevices.length > 0 && (
-              <Box>
-                <Box variant="awsui-key-label" padding={{ bottom: 'xs' }}>Électroménagers</Box>
-                <ColumnLayout columns={Math.min(applianceDevices.length, 3)}>
-                  {applianceDevices.map((d, i) => {
-                    const power = d.capabilities['Alexa.PowerController.powerState'];
-                    const isOn = power === 'ON';
-                    return (
-                      <Box key={i} padding="xs">
-                        <SpaceBetween size="xxs">
-                          <Box variant="h4">{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
-                          <StatusIndicator type={isOn ? 'in-progress' : 'stopped'}>
-                            {isOn ? 'En marche' : power === 'OFF' ? 'Éteint' : 'En attente'}
-                          </StatusIndicator>
-                        </SpaceBetween>
-                      </Box>
-                    );
-                  })}
-                </ColumnLayout>
-              </Box>
-            )}
-
-            {/* Other devices — plugs, switches, fridge */}
-            {otherDevices.length > 0 && (
-              <Box>
-                <Box variant="awsui-key-label" padding={{ bottom: 'xs' }}>Autres appareils</Box>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
-                  {otherDevices.map((d, i) => {
-                    const caps = Object.entries(d.capabilities).filter(([k]) => !k.includes('EndpointHealth'));
-                    const badge = caps.map(([k, v]) => formatCapShort(k, v)).filter(Boolean).join(' ');
-                    return (
-                      <Box key={i} padding="xs">
-                        <SpaceBetween direction="horizontal" size="xs">
-                          <Box>{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
-                          {badge && <Box>{badge}</Box>}
-                        </SpaceBetween>
-                      </Box>
-                    );
-                  })}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '8px' }}>
+            {devicesWithState.map((d, i) => {
+              const caps = Object.entries(d.capabilities).filter(([k]) => !k.includes('EndpointHealth'));
+              const badge = caps.map(([k, v]) => formatCapShort(k, v)).filter(Boolean).join(' ');
+              const isSecurity = ['SECURITY_PANEL', 'SMARTLOCK', 'CAMERA'].includes(d.category);
+              return (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', background: isSecurity ? '#1a2332' : '#0f1b2d', border: '1px solid ' + (isSecurity ? '#2a3f5f' : '#1a2744') }}>
+                  <span style={{ fontSize: '18px', flexShrink: 0 }}>{CAT_ICONS[d.category] || '📱'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '13px', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.friendlyName}</div>
+                    {badge && <div style={{ fontSize: '12px', opacity: 0.7 }}>{badge}</div>}
+                  </div>
                 </div>
-              </Box>
-            )}
-          </SpaceBetween>
+              );
+            })}
+          </div>
         </Container>
       )}
 
-      <ColumnLayout columns={3}>
+      <ColumnLayout columns={2}>
         <Container header={<Header variant="h3">Canaux</Header>}>
           <SpaceBetween size="xs">
             <SpaceBetween direction="horizontal" size="xs">
@@ -219,20 +164,6 @@ export default function DashboardPanel({ api, onNavigate }) {
           </SpaceBetween>
         </Container>
 
-        <Container header={<Header variant="h3">Alexa</Header>}>
-          <SpaceBetween size="xs">
-            <StatusIndicator type={alexaDevices.length > 0 ? 'success' : 'warning'}>
-              {alexaDevices.length > 0 ? alexaDevices.length + ' appareils' : 'Non connecté'}
-            </StatusIndicator>
-            {alexaDevices.length > 0 && (
-              <Box variant="small" color="text-body-secondary">
-                {securityDevices.length > 0 && securityDevices.length + ' sécurité · '}
-                {applianceDevices.length + ' électro · '}
-                {otherDevices.length + ' autres'}
-              </Box>
-            )}
-          </SpaceBetween>
-        </Container>
       </ColumnLayout>
 
       <Container header={<Header variant="h3" counter={'(' + history.length + ')'}>Dernières interactions</Header>}>
