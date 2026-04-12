@@ -263,19 +263,27 @@ async function main() {
           var token = alertData.token || '';
           var message = alertData.message || '';
 
-          // Validate token against config
-          var { getDeviceApps } = await import('./notification-monitor.js');
-          var apps = getDeviceApps();
+          // Validate token against config (parse devices.yaml directly)
+          var { readFileSync: readFS } = await import('node:fs');
+          var { join: joinWH } = await import('node:path');
+          var devYaml = '';
+          try { devYaml = readFS(joinWH(config.projectDir, 'config/devices.yaml'), 'utf8'); } catch {}
           var matched = null;
-          for (var bid in apps) {
-            var app = apps[bid];
-            if (app.name.toLowerCase().replace(/\s+/g, '-') === deviceName || app.name.toLowerCase() === deviceName) {
-              var sources = app.sources || [];
-              for (var s of sources) {
-                if (s.type === 'webhook' && s.token === token) { matched = app; break; }
-              }
+          var devBlocks = devYaml.split(/^\s+-\s+bundle_id:/m);
+          for (var di = 1; di < devBlocks.length; di++) {
+            var db = devBlocks[di];
+            var dName = (db.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+            if (dName.toLowerCase().replace(/\s+/g, '-') !== deviceName && dName.toLowerCase() !== deviceName) continue;
+            var dIcon = (db.match(/icon:\s*"([^"]*)"/) || [])[1] || '📱';
+            var dDesc = (db.match(/description:\s*"([^"]*)"/) || [])[1] || '';
+            var dSec = (db.match(/security_level:\s*(\S+)/) || [])[1]?.trim() || 'low';
+            var dCtx = (db.match(/context:\s*"([^"]*)"/) || [])[1] || '';
+            // Check webhook token in sources
+            var tokenMatch = db.match(/type:\s*webhook[\s\S]*?token:\s*"([^"]*)"/);
+            if (tokenMatch && tokenMatch[1] === token) {
+              matched = { name: dName, icon: dIcon, description: dDesc, security_level: dSec, context: dCtx };
+              break;
             }
-            if (matched) break;
           }
 
           if (!matched) {
@@ -381,42 +389,7 @@ async function main() {
   // Proactive scheduler
   var { startProactive } = await import('./proactive.js');
 
-  // macOS Notification Center monitor (device alerts from iPhone Mirroring)
-  if (process.platform === 'darwin') {
-    var { startNotificationMonitor } = await import('./notification-monitor.js');
-    startNotificationMonitor(async function(alert) {
-      try {
-        var sessionId = getSessionId('notif-monitor');
-        var response = await chat(alert.prompt, sessionId);
-
-        if (response.includes('difficultés techniques') || response.includes('SKIP')) return;
-
-        var prefix = alert.analysis.severity === 'critical' ? '🚨' : alert.analysis.severity === 'warning' ? '⚠️' : alert.icon;
-
-        // Always alert on Telegram
-        await sendTelegram(prefix + ' ' + response);
-
-        // Vocal alert only if enabled AND anomaly detected
-        if (alert.vocalEnabled && alert.analysis.isAnomaly) {
-          var hour = new Date().getHours();
-          if (hour >= 7 && hour < 22) {
-            // Clean for voice and speak
-            var voiceText = response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s*/g, '');
-            try {
-              var { execFile: execVoice } = await import('node:child_process');
-              var { join: joinVoice } = await import('node:path');
-              var cliPath = joinVoice(config.projectDir, 'scripts/sonos-cli.js');
-              execVoice('node', [cliPath, 'speak', voiceText.slice(0, 500), config.sonosDayRoom || config.sonosDefaultRoom || ''], { timeout: 30000 }, function(err) {
-                if (err) log.error('Device alert Sonos failed:', err.message);
-              });
-            } catch {}
-          }
-        }
-      } catch (err) {
-        log.error('Notification processing error: ' + err.message);
-      }
-    }, config.projectDir, vaultPath);
-  }
+  // macOS Notification Center monitor — REMOVED (replaced by Alexa Smart Home API)
 
   // Alexa Smart Home state monitor — 4th notification source
   try {

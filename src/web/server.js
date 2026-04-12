@@ -327,22 +327,28 @@ export function startDashboard(config, port) {
     // --- API: Device monitoring ---
     if (path === '/api/devices' && req.method === 'GET') {
       try {
-        var { getDeviceApps, getPatternData, getSettings } = await import('../notification-monitor.js');
-        var devApps = getDeviceApps();
-        var patterns = getPatternData();
-        var devSettings = getSettings();
-        var devices = Object.entries(devApps).map(function(entry) {
-          var bid = entry[0]; var app = entry[1];
+        // Parse devices directly from YAML config + pattern data from disk
+        var devContent = readFileSync(join(projectDir, 'config/devices.yaml'), 'utf8');
+        var patFile = join(projectDir, 'vault/memories/device-patterns.json');
+        var patterns = {};
+        try { patterns = JSON.parse(readFileSync(patFile, 'utf8')); } catch {}
+        var devBlocks = devContent.split(/^\s+-\s+bundle_id:/m);
+        var devices = [];
+        for (var dbi = 1; dbi < devBlocks.length; dbi++) {
+          var db = devBlocks[dbi];
+          var bid = (db.match(/bundle_id:\s*(\S+)/) || ['',''])[1]?.trim() || '';
+          var dName = (db.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+          var dIcon = (db.match(/icon:\s*"([^"]*)"/) || [])[1] || '📱';
+          var dDesc = (db.match(/description:\s*"([^"]*)"/) || [])[1] || '';
+          var dSec = (db.match(/security_level:\s*(\S+)/) || [])[1]?.trim() || 'low';
+          var dEnabled = (db.match(/enabled:\s*(\S+)/) || [])[1]?.trim() !== 'false';
           var pat = patterns[bid] || { totalCount: 0, lastSeen: null, hourCounts: new Array(24).fill(0) };
-          return { bundle_id: bid, name: app.name, icon: app.icon, description: app.description, security_level: app.security_level, enabled: app.enabled !== false, totalNotifications: pat.totalCount, lastSeen: pat.lastSeen, hourCounts: pat.hourCounts };
-        });
-        json(res, 200, { devices: devices, settings: devSettings });
+          devices.push({ bundle_id: bid, name: dName, icon: dIcon, description: dDesc, security_level: dSec, enabled: dEnabled, totalNotifications: pat.totalCount || 0, lastSeen: pat.lastSeen || null, hourCounts: pat.hourCounts || new Array(24).fill(0) });
+        }
+        var vocalMatch = devContent.match(/vocal_alerts:\s*(true|false)/);
+        json(res, 200, { devices: devices, settings: { vocal_alerts: vocalMatch ? vocalMatch[1] === 'true' : false } });
       } catch (err) {
-        // Fallback: read from config file
-        try {
-          var devContent = readFileSync(join(projectDir, 'config/devices.yaml'), 'utf8');
-          json(res, 200, { devices: [], settings: { vocal_alerts: false }, config: devContent });
-        } catch { json(res, 200, { devices: [], settings: { vocal_alerts: false } }); }
+        json(res, 200, { devices: [], settings: { vocal_alerts: false } });
       }
       return;
     }
@@ -360,7 +366,6 @@ export function startDashboard(config, port) {
       try {
         var devData = JSON.parse(devBody);
         writeFileSync(join(projectDir, 'config/devices.yaml'), devData.content);
-        try { var { reloadDeviceConfig } = await import('../notification-monitor.js'); reloadDeviceConfig(projectDir); } catch {}
         json(res, 200, { saved: true });
       } catch (err) { json(res, 500, { error: err.message }); }
       return;

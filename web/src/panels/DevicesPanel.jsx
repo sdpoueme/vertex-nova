@@ -108,7 +108,7 @@ const SEC_OPTIONS = [
   { value: 'low', label: 'Bas' },
 ];
 const SRC_TYPE_OPTIONS = [
-  { value: 'macos_log', label: 'macOS Log (notifications iPhone)' },
+  { value: 'alexa_api', label: 'Alexa Smart Home API' },
   { value: 'email', label: 'Email (Gmail)' },
   { value: 'webhook', label: 'Webhook (API)' },
 ];
@@ -122,8 +122,8 @@ function SourceEditor({ sources, onChange }) {
   const remove = (idx) => onChange(sources.filter((_, i) => i !== idx));
   const add = (type) => onChange([...sources, { type, from: '', token: '', keywords: [] }]);
 
-  const srcLabels = { macos_log: 'macOS Log', email: 'Email', webhook: 'Webhook' };
-  const srcStatus = { macos_log: 'success', email: 'info', webhook: 'warning' };
+  const srcLabels = { alexa_api: 'Alexa API', email: 'Email', webhook: 'Webhook' };
+  const srcStatus = { alexa_api: 'success', email: 'info', webhook: 'warning' };
 
   return (
     <SpaceBetween size="s">
@@ -157,14 +157,14 @@ function SourceEditor({ sources, onChange }) {
                 <Input value={s.token || ''} onChange={({ detail }) => update(i, 'token', detail.value)} placeholder="myq-secret" />
               </FormField>
             )}
-            {s.type === 'macos_log' && (
-              <Box variant="small" color="text-body-secondary">Détection automatique via le bundle ID dans les logs macOS.</Box>
+            {s.type === 'alexa_api' && (
+              <Box variant="small" color="text-body-secondary">Surveillance automatique via l'API Alexa Smart Home (état des appareils).</Box>
             )}
           </SpaceBetween>
         </Container>
       ))}
       <SpaceBetween direction="horizontal" size="xs">
-        <Button onClick={() => add('macos_log')} iconName="add-plus">macOS Log</Button>
+        <Button onClick={() => add('alexa_api')} iconName="add-plus">Alexa API</Button>
         <Button onClick={() => add('email')} iconName="add-plus">Email</Button>
         <Button onClick={() => add('webhook')} iconName="add-plus">Webhook</Button>
       </SpaceBetween>
@@ -260,7 +260,7 @@ export default function DevicesPanel({ api }) {
   const removeDevice = (idx) => updateFromForm({ ...parsed, devices: parsed.devices.filter((_, i) => i !== idx) });
   const addDevice = () => updateFromForm({ ...parsed, devices: [...parsed.devices, {
     bundle_id: 'com.example.app', name: 'Nouvel appareil', icon: '📱', description: '', security_level: 'low',
-    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21], context: '', enabled: true, sources: [{ type: 'macos_log', from: '', token: '', keywords: [] }],
+    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21], context: '', enabled: true, sources: [{ type: 'alexa_api', from: '', token: '', keywords: [] }],
   }]});
 
   return (

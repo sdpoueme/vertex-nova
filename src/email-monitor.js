@@ -109,16 +109,28 @@ export class EmailMonitor {
     var fromLower = (email.from + ' ' + email.subject + ' ' + email.summary).toLowerCase();
 
     try {
-      var { getDeviceApps } = await import('./notification-monitor.js');
-      var apps = getDeviceApps();
-      for (var bid in apps) {
-        var app = apps[bid];
-        var sources = app.sources || [];
-        for (var s of sources) {
-          if (s.type !== 'email') continue;
-          var fromMatch = s.from && fromLower.includes(s.from.toLowerCase());
-          var keywordMatch = s.keywords && s.keywords.some(function(kw) { return fromLower.includes(kw.toLowerCase()); });
-          if (fromMatch || keywordMatch) { matchedDevice = app; break; }
+      var { readFileSync: readEFS } = await import('node:fs');
+      var { join: joinEM } = await import('node:path');
+      var emYaml = '';
+      try { emYaml = readEFS(joinEM(process.cwd(), 'config/devices.yaml'), 'utf8'); } catch {}
+      var emBlocks = emYaml.split(/^\s+-\s+bundle_id:/m);
+      for (var emi = 1; emi < emBlocks.length; emi++) {
+        var emb = emBlocks[emi];
+        var emName = (emb.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+        // Check email sources
+        var emailSrcBlocks = emb.split(/- type:/g);
+        for (var esi = 1; esi < emailSrcBlocks.length; esi++) {
+          var esb = emailSrcBlocks[esi];
+          if (!esb.match(/^\s*email/)) continue;
+          var esFrom = (esb.match(/from:\s*"([^"]*)"/) || [])[1] || '';
+          var esKwMatch = esb.match(/keywords:\s*\[([^\]]*)\]/);
+          var esKeywords = esKwMatch ? esKwMatch[1].split(',').map(function(k) { return k.trim().replace(/"/g, ''); }) : [];
+          var fromMatch = esFrom && fromLower.includes(esFrom.toLowerCase());
+          var keywordMatch = esKeywords.length > 0 && esKeywords.some(function(kw) { return fromLower.includes(kw.toLowerCase()); });
+          if (fromMatch || keywordMatch) {
+            matchedDevice = { name: emName };
+            break;
+          }
         }
         if (matchedDevice) break;
       }

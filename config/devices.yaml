@@ -1,17 +1,10 @@
-# ═══════════════════════════════════════════════════════
 # Vertex Nova — Device Notification Monitoring
-# ═══════════════════════════════════════════════════════
-#
-# Three notification sources:
-#   1. macos_log  — reads macOS unified log (iPhone Mirroring)
-#   2. email      — polls Gmail for device alert emails
-#   3. webhook    — receives POST requests from external services
-#
-# Each device can use one or more sources.
+# Devices are monitored via Alexa Smart Home API (state polling).
+# Additional sources: email alerts, webhook API.
 
 settings:
   vocal_alerts: false
-  poll_interval_seconds: 30
+  poll_interval_seconds: 60
 
 devices:
   - bundle_id: com.myliftmaster.myq
@@ -22,12 +15,7 @@ devices:
     normal_hours: [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]
     context: "La porte de garage a été activée. Si personne ne devrait entrer ou sortir, cela pourrait indiquer une intrusion."
     sources:
-      - type: macos_log
-      - type: email
-        from: "noreply@myqdevice.com"
-        keywords: ["garage", "door", "opened", "closed"]
-      - type: webhook
-        token: "myq-secret"
+      - type: alexa_api
     enabled: true
 
   - bundle_id: com.honeywell.acs.lyric
@@ -38,10 +26,7 @@ devices:
     normal_hours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
     context: "Alerte thermostat. Possibles causes: température extrême, panne chauffage/clim, changement de mode."
     sources:
-      - type: macos_log
-      - type: email
-        from: "alerts@honeywell.com"
-        keywords: ["thermostat", "temperature", "alert", "honeywell"]
+      - type: alexa_api
     enabled: true
 
   - bundle_id: com.telus.smarthome
@@ -52,12 +37,7 @@ devices:
     normal_hours: [6,7,8,17,18,22,23]
     context: "Alerte sécurité. Possibles causes: intrusion, capteur déclenché, armement/désarmement inattendu."
     sources:
-      - type: macos_log
-      - type: email
-        from: "smarthome@telus.com"
-        keywords: ["alarm", "armed", "disarmed", "motion", "sensor", "telus"]
-      - type: webhook
-        token: "telus-secret"
+      - type: alexa_api
     enabled: true
 
   - bundle_id: com.lgeha.nuts
@@ -68,10 +48,7 @@ devices:
     normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]
     context: "Notification LG ThinQ. Cycle terminé, erreur appareil, ou alerte maintenance."
     sources:
-      - type: macos_log
-      - type: email
-        from: "noreply@lge.com"
-        keywords: ["washer", "dryer", "cycle", "complete", "thinq"]
+      - type: alexa_api
     enabled: true
 
   - bundle_id: com.bshg.homeconnect
@@ -82,10 +59,7 @@ devices:
     normal_hours: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
     context: "Alerte Bosch. Porte frigo ouverte, température anormale, ou erreur."
     sources:
-      - type: macos_log
-      - type: email
-        from: "homeconnect@bshg.com"
-        keywords: ["bosch", "fridge", "refrigerator", "temperature", "door"]
+      - type: alexa_api
     enabled: true
 
   - bundle_id: com.ring.ring
@@ -96,18 +70,5 @@ devices:
     normal_hours: [8,9,10,11,12,13,14,15,16,17,18,19]
     context: "Mouvement détecté ou quelqu'un a sonné. Vérifier si un visiteur est attendu."
     sources:
-      - type: macos_log
-      - type: email
-        from: "noreply@ring.com"
-        keywords: ["ring", "motion", "doorbell", "person"]
-      - type: webhook
-        token: "ring-secret"
+      - type: alexa_api
     enabled: true
-
-# Webhook usage:
-#   POST http://<your-ip>:3001/device-alert
-#   Content-Type: application/json
-#   { "device": "myq", "token": "myq-secret", "message": "Garage door opened" }
-#
-# Email: enable email notifications in each device's app.
-# The agent's email monitor will match sender/keywords to the right device.
