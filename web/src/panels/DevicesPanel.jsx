@@ -29,6 +29,51 @@ const SRC_TYPE_OPTIONS = [
   { value: 'webhook', label: 'Webhook (API)' },
 ];
 
+function formatCapValue(key, val) {
+  if (key.includes('powerState')) return val === 'ON' ? '🟢 Allumé' : '⚫ Éteint';
+  if (key.includes('lockState')) return val === 'LOCKED' ? '🔒 Verrouillé' : '🔓 Déverrouillé';
+  if (key.includes('armState')) {
+    const labels = { ARMED_AWAY: '🔒 Armé (absent)', ARMED_STAY: '🔒 Armé (présent)', DISARMED: '🔓 Désarmé' };
+    return labels[val] || val;
+  }
+  if (key.includes('detectionState')) return val === 'DETECTED' ? '🔴 Détecté' : '🟢 Aucun';
+  if (key.includes('temperature') || key.includes('Setpoint')) {
+    const t = typeof val === 'object' ? val.value : val;
+    const unit = typeof val === 'object' && val.scale === 'FAHRENHEIT' ? '°F' : '°C';
+    return t != null ? t + unit : '—';
+  }
+  if (key.includes('thermostatMode')) return val || '—';
+  if (key.includes('connectivity')) return typeof val === 'object' ? (val.value === 'OK' ? '🟢 Connecté' : '🔴 Hors ligne') : String(val);
+  if (key.includes('rangeValue')) return typeof val === 'object' ? val.value : val;
+  if (key.includes('toggleState')) return val === 'ON' ? 'Activé' : 'Désactivé';
+  return typeof val === 'object' ? JSON.stringify(val) : String(val);
+}
+
+function friendlyCapName(key) {
+  if (key.includes('powerState')) return 'Alimentation';
+  if (key.includes('lockState')) return 'Serrure';
+  if (key.includes('armState')) return 'Sécurité';
+  if (key.includes('detectionState') && key.includes('Motion')) return 'Mouvement';
+  if (key.includes('detectionState')) return 'Contact';
+  if (key.includes('temperature') && !key.includes('Setpoint')) return 'Température';
+  if (key.includes('Setpoint')) return 'Consigne';
+  if (key.includes('thermostatMode')) return 'Mode';
+  if (key.includes('connectivity')) return 'Connexion';
+  if (key.includes('rangeValue')) return 'Valeur';
+  if (key.includes('toggleState')) return 'État';
+  return key.split('.').pop();
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s / 60) + ' min';
+  if (s < 86400) return Math.floor(s / 3600) + 'h';
+  return Math.floor(s / 86400) + 'j';
+}
+
+
 // --- New YAML schema: rules keyed by device_id (friendly name) ---
 function parseDevicesYaml(text) {
   const result = { vocal_alerts: false, poll_interval_seconds: 60, rules: [] };
@@ -147,6 +192,7 @@ export default function DevicesPanel({ api }) {
   const [parsed, setParsed] = useState({ vocal_alerts: false, poll_interval_seconds: 60, rules: [] });
   const [alexaDevices, setAlexaDevices] = useState(null);
   const [alexaLoading, setAlexaLoading] = useState(true);
+  const [deviceStates, setDeviceStates] = useState([]);
   const [alert, setAlert] = useState(null);
 
   const loadConfig = useCallback(async () => {
@@ -164,6 +210,13 @@ export default function DevicesPanel({ api }) {
     } catch {} finally { setAlexaLoading(false); }
   }, [api]);
 
+  const loadStates = useCallback(async () => {
+    try {
+      const res = await fetch(api + '/api/alexa/states');
+      if (res.ok) { const d = await res.json(); setDeviceStates(d.devices || []); }
+    } catch {}
+  }, [api]);
+
   const forceRediscover = async () => {
     setAlexaLoading(true);
     try {
@@ -173,7 +226,8 @@ export default function DevicesPanel({ api }) {
     finally { setAlexaLoading(false); }
   };
 
-  useEffect(() => { loadConfig(); loadAlexaDevices(); }, [loadConfig, loadAlexaDevices]);
+  useEffect(() => { loadConfig(); loadAlexaDevices(); loadStates(); }, [loadConfig, loadAlexaDevices, loadStates]);
+  useEffect(() => { const t = setInterval(loadStates, 30000); return () => clearInterval(t); }, [loadStates]);
 
   const updateFromForm = (p) => { setParsed(p); setYaml(buildDevicesYaml(p)); };
   const updateFromYaml = (y) => { setYaml(y); try { setParsed(parseDevicesYaml(y)); } catch {} };
@@ -233,15 +287,33 @@ export default function DevicesPanel({ api }) {
           <Box variant="small">Aucun appareil détecté.</Box>
         ) : (
           <SpaceBetween size="s">
-            <Box variant="small">{monitorable.length} appareils (redécouverte auto toutes les 6h)</Box>
-            <ColumnLayout columns={Math.min(monitorable.length, 4)}>
+            <Box variant="small">{monitorable.length} appareils (redécouverte auto toutes les 6h) — états rafraîchis toutes les 30s</Box>
+            <ColumnLayout columns={Math.min(monitorable.length, 3)}>
               {monitorable.map((d, i) => {
                 const hasRule = configuredIds.has(d.friendlyName);
+                const state = deviceStates.find(s => s.friendlyName === d.friendlyName);
+                const caps = state?.capabilities || {};
+                const capEntries = Object.entries(caps).filter(([k]) => !k.includes('EndpointHealth'));
+                const connectivity = caps['Alexa.EndpointHealth.connectivity'];
+                const isOnline = connectivity && (typeof connectivity === 'object' ? connectivity.value === 'OK' : connectivity === 'OK');
                 return (
                   <Container key={i} variant="stacked">
                     <SpaceBetween size="xxs">
-                      <Box variant="h4">{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
-                      <StatusIndicator type={hasRule ? 'success' : 'stopped'}>{hasRule ? 'Règle active' : d.category}</StatusIndicator>
+                      <SpaceBetween direction="horizontal" size="xs">
+                        <Box variant="h4">{(CAT_ICONS[d.category] || '📱') + ' ' + d.friendlyName}</Box>
+                        {connectivity && <StatusIndicator type={isOnline ? 'success' : 'error'}>{isOnline ? 'En ligne' : 'Hors ligne'}</StatusIndicator>}
+                      </SpaceBetween>
+                      {capEntries.length > 0 ? (
+                        <Box>
+                          {capEntries.map(([k, v]) => (
+                            <Box key={k} variant="small">{friendlyCapName(k)}: {formatCapValue(k, v)}</Box>
+                          ))}
+                          {state?.lastUpdated && <Box variant="small" color="text-body-secondary">Mis à jour il y a {timeAgo(state.lastUpdated)}</Box>}
+                        </Box>
+                      ) : (
+                        <Box variant="small" color="text-body-secondary">{d.category} — en attente de données</Box>
+                      )}
+                      <StatusIndicator type={hasRule ? 'success' : 'stopped'}>{hasRule ? 'Règle active' : 'Pas de règle'}</StatusIndicator>
                       {!hasRule && <Button variant="link" onClick={() => addRule(d.friendlyName)}>Ajouter une règle</Button>}
                     </SpaceBetween>
                   </Container>

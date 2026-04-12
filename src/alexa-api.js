@@ -131,49 +131,67 @@ export async function queryDeviceStates(env, stateRequests) {
  * Automatically builds the right property requests based on device category.
  */
 export async function getDeviceStates(env, devices) {
-  // Build state requests based on device capabilities
   var requests = [];
   for (var d of devices) {
     var props = [];
 
-    // Power state (lights, plugs, switches)
-    if (d.capabilities.includes('turnOn') || d.capabilities.includes('turnOff') ||
-        d.category === 'LIGHT' || d.category === 'SMARTPLUG' || d.category === 'SWITCH') {
+    // Extract interface names from capability objects
+    var interfaces = new Set();
+    if (Array.isArray(d.capabilities)) {
+      for (var cap of d.capabilities) {
+        if (typeof cap === 'string') interfaces.add(cap);
+        else if (cap.interfaceName) interfaces.add(cap.interfaceName);
+      }
+    }
+
+    // Power state
+    if (interfaces.has('Alexa.PowerController') ||
+        d.category === 'LIGHT' || d.category === 'SMARTPLUG' || d.category === 'SWITCH' ||
+        d.category === 'WASHER' || d.category === 'DRYER') {
       props.push({ namespace: 'Alexa.PowerController', name: 'powerState' });
     }
 
-    // Temperature (thermostats, sensors)
-    if (d.capabilities.includes('setTargetTemperature') || d.category === 'THERMOSTAT' ||
-        d.capabilities.includes('getTemperatureReading')) {
+    // Temperature
+    if (interfaces.has('Alexa.TemperatureSensor') || interfaces.has('Alexa.ThermostatController') ||
+        d.category === 'THERMOSTAT') {
       props.push({ namespace: 'Alexa.TemperatureSensor', name: 'temperature' });
       props.push({ namespace: 'Alexa.ThermostatController', name: 'targetSetpoint' });
       props.push({ namespace: 'Alexa.ThermostatController', name: 'thermostatMode' });
     }
 
-    // Lock state
-    if (d.capabilities.includes('lockAction') || d.category === 'SMARTLOCK') {
+    // Lock
+    if (interfaces.has('Alexa.LockController') || d.category === 'SMARTLOCK') {
       props.push({ namespace: 'Alexa.LockController', name: 'lockState' });
     }
 
     // Contact/door sensor
-    if (d.capabilities.includes('getDetectionState') || d.category === 'CONTACT_SENSOR' ||
-        d.category === 'GARAGE_DOOR') {
+    if (interfaces.has('Alexa.ContactSensor') || d.category === 'CONTACT_SENSOR' || d.category === 'GARAGE_DOOR') {
       props.push({ namespace: 'Alexa.ContactSensor', name: 'detectionState' });
     }
 
     // Security panel
-    if (d.category === 'SECURITY_PANEL') {
+    if (interfaces.has('Alexa.SecurityPanelController') || d.category === 'SECURITY_PANEL') {
       props.push({ namespace: 'Alexa.SecurityPanelController', name: 'armState' });
     }
 
     // Camera / motion
-    if (d.category === 'CAMERA') {
+    if (interfaces.has('Alexa.MotionSensor') || d.category === 'CAMERA') {
       props.push({ namespace: 'Alexa.MotionSensor', name: 'detectionState' });
     }
 
-    // Washer/Dryer
-    if (d.category === 'WASHER' || d.category === 'DRYER') {
-      props.push({ namespace: 'Alexa.PowerController', name: 'powerState' });
+    // Range controllers (fridge temps, etc.)
+    if (interfaces.has('Alexa.RangeController')) {
+      props.push({ namespace: 'Alexa.RangeController', name: 'rangeValue' });
+    }
+
+    // Toggle controllers (eco mode, etc.)
+    if (interfaces.has('Alexa.ToggleController')) {
+      props.push({ namespace: 'Alexa.ToggleController', name: 'toggleState' });
+    }
+
+    // Endpoint health (connectivity)
+    if (interfaces.has('Alexa.EndpointHealth')) {
+      props.push({ namespace: 'Alexa.EndpointHealth', name: 'connectivity' });
     }
 
     if (props.length > 0) {

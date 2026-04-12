@@ -455,12 +455,25 @@ export function startDashboard(config, port) {
 
     if (path === '/api/alexa/states' && req.method === 'GET') {
       try {
-        var { getAlexaStates } = await import('../alexa-monitor.js');
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ states: getAlexaStates() }));
+        var { getAlexaStates, getDiscoveredDevices: getDD } = await import('../alexa-monitor.js');
+        var rawStates = getAlexaStates();
+        var discovered = getDD();
+        // Map entityId → friendlyName and merge
+        var deviceStates = [];
+        for (var eid in rawStates) {
+          var dev = discovered.find(function(d) { return d.entityId === eid; });
+          deviceStates.push({
+            entityId: eid,
+            friendlyName: dev ? dev.friendlyName : eid,
+            category: dev ? dev.category : 'OTHER',
+            icon: dev ? dev.icon : '📱',
+            capabilities: rawStates[eid].capabilities || {},
+            lastUpdated: rawStates[eid].timestamp || null,
+          });
+        }
+        json(res, 200, { devices: deviceStates });
       } catch (err) {
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ states: {}, error: err.message }));
+        json(res, 200, { devices: [], error: err.message });
       }
       return;
     }
