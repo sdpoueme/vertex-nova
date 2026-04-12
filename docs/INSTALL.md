@@ -247,12 +247,17 @@ Note: The temporary test token expires every 24 hours.
 | `USE_STRANDS` | No | `true` | Enable Strands multi-agent system |
 | `MOVIE_LANGUAGES` | No | `fr` | Movie languages (comma-separated: fr,en,es) |
 | `TMDB_READ_TOKEN` | No | — | TMDB Read Access Token (v4 bearer) |
+| `ALEXA_UBID_MAIN` | If Alexa | — | Alexa cookie (ubid-main) |
+| `ALEXA_AT_MAIN` | If Alexa | — | Alexa cookie (at-main) |
+| `EMAIL_MONITOR_ADDRESS` | If email | — | Gmail address for inbox monitoring + reply sending |
+| `EMAIL_MONITOR_PASSWORD` | If email | — | Gmail App Password |
 
 ### Config Files
 
 - `config/routing.yaml` — Model routing rules
 - `config/proactive.yaml` — Scheduled proactive actions and notification routing
 - `config/knowledgebases.yaml` — Family knowledge base git repos for RAG
+- `config/devices.yaml` — Device alert rules (device_id, security level, AI context)
 - `config/devices.yaml` — Device notification monitoring (sources, security levels, anomaly rules)
 - `agent.md` — Agent persona, rules, and household info (not committed to git)
 
@@ -282,7 +287,7 @@ The agent starts:
 - IFTTT/webhook server on port 3001
 - Proactive scheduler
 - Reminder engine
-- Email monitor
+- Email agent (inbox monitoring, reply drafting, SMTP sending)
 - Knowledge base sync
 - Identity layer (user profiles and fact extraction)
 - Dream engine (1-5 AM)
