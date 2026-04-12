@@ -147,19 +147,22 @@ On first visit, accept the browser's certificate warning (one-time). HTTPS enabl
 | Accueil | System status, channels, KBs, devices, recent interactions, quick nav |
 | Chat | Text, image upload, voice recording. Interactions tab with history from all channels. |
 | Configuration | Strands toggle, AI models, Sonos rooms (day/night), Echo devices (per timeslot), home location, news settings, movie preferences (multi-language, TMDB keys, genres), channel toggles (multi-user Telegram). All with TagListEditor for multi-value fields. |
-| Appareils | Per-device forms: bundle ID, security level, normal hours, AI context, notification sources (macOS log / email / webhook). Activity charts. Vocal alerts toggle. |
+| Appareils | Per-device forms: bundle ID, security level, normal hours, AI context, notification sources (macOS log / email / webhook / Alexa API). Alexa device discovery. Activity charts. Vocal alerts toggle. |
 | Connaissances | Add/edit/remove knowledge bases with forms. Name, repo URL, branch, sync interval, file types (TagListEditor). Sync button per KB. |
 | Logs | Live tail of last 100 log lines. |
 
 ## Device Notification Monitor
 
-Three notification sources, configurable per device in `config/devices.yaml`:
+Four notification sources, configurable per device in `config/devices.yaml`:
 
 | Source | How it works |
 |--------|-------------|
 | macOS Log | Reads unified log for app bundle IDs via iPhone Mirroring |
 | Email | Matches Gmail alerts by sender/keywords |
 | Webhook | POST to `/device-alert` with token auth |
+| Alexa API | Polls smart home device states via Alexa internal API (power, temp, lock, security) |
+
+The Alexa API source discovers all devices connected to your Alexa account (washer, dryer, thermostat, security panel, cameras, locks, plugs) and polls their states every 60 seconds. State changes trigger alerts with severity assessment (lock unlocked at night = critical, washer finished = info).
 
 Smart deduplication: multiple notifications from the same device within 60 seconds = 1 logical event. The system learns typical notification counts per event and flags deviations as anomalies.
 

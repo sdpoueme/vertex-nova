@@ -418,6 +418,26 @@ async function main() {
     }, config.projectDir, vaultPath);
   }
 
+  // Alexa Smart Home state monitor — 4th notification source
+  try {
+    var { startAlexaMonitor } = await import('./alexa-monitor.js');
+    await startAlexaMonitor(async function(alert) {
+      try {
+        var sessionId = getSessionId('alexa-monitor');
+        var response = await chat(alert.prompt, sessionId);
+
+        if (response.includes('difficultés techniques') || response.includes('SKIP')) return;
+
+        var prefix = alert.analysis.severity === 'critical' ? '🚨' : alert.analysis.severity === 'warning' ? '⚠️' : alert.icon;
+        await sendTelegram(prefix + ' ' + response);
+      } catch (err) {
+        log.error('Alexa alert processing error: ' + err.message);
+      }
+    }, vaultPath, 60000);
+  } catch (err) {
+    log.debug('Alexa monitor not started: ' + err.message);
+  }
+
   startProactive(async function(response, route, action) {
     var ICONS = {'breaking-news':'🌍','weather-alert':'🌪️','home-maintenance-check':'🔧','email-digest':'📬','friday-movies':'🎬','weekend-activities':'🎯'};
     var icon = ICONS[action.name] || '🏠';

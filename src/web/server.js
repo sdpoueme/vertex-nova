@@ -246,6 +246,8 @@ export function startDashboard(config, port) {
         whatsapp_enabled: (process.env.WHATSAPP_ENABLED || 'false') === 'true',
         whatsapp_phone_id: process.env.WHATSAPP_PHONE_ID || '',
         whatsapp_webhook_port: process.env.WHATSAPP_WEBHOOK_PORT || '3001',
+        alexa_configured: !!(process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN),
+        alexa_ubid_main: process.env.ALEXA_UBID_MAIN ? '***' + (process.env.ALEXA_UBID_MAIN || '').slice(-6) : '',
       });
       return;
     }
@@ -264,6 +266,7 @@ export function startDashboard(config, port) {
           'USE_STRANDS',
           'TELEGRAM_ENABLED', 'TELEGRAM_ALLOWED_USER_IDS',
           'WHATSAPP_ENABLED', 'WHATSAPP_PHONE_ID', 'WHATSAPP_WEBHOOK_PORT',
+          'ALEXA_AT_MAIN', 'ALEXA_UBID_MAIN',
         ];
         var updated = [];
         for (var k of allowed_keys) {
@@ -427,6 +430,39 @@ export function startDashboard(config, port) {
         json(res, 200, { result: result });
       } catch (err) {
         json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Alexa Smart Home ---
+    if (path === '/api/alexa/devices' && req.method === 'GET') {
+      try {
+        var { discoverDevices } = await import('../alexa-api.js');
+        var atMain = process.env.ALEXA_AT_MAIN || '';
+        var ubidMain = process.env.ALEXA_UBID_MAIN || '';
+        if (!atMain || !ubidMain) {
+          res.writeHead(200, JSON_HEADERS);
+          res.end(JSON.stringify({ devices: [], configured: false }));
+          return;
+        }
+        var devices = await discoverDevices({ AT_MAIN: atMain, UBID_MAIN: ubidMain });
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ devices: devices, configured: true }));
+      } catch (err) {
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ devices: [], configured: true, error: err.message }));
+      }
+      return;
+    }
+
+    if (path === '/api/alexa/states' && req.method === 'GET') {
+      try {
+        var { getAlexaStates } = await import('../alexa-monitor.js');
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ states: getAlexaStates() }));
+      } catch (err) {
+        res.writeHead(200, JSON_HEADERS);
+        res.end(JSON.stringify({ states: {}, error: err.message }));
       }
       return;
     }

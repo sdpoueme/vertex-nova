@@ -179,6 +179,26 @@ VOICE_MONKEY_DEFAULT_DEVICE=your-device-name
 
 ---
 
+## Alexa Smart Home API Setup
+
+Monitors all smart home devices connected to your Alexa account (thermostats, locks, cameras, washers, etc.) by polling their states every 60 seconds.
+
+1. Open [alexa.amazon.com](https://alexa.amazon.com) in Chrome and log in
+2. Press F12 → Application tab → Cookies → `https://alexa.amazon.com`
+3. Copy the values of `ubid-main` and `at-main`
+4. Add to `.env`:
+
+```env
+ALEXA_UBID_MAIN=your-ubid-main-value
+ALEXA_AT_MAIN=your-at-main-value
+```
+
+Or paste them in the dashboard: Configuration → Alexa Smart Home API.
+
+Note: these cookies expire periodically. When you see "Alexa cookies may have expired" in the logs, re-extract them from the browser.
+
+---
+
 ## WhatsApp Setup
 
 Requires a Meta Business account. Disabled by default.

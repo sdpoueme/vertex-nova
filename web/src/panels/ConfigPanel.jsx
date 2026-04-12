@@ -336,6 +336,22 @@ function ModelsPanel({ api }) {
         </SpaceBetween>
       </Container>
 
+      <Container header={<Header variant="h3">Alexa Smart Home API</Header>}>
+        <SpaceBetween size="m">
+          <Alert type="info">
+            Cookies extraits de alexa.amazon.com (DevTools → Application → Cookies). Permet de surveiller les appareils connectés à Alexa.
+          </Alert>
+          <ColumnLayout columns={2}>
+            <FormField label="UBID Main" description={models.alexa_configured ? '✅ Configuré' : 'Non configuré'}>
+              <Input value="" placeholder="Coller ubid-main ici pour remplacer" onChange={({ detail }) => { if (detail.value) save('ALEXA_UBID_MAIN', detail.value); }} />
+            </FormField>
+            <FormField label="AT Main" description={models.alexa_configured ? '✅ Configuré' : 'Non configuré'}>
+              <Input value="" placeholder="Coller at-main ici pour remplacer" onChange={({ detail }) => { if (detail.value) save('ALEXA_AT_MAIN', detail.value); }} />
+            </FormField>
+          </ColumnLayout>
+        </SpaceBetween>
+      </Container>
+
       <Container header={<Header variant="h3">Canaux de communication</Header>}>
         <SpaceBetween size="m">
           <ColumnLayout columns={2}>

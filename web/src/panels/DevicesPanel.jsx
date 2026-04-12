@@ -172,6 +172,53 @@ function SourceEditor({ sources, onChange }) {
   );
 }
 
+function AlexaDevicesSection({ api }) {
+  const [alexaDevices, setAlexaDevices] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const discover = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(api + '/api/alexa/devices');
+      if (res.ok) {
+        const data = await res.json();
+        setAlexaDevices(data);
+      }
+    } catch {} finally { setLoading(false); }
+  };
+
+  const catIcons = { WASHER: '👕', DRYER: '👕', THERMOSTAT: '🌡️', SMARTLOCK: '🔐', SECURITY_PANEL: '🔒', CAMERA: '📹', LIGHT: '💡', SMARTPLUG: '🔌', SWITCH: '🔌', OVEN: '🍳', OTHER: '📱', DOORBELL: '🔔' };
+
+  return (
+    <Container variant="stacked" header={
+      <Header variant="h4" actions={<Button loading={loading} onClick={discover} iconName="refresh">Découvrir</Button>}>
+        Alexa Smart Home {alexaDevices?.configured === false && <StatusIndicator type="warning">Non configuré</StatusIndicator>}
+      </Header>
+    }>
+      {!alexaDevices ? (
+        <Box variant="small" color="text-body-secondary">Cliquez Découvrir pour lister les appareils connectés à Alexa</Box>
+      ) : alexaDevices.error ? (
+        <Alert type="error">{alexaDevices.error}</Alert>
+      ) : alexaDevices.devices?.length === 0 ? (
+        <Box variant="small">Aucun appareil trouvé. Vérifiez les cookies Alexa dans Configuration.</Box>
+      ) : (
+        <SpaceBetween size="xxs">
+          <Box variant="small">{alexaDevices.devices.length} appareils détectés via Alexa</Box>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {alexaDevices.devices.filter(d => !['ALEXA_VOICE_ENABLED', 'TV', 'GAME_CONSOLE', 'SPEAKERS', 'PRINTER'].includes(d.category)).map((d, i) => (
+              <Box key={i} padding={{ horizontal: 'xs', vertical: 'xxs' }} display="inline-block">
+                <StatusIndicator type={d.category === 'SECURITY_PANEL' || d.category === 'CAMERA' ? 'warning' : 'success'}>
+                  {(catIcons[d.category] || '📱') + ' ' + d.friendlyName}
+                </StatusIndicator>
+              </Box>
+            ))}
+          </div>
+        </SpaceBetween>
+      )}
+    </Container>
+  );
+}
+
 export default function DevicesPanel({ api }) {
   const [yaml, setYaml] = useState('');
   const [parsed, setParsed] = useState({ vocal_alerts: false, poll_interval_seconds: 30, devices: [] });
@@ -259,6 +306,7 @@ export default function DevicesPanel({ api }) {
       <ColumnLayout columns={2}>
         <SpaceBetween size="m">
           <Header variant="h3" actions={<Button onClick={addDevice} iconName="add-plus">Ajouter</Button>}>Appareils ({parsed.devices.length})</Header>
+          <AlexaDevicesSection api={api} />
           {parsed.devices.map((d, i) => (
             <Container key={i} header={
               <Header variant="h4" actions={
