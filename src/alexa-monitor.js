@@ -20,6 +20,33 @@ var pollTimer = null;
 var rediscoverTimer = null;
 var REDISCOVERY_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 
+/**
+ * Load a device rule from devices.yaml by friendly name.
+ */
+function loadDeviceRule(friendlyName) {
+  try {
+    var configPath = join(process.cwd(), 'config', 'devices.yaml');
+    if (!existsSync(configPath)) return null;
+    var yaml = readFileSync(configPath, 'utf8');
+    var blocks = yaml.split(/^\s+-\s+device_id:/m);
+    for (var i = 1; i < blocks.length; i++) {
+      var b = blocks[i];
+      var devId = (b.match(/device_id:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+      if (devId.toLowerCase() !== friendlyName.toLowerCase()) continue;
+      var enabled = (b.match(/enabled:\s*(\S+)/) || [])[1]?.trim() !== 'false';
+      if (!enabled) return null;
+      return {
+        device_id: devId,
+        icon: (b.match(/icon:\s*"([^"]*)"/) || [])[1] || '📱',
+        security_level: (b.match(/security_level:\s*(\S+)/) || [])[1]?.trim() || 'low',
+        context: (b.match(/context:\s*"([^"]*)"/) || [])[1] || '',
+        normal_hours: ((b.match(/normal_hours:\s*\[([^\]]*)\]/) || [])[1] || '').split(',').map(function(h) { return parseInt(h.trim()); }).filter(function(h) { return !isNaN(h); }),
+      };
+    }
+  } catch {}
+  return null;
+}
+
 function loadPreviousStates() {
   if (!statesFile) return;
   try {
@@ -232,42 +259,54 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs, onCo
 
           log.info('State change: ' + device.friendlyName + ' → ' + descriptions.join(', ') + ' [' + maxSeverity + ']');
 
-          // Low-severity info changes: just log, don't send to AI
-          if (maxSeverity === 'info') {
+          // Load user-defined rules for this device
+          var rule = loadDeviceRule(device.friendlyName);
+
+          // If rule exists, use its security_level override
+          if (rule) {
+            var ruleSec = rule.security_level || 'low';
+            if (ruleSec === 'critical') maxSeverity = 'critical';
+            else if (ruleSec === 'high' && maxSeverity === 'info') maxSeverity = 'warning';
+          }
+
+          // Low-severity info changes without a rule: just log
+          if (maxSeverity === 'info' && !rule) {
+            previousStates[eid] = { capabilities: state.capabilities, timestamp: Date.now() };
             continue;
           }
 
-          // Build smart, actionable prompts based on device category
+          // Build prompt — use rule context if available, otherwise category-based
+          var hour = new Date().getHours();
+          var isNight = hour >= 22 || hour < 6;
+          var isWeekend = new Date().getDay() === 0 || new Date().getDay() === 6;
           var prompt = '';
-          var SECURITY_CATS = new Set(['SECURITY_PANEL', 'SMARTLOCK', 'CAMERA']);
-          var isPowerOff = changes.some(function(c) { return c.property.includes('powerState') && c.newValue === 'OFF' && c.oldValue === 'ON'; });
-          var isWasherDryer = device.category === 'WASHER' || device.category === 'DRYER';
-          var isThermostat = device.category === 'THERMOSTAT';
-          var isFridgeOven = device.category === 'REFRIGERATOR' || device.category === 'OVEN' || device.category === 'MICROWAVE';
 
-          if (SECURITY_CATS.has(device.category) && isNight) {
-            prompt = 'ALERTE SÉCURITÉ URGENTE. ' + device.friendlyName + ': ' + descriptions.join('; ') + '. Évalue le risque et recommande une action immédiate.';
-          } else if (isWasherDryer && isPowerOff) {
-            prompt = 'Le cycle de ' + device.friendlyName + ' est terminé. Informe le propriétaire brièvement.';
-          } else if (isThermostat) {
-            prompt = 'Changement thermostat: ' + descriptions.join('; ') + '. Si la température est anormale (trop haute ou trop basse), alerte le propriétaire. Sinon, note silencieusement.';
-          } else if (isFridgeOven) {
-            prompt = 'Changement ' + device.friendlyName + ': ' + descriptions.join('; ') + '. Si c\'est une alerte (porte ouverte, température anormale), informe le propriétaire. Sinon, ignore.';
+          if (rule && rule.context) {
+            // User-defined rule with specific instructions
+            prompt = '[Appareil: ' + device.friendlyName + ']\n' +
+              'Changements détectés: ' + descriptions.join('; ') + '\n' +
+              'Heure: ' + hour + 'h' + (isNight ? ' (nuit)' : '') + (isWeekend ? ' (weekend)' : '') + '\n' +
+              'Sévérité: ' + maxSeverity + '\n\n' +
+              'Instructions: ' + rule.context + '\n\n' +
+              'Applique ces instructions et réponds en français. Si une action est requise, dis-le clairement. Si rien d\'important, réponds SKIP.';
           } else {
+            // Fallback: generic category-based prompt
+            var info = getCategoryInfo(device.category);
             prompt = '[Alexa Smart Home: ' + device.friendlyName + ']\n' +
               'Appareil: ' + info.desc + ' (' + device.category + ')\n' +
               'Changements: ' + descriptions.join('; ') + '\n' +
               'Heure: ' + hour + 'h' + (isNight ? ' (nuit)' : '') + '\n' +
-              'SÉVÉRITÉ: ' + maxSeverity.toUpperCase() + '\n' +
-              'Analyse cette situation et donne un avis concis en français.';
+              'Sévérité: ' + maxSeverity.toUpperCase() + '\n' +
+              'Analyse et recommande une action si nécessaire. Réponds SKIP si rien d\'important.';
           }
 
+          var alertIcon = rule ? rule.icon : getCategoryInfo(device.category).icon;
           try {
             await onAlert({
               device: device.friendlyName.toLowerCase().replace(/\s+/g, '-'),
-              icon: info.icon,
-              description: info.desc,
-              analysis: { severity: maxSeverity, isAnomaly: true, anomalies: descriptions, hour: hour, isNight: isNight },
+              icon: alertIcon,
+              description: device.friendlyName,
+              analysis: { severity: maxSeverity, isAnomaly: maxSeverity !== 'info', anomalies: descriptions, hour: hour, isNight: isNight },
               prompt: prompt,
               vocalEnabled: false,
               source: 'alexa_api',

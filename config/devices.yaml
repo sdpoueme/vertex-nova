@@ -1,9 +1,74 @@
 # Vertex Nova — Device Alert Rules
-# Devices are identified by their friendly name (from Alexa, email, or webhook).
-# The agent auto-discovers devices via Alexa API every 6 hours.
+# Devices are identified by their friendly name (from Alexa discovery).
+# The agent monitors state changes and takes action based on these rules.
 
 settings:
   vocal_alerts: false
   poll_interval_seconds: 60
 
-rules: []
+rules:
+  - device_id: "714JS Ring"
+    icon: "🔒"
+    security_level: critical
+    normal_hours: [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]
+    context: "Panneau de sécurité Ring. Si désarmé la nuit sans raison, c'est une urgence. Si armé/désarmé aux heures normales, juste noter. Si un pattern inhabituel est détecté (armement répété, désarmement suivi de réarmement rapide), alerter."
+    sources:
+      - type: alexa_api
+    enabled: true
+
+  - device_id: "714JS-Backyard"
+    icon: "📹"
+    security_level: high
+    normal_hours: [7,8,9,10,11,12,13,14,15,16,17,18,19]
+    context: "Caméra arrière-cour. Mouvement la nuit = alerte immédiate avec recommandation (vérifier caméra, appeler voisin, contacter police). Mouvement de jour en semaine = probablement livraison ou voisin, noter sans alerter. Mouvement le weekend de jour = normal (famille dehors)."
+    sources:
+      - type: alexa_api
+    enabled: true
+
+  - device_id: "WashTower Washer"
+    icon: "👕"
+    security_level: low
+    context: "Laveuse LG. Quand le cycle se termine (power OFF), envoyer un rappel amical pour transférer le linge dans la sécheuse. Si le linge reste plus de 30 minutes sans être transféré (pas de changement sur la sécheuse), envoyer un deuxième rappel."
+    sources:
+      - type: alexa_api
+    enabled: true
+
+  - device_id: "WashTower Dryer"
+    icon: "👕"
+    security_level: low
+    context: "Sécheuse LG. Quand le cycle se termine, rappeler de plier le linge. Si c'est tard le soir (après 21h), suggérer de le faire demain matin."
+    sources:
+      - type: alexa_api
+    enabled: true
+
+  - device_id: "S&S Fridge"
+    icon: "🧊"
+    security_level: medium
+    context: "Frigo Bosch. Surveiller les changements de température. Si la température du frigo dépasse 8°C ou celle du congélateur dépasse -10°C, c'est une alerte urgente (possible panne ou porte ouverte). Suggérer de vérifier la porte et proposer de rédiger un email au service Bosch si le problème persiste."
+    sources:
+      - type: alexa_api
+    enabled: true
+
+  - device_id: "Oven"
+    icon: "🍳"
+    security_level: medium
+    context: "Four. Si le four est allumé depuis plus de 2 heures, envoyer un rappel de vérification. Si allumé la nuit (après 23h), alerte de sécurité. Quand il s'éteint, confirmer brièvement."
+    sources:
+      - type: alexa_api
+    enabled: true
+
+  - device_id: "Front Door Socket"
+    icon: "🔌"
+    security_level: low
+    context: "Prise connectée porte d'entrée. Probablement une lumière extérieure. Si éteinte la nuit (22h-6h), suggérer de la rallumer pour la sécurité. Si allumée en plein jour, suggérer de l'éteindre pour économiser l'énergie."
+    sources:
+      - type: alexa_api
+    enabled: true
+
+  - device_id: "Master Bathroom Towel Dryer"
+    icon: "🔌"
+    security_level: low
+    context: "Sèche-serviettes salle de bain. Si allumé depuis plus de 3 heures, rappeler de l'éteindre pour économiser l'énergie. Pas besoin d'alerter pour les changements normaux on/off."
+    sources:
+      - type: alexa_api
+    enabled: true
