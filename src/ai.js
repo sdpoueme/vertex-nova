@@ -979,15 +979,15 @@ async function chatOllama(message, sessionId, modelOverride, image) {
       executedToolCalls.set(tc.function.name, callCount);
       if (callCount > 2) {
         log.info('Tool ' + tc.function.name + ' called ' + callCount + ' times, breaking loop');
-        // Return the last tool result as the final response
-        var lastResult = '';
+        // Return the last meaningful assistant message, not tool results
         for (var mi = messages.length - 1; mi >= 0; mi--) {
-          if (messages[mi].role === 'tool' && messages[mi].content) {
-            lastResult = typeof messages[mi].content === 'string' ? messages[mi].content : JSON.stringify(messages[mi].content);
-            break;
+          if (messages[mi].role === 'assistant' && messages[mi].content && messages[mi].content.length > 10) {
+            return messages[mi].content;
           }
         }
-        return lastResult || 'Voici les résultats.';
+        // If no good assistant message, check if a voice tool succeeded
+        if (tc.function.name.includes('speak')) return 'Annonce effectuée.';
+        return 'Voici les résultats.';
       }
 
       // Deduplicate voice tool calls
@@ -996,7 +996,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
         var voiceKey = tc.function.name + ':' + (tc.function.arguments?.text || '').slice(0, 100) + ':' + (tc.function.arguments?.device || tc.function.arguments?.room || '');
         if (executedVoiceCalls.has(voiceKey)) {
           log.info('Skipping duplicate voice call: ' + tc.function.name);
-          addToolResult(sessionId, { role: 'tool', content: 'Déjà annoncé.' });
+          addToolResult(sessionId, { role: 'tool', content: 'Message déjà annoncé avec succès. Confirme brièvement à l\'utilisateur que c\'est fait.' });
           continue;
         }
         executedVoiceCalls.add(voiceKey);
@@ -1013,16 +1013,29 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     messages = buildMessages(sessionId);
   }
 
-  // If we hit max iterations, return the last assistant message or tool result
+  // If we hit max iterations, return the last assistant message (prefer over tool results)
   var lastContent = '';
+  // First pass: look for a real assistant message
   for (var li = messages.length - 1; li >= 0; li--) {
-    if (messages[li].role === 'assistant' && messages[li].content) {
+    if (messages[li].role === 'assistant' && messages[li].content && messages[li].content.length > 10) {
       lastContent = messages[li].content;
       break;
     }
-    if (messages[li].role === 'tool' && messages[li].content) {
-      lastContent = typeof messages[li].content === 'string' ? messages[li].content : '';
-      break;
+  }
+  // Second pass: if no assistant message, check if a voice tool succeeded
+  if (!lastContent) {
+    for (var li2 = messages.length - 1; li2 >= 0; li2--) {
+      if (messages[li2].role === 'tool' && messages[li2].content) {
+        var tc2 = typeof messages[li2].content === 'string' ? messages[li2].content : '';
+        if (tc2.includes('Annonce envoyée') || tc2.includes('annoncé avec succès')) {
+          lastContent = 'Annonce effectuée.';
+          break;
+        }
+        if (tc2.length > 20 && !tc2.includes('Déjà') && !tc2.includes('Error')) {
+          lastContent = tc2;
+          break;
+        }
+      }
     }
   }
   return lastContent || 'La requête a pris trop de temps. Réessayez avec une demande plus simple.';
@@ -1281,7 +1294,7 @@ async function chatClaude(message, sessionId, image) {
           var vKey = block.name + ':' + (block.input?.text || '').slice(0, 100) + ':' + (block.input?.device || block.input?.room || '');
           if (executedVoiceCallsClaude.has(vKey)) {
             log.info('Skipping duplicate voice call: ' + block.name);
-            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Déjà annoncé.' });
+            toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Message déjà annoncé avec succès. Confirme brièvement.' });
             continue;
           }
           executedVoiceCallsClaude.add(vKey);
