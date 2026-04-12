@@ -223,7 +223,6 @@ export function startDashboard(config, port) {
         sonos_day_room: process.env.SONOS_DAY_ROOM || process.env.SONOS_DEFAULT_ROOM || '',
         sonos_night_room: process.env.SONOS_NIGHT_ROOM || process.env.SONOS_DEFAULT_ROOM || '',
         sonos_tts_volume: Number(process.env.SONOS_TTS_VOLUME) || 30,
-        echo_devices: process.env.ECHO_DEVICES || '',
         echo_morning_device: process.env.ECHO_MORNING_DEVICE || '',
         echo_workday_device: process.env.ECHO_WORKDAY_DEVICE || '',
         echo_evening_device: process.env.ECHO_EVENING_DEVICE || '',
@@ -259,7 +258,7 @@ export function startDashboard(config, port) {
         var allowed_keys = [
           'OLLAMA_MODEL', 'OLLAMA_FAST_MODEL', 'CLAUDE_MODEL',
           'SONOS_DEFAULT_ROOM', 'SONOS_DAY_ROOM', 'SONOS_NIGHT_ROOM', 'SONOS_TTS_VOLUME',
-          'ECHO_DEVICES', 'ECHO_MORNING_DEVICE', 'ECHO_WORKDAY_DEVICE', 'ECHO_EVENING_DEVICE',
+          'ECHO_MORNING_DEVICE', 'ECHO_WORKDAY_DEVICE', 'ECHO_EVENING_DEVICE',
           'HOME_LOCATION', 'HOME_COUNTRY', 'NEWS_LOCALE', 'NEWS_COUNTRY', 'NEWS_EXTRA_TOPICS',
           'TMDB_API_KEY', 'MOVIE_GENRES', 'MOVIE_LANGUAGE', 'MOVIE_LANGUAGES', 'MOVIE_REGION', 'TMDB_READ_TOKEN',
           'USE_STRANDS',
@@ -439,16 +438,25 @@ export function startDashboard(config, port) {
         var atMain = process.env.ALEXA_AT_MAIN || '';
         var ubidMain = process.env.ALEXA_UBID_MAIN || '';
         if (!atMain || !ubidMain) {
-          res.writeHead(200, JSON_HEADERS);
-          res.end(JSON.stringify({ devices: [], configured: false }));
+          json(res, 200, { devices: [], configured: false });
           return;
         }
         var devices = await discoverDevices({ AT_MAIN: atMain, UBID_MAIN: ubidMain });
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ devices: devices, configured: true }));
+        json(res, 200, { devices: devices, configured: true });
       } catch (err) {
-        res.writeHead(200, JSON_HEADERS);
-        res.end(JSON.stringify({ devices: [], configured: true, error: err.message }));
+        json(res, 200, { devices: [], configured: true, error: err.message });
+      }
+      return;
+    }
+
+    // Echo speaker devices (for config panel dropdowns)
+    if (path === '/api/alexa/echo-devices' && req.method === 'GET') {
+      try {
+        var { listEchoDevices } = await import('../outputs/alexa-speak.js');
+        var echoDevs = await listEchoDevices();
+        json(res, 200, { devices: echoDevs });
+      } catch (err) {
+        json(res, 200, { devices: [], error: err.message });
       }
       return;
     }

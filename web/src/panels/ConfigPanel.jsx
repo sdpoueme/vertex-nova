@@ -144,11 +144,13 @@ function buildProactiveYaml(data) {
 function ModelsPanel({ api }) {
   const [models, setModels] = useState(null);
   const [ollamaModels, setOllamaModels] = useState([]);
+  const [echoDevices, setEchoDevices] = useState([]);
   const [alert, setAlert] = useState(null);
 
   const load = useCallback(() => {
     fetch(api + '/api/models').then(r => r.json()).then(setModels).catch(() => {});
     fetch(api + '/api/ollama-models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {});
+    fetch(api + '/api/alexa/echo-devices').then(r => r.json()).then(d => setEchoDevices(d.devices || [])).catch(() => {});
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
@@ -253,24 +255,41 @@ function ModelsPanel({ api }) {
       </Container>
 
       <Container header={<Header variant="h3">Echo (Alexa API)</Header>}>
-        <ColumnLayout columns={2}>
-          <FormField label="Tous les appareils Echo">
-            <TagListEditor
-              items={(models.echo_devices || '').split(',').filter(Boolean)}
-              onChange={(items) => save('ECHO_DEVICES', items.join(','))}
-              placeholder="Entrez un device ID et appuyez Entrée"
-            />
-          </FormField>
-          <FormField label="Appareil matin (7-9h)">
-            <Input value={models.echo_morning_device || ''} onChange={({ detail }) => save('ECHO_MORNING_DEVICE', detail.value)} />
-          </FormField>
-          <FormField label="Appareil bureau (9-17h)">
-            <Input value={models.echo_workday_device || ''} onChange={({ detail }) => save('ECHO_WORKDAY_DEVICE', detail.value)} />
-          </FormField>
-          <FormField label="Appareil soir (17-19h)">
-            <Input value={models.echo_evening_device || ''} onChange={({ detail }) => save('ECHO_EVENING_DEVICE', detail.value)} />
-          </FormField>
-        </ColumnLayout>
+        {echoDevices.length > 0 ? (
+          <SpaceBetween size="m">
+            <Box variant="small" color="text-body-secondary">
+              {echoDevices.length} appareil(s) Echo détecté(s): {echoDevices.map(d => d.name + (d.online ? ' 🟢' : ' ⚫')).join(', ')}
+            </Box>
+            <ColumnLayout columns={3}>
+              <FormField label="Matin (7-9h)">
+                <Select
+                  selectedOption={models.echo_morning_device ? { value: models.echo_morning_device, label: models.echo_morning_device } : null}
+                  onChange={({ detail }) => save('ECHO_MORNING_DEVICE', detail.selectedOption.value)}
+                  options={echoDevices.map(d => ({ value: d.name, label: d.name + (d.online ? ' 🟢' : ' ⚫') }))}
+                  placeholder="Sélectionner"
+                />
+              </FormField>
+              <FormField label="Bureau (9-17h)">
+                <Select
+                  selectedOption={models.echo_workday_device ? { value: models.echo_workday_device, label: models.echo_workday_device } : null}
+                  onChange={({ detail }) => save('ECHO_WORKDAY_DEVICE', detail.selectedOption.value)}
+                  options={echoDevices.map(d => ({ value: d.name, label: d.name + (d.online ? ' 🟢' : ' ⚫') }))}
+                  placeholder="Sélectionner"
+                />
+              </FormField>
+              <FormField label="Soir (17-19h)">
+                <Select
+                  selectedOption={models.echo_evening_device ? { value: models.echo_evening_device, label: models.echo_evening_device } : null}
+                  onChange={({ detail }) => save('ECHO_EVENING_DEVICE', detail.selectedOption.value)}
+                  options={echoDevices.map(d => ({ value: d.name, label: d.name + (d.online ? ' 🟢' : ' ⚫') }))}
+                  placeholder="Sélectionner"
+                />
+              </FormField>
+            </ColumnLayout>
+          </SpaceBetween>
+        ) : (
+          <Box color="text-body-secondary">Aucun appareil Echo détecté. Vérifiez les cookies Alexa dans la section ci-dessous.</Box>
+        )}
       </Container>
 
       <Container header={<Header variant="h3">Maison & Actualités</Header>}>
