@@ -559,6 +559,22 @@ async function main() {
   var { startDreamEngine } = await import('./dream.js');
   startDreamEngine(vaultPath);
 
+  // Check for completed image analysis results (queued when Claude was unavailable)
+  setInterval(async function() {
+    try {
+      var { readdirSync: readImgDir, readFileSync: readImgFile, unlinkSync: unlinkImg } = await import('node:fs');
+      var imgResultDir = join(vaultPath, 'pending-images');
+      var resultFiles;
+      try { resultFiles = readImgDir(imgResultDir).filter(function(f) { return f.endsWith('.result.txt'); }); } catch { return; }
+      for (var rf of resultFiles) {
+        var resultText = readImgFile(join(imgResultDir, rf), 'utf8');
+        await sendTelegram(resultText);
+        unlinkImg(join(imgResultDir, rf));
+        log.info('Sent queued image result to Telegram: ' + rf);
+      }
+    } catch {}
+  }, 60000); // Check every minute
+
   // Startup notification
   setTimeout(function() {
     sendTelegram('🟢 Vertex Nova en ligne');

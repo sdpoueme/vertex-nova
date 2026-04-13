@@ -44,9 +44,10 @@ var tools = [
   {
     name: 'sonos_speak',
     description: 'Speak text on a Sonos speaker using TTS. Auto-detects French or English.' +
-      (config.sonosDayRoom ? ' Day room: ' + config.sonosDayRoom + '.' : '') +
-      (config.sonosNightRoom ? ' Night room: ' + config.sonosNightRoom + '.' : '') +
-      (config.sonosDefaultRoom ? ' Default: ' + config.sonosDefaultRoom + '.' : ''),
+      (config.sonosDefaultRoom ? ' Default room: ' + config.sonosDefaultRoom + '.' : '') +
+      (config.sonosDayRoom && config.sonosDayRoom !== config.sonosDefaultRoom ? ' Day (7h-22h): ' + config.sonosDayRoom + '.' : '') +
+      (config.sonosNightRoom ? ' Night (22h-7h): ' + config.sonosNightRoom + '.' : '') +
+      ' If the user does not specify a room, leave the room parameter EMPTY — the system will auto-select based on time of day.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1115,7 +1116,7 @@ export async function chat(message, sessionId, image) {
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
-  // Images: try Claude first, fall back to vision model
+  // Images: try Claude first, fall back to vision model, queue if both fail
   if (image) {
     if (CLAUDE_API_KEY && Date.now() >= claudeDisabledUntil) {
       try {
@@ -1127,7 +1128,36 @@ export async function chat(message, sessionId, image) {
         }
       }
     }
-    return chatOllama(message, sessionId, 'gemma4:e2b', image);
+    try {
+      var visionResponse = await chatOllama(message, sessionId, 'gemma4:e2b', image);
+      if (visionResponse && visionResponse.length > 20 && !visionResponse.includes('difficultés techniques')) {
+        return visionResponse;
+      }
+    } catch (err) {
+      log.warn('Local vision failed: ' + err.message);
+    }
+    // Both failed — queue the image request for later retry
+    try {
+      var { writeFileSync: writeQ, mkdirSync: mkQ } = await import('node:fs');
+      var { join: joinQ } = await import('node:path');
+      var queueDir = joinQ(resolve(config.vaultPath || joinQ(config.projectDir, 'vault')), 'pending-images');
+      mkQ(queueDir, { recursive: true });
+      var qId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+      writeQ(joinQ(queueDir, qId + '.json'), JSON.stringify({
+        message: message,
+        sessionId: sessionId,
+        image: { base64: image.base64.slice(0, 100) + '...truncated', mediaType: image.mediaType },
+        imageBase64: image.base64,
+        timestamp: Date.now(),
+        status: 'pending',
+      }));
+      log.info('Image request queued for later: ' + qId);
+      return 'Je n\'ai pas pu analyser l\'image pour le moment (API vision indisponible). ' +
+        'J\'ai sauvegardé ta demande et je l\'analyserai dès que possible. Référence: ' + qId;
+    } catch (qErr) {
+      log.error('Failed to queue image: ' + qErr.message);
+      return 'Désolé, l\'analyse d\'image n\'est pas disponible pour le moment. Réessayez plus tard.';
+    }
   }
 
   // Explicit route to Claude (from proactive scheduler)
@@ -1322,3 +1352,52 @@ setInterval(function() {
   var vaultPath = config.vaultPath || join(config.projectDir, 'vault');
   cleanupOldConversations(vaultPath);
 }, 30 * 60 * 1000); // Every 30 minutes
+
+// Periodic retry of queued image requests (every 15 min)
+setInterval(async function() {
+  if (!CLAUDE_API_KEY || Date.now() < claudeDisabledUntil) return; // Claude still unavailable
+
+  try {
+    var { readdirSync, readFileSync: readQ, writeFileSync: writeQ, unlinkSync } = await import('node:fs');
+    var queueDir = join(resolve(config.vaultPath || join(config.projectDir, 'vault')), 'pending-images');
+    var files;
+    try { files = readdirSync(queueDir).filter(function(f) { return f.endsWith('.json'); }); } catch { return; }
+    if (files.length === 0) return;
+
+    log.info('Processing ' + files.length + ' queued image request(s)...');
+    for (var f of files) {
+      try {
+        var data = JSON.parse(readQ(join(queueDir, f), 'utf8'));
+        if (data.status !== 'pending') continue;
+        if (Date.now() - data.timestamp > 48 * 60 * 60 * 1000) {
+          // Expired (>48h) — delete
+          unlinkSync(join(queueDir, f));
+          continue;
+        }
+        var img = { base64: data.imageBase64, mediaType: data.image.mediaType };
+        var response = await chatClaude(data.message, data.sessionId + '-retry', img);
+        if (response && !response.includes('difficultés techniques')) {
+          log.info('Queued image processed: ' + f);
+          // Save result for the user to see
+          try {
+            var resultFile = join(queueDir, f.replace('.json', '.result.txt'));
+            writeQ(resultFile, '📸 Analyse d\'image (demande du ' + new Date(data.timestamp).toLocaleString('fr-CA') + '):\n\n' + response);
+          } catch {}
+          unlinkSync(join(queueDir, f));
+        } else {
+          // Still failing — mark and skip
+          data.status = 'retry-failed';
+          data.lastRetry = Date.now();
+          writeQ(join(queueDir, f), JSON.stringify(data));
+        }
+        break; // Process one at a time
+      } catch (err) {
+        log.debug('Queue retry failed for ' + f + ': ' + err.message);
+        if (err.message.includes('credit') || err.message.includes('billing')) {
+          claudeDisabledUntil = Date.now() + 60 * 60 * 1000;
+          break; // Stop retrying
+        }
+      }
+    }
+  } catch {}
+}, 15 * 60 * 1000);
