@@ -54,6 +54,13 @@ var AGENTS = {
     patterns: /(?:m[ée]t[ée]o|weather|temp[ée]rature|pluie|rain|neige|snow|vent|wind)/i,
     systemPrompt: 'Tu es un agent météo. Utilise web_search pour trouver la météo locale.',
   },
+  email: {
+    name: 'Agent Email',
+    description: 'Lire, rédiger et envoyer des emails',
+    tools: ['email_list', 'email_draft', 'email_send', 'email_compose'],
+    patterns: /(?:email|e-mail|courriel|mail|envoie.*mail|[ée]cris.*mail|r[ée]pond.*mail|bo[îi]te.*r[ée]ception|inbox|smtp)/i,
+    systemPrompt: 'Tu es un agent email. Tu peux lister les emails reçus, rédiger des brouillons de réponse, et composer de nouveaux emails. Montre TOUJOURS le brouillon avant d\'envoyer. Réponds dans la langue de l\'utilisateur.',
+  },
 };
 
 // Default agent gets all tools

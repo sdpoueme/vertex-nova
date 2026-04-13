@@ -276,6 +276,60 @@ var reminderSetTool = tool({
   },
 });
 
+// --- Email tools ---
+var emailListTool = tool({
+  name: 'email_list',
+  description: 'Liste les emails en attente de réponse.',
+  inputSchema: z.object({}),
+  callback: async () => {
+    try {
+      var { getEmailAgent } = await import('./email-agent.js');
+      var ea = getEmailAgent();
+      if (!ea) return 'Agent email non configuré.';
+      var pending = ea.listPending();
+      if (pending.length === 0) return 'Aucun email en attente.';
+      return pending.map(p => '📧 [' + p.key + '] ' + p.from + ': ' + p.subject + (p.hasDraft ? ' ✏️' : '')).join('\n');
+    } catch { return 'Email non disponible.'; }
+  },
+});
+
+var emailComposeTool = tool({
+  name: 'email_compose',
+  description: 'Compose et envoie un email. Montre le brouillon d\'abord (confirm=false), puis envoie sur approbation (confirm=true).',
+  inputSchema: z.object({
+    to: z.string().describe('Adresse email du destinataire'),
+    subject: z.string().describe('Sujet'),
+    body: z.string().describe('Corps de l\'email'),
+    confirm: z.boolean().optional().describe('true pour envoyer, false pour montrer le brouillon'),
+  }),
+  callback: async (input) => {
+    try {
+      var { getEmailAgent } = await import('./email-agent.js');
+      var ea = getEmailAgent();
+      if (!ea) return 'Agent email non configuré.';
+      if (!input.confirm) return '✏️ Brouillon:\nÀ: ' + input.to + '\nSujet: ' + input.subject + '\n\n' + input.body + '\n\nDemande confirmation.';
+      return await ea.composeAndSend(input.to, input.subject, input.body);
+    } catch (err) { return 'Erreur: ' + err.message; }
+  },
+});
+
+var emailDraftTool = tool({
+  name: 'email_draft',
+  description: 'Rédige un brouillon de réponse à un email reçu.',
+  inputSchema: z.object({
+    email_key: z.string().describe('Code de l\'email'),
+    instructions: z.string().optional().describe('Instructions pour la réponse'),
+  }),
+  callback: async (input) => {
+    try {
+      var { getEmailAgent } = await import('./email-agent.js');
+      var ea = getEmailAgent();
+      if (!ea) return 'Agent email non configuré.';
+      return await ea.draftReply(input.email_key, input.instructions || '');
+    } catch (err) { return 'Erreur: ' + err.message; }
+  },
+});
+
 // ═══════════════════════════════════════════════════════
 // Specialist Agents
 // ═══════════════════════════════════════════════════════
@@ -316,10 +370,17 @@ export function initStrandsAgents() {
     printer: false,
   });
 
+  agents.email = new Agent({
+    model: model,
+    tools: [emailListTool, emailComposeTool, emailDraftTool],
+    systemPrompt: 'Tu es un agent email. Tu peux lister les emails, rédiger des brouillons, et envoyer des emails. Montre TOUJOURS le brouillon avant d\'envoyer. Réponds dans la langue de l\'utilisateur.',
+    printer: false,
+  });
+
   agents.general = new Agent({
     model: model,
-    tools: [newsSearchTool, webSearchTool, echoSpeakTool, sonosSpeakTool, vaultReadTool, vaultSearchTool, kbSearchTool, movieTool, memoryViewTool, reminderSetTool],
-    systemPrompt: 'Tu es Vertex Nova, assistant maison. Réponds en français. Sois concis. Utilise les outils quand pertinent.',
+    tools: [newsSearchTool, webSearchTool, echoSpeakTool, sonosSpeakTool, vaultReadTool, vaultSearchTool, kbSearchTool, movieTool, memoryViewTool, reminderSetTool, emailListTool, emailComposeTool, emailDraftTool],
+    systemPrompt: 'Tu es Vertex Nova, assistant maison. Tu peux envoyer des emails, parler sur les appareils, chercher des infos, gérer les rappels. Réponds dans la langue de l\'utilisateur. Sois concis.',
     printer: false,
   });
 
@@ -335,9 +396,11 @@ var NEWS_RE = /(?:nouvelles?|news|actualit[ée]s?|briefing|journal)/i;
 var MEDIA_RE = /(?:film|movie|cin[ée]|regarder|watch|sonos|echo|parle|speak|annonce|lis.*sur)/i;
 var HOME_RE = /(?:vault|note|maison|famille|g[ée]n[ée]alogie|poueme|cherche dans)/i;
 var MEMORY_RE = /(?:rappel|remind|souviens|m[ée]moire|n.oublie pas)/i;
+var EMAIL_RE = /(?:email|e-mail|courriel|mail|envoie.*mail|écris.*mail|r[ée]pond.*mail|boîte.*réception|inbox)/i;
 
 function pickAgent(message) {
-  if (NEWS_RE.test(message) && MEDIA_RE.test(message)) return 'media'; // news + speak = media handles both
+  if (EMAIL_RE.test(message)) return 'email';
+  if (NEWS_RE.test(message) && MEDIA_RE.test(message)) return 'media';
   if (NEWS_RE.test(message)) return 'news';
   if (MEDIA_RE.test(message)) return 'media';
   if (HOME_RE.test(message)) return 'home';

@@ -905,9 +905,12 @@ async function chatOllama(message, sessionId, modelOverride, image) {
   addUserMessage(sessionId, message);
   var messages = buildMessages(sessionId);
 
-  var ollamaSystemPrompt = "Tu es Vertex Nova, assistant maison.\n\n" +
+  var ollamaSystemPrompt = "Tu es Vertex Nova, assistant maison intelligent.\n\n" +
     "<rules>\n" +
     "- Réponds dans la langue du message\n" +
+    "- Sois concis\n" +
+    "- Tu PEUX envoyer des emails avec email_compose (nouveau) et email_draft/email_send (réponse)\n" +
+    "- Tu PEUX parler sur les appareils Echo et Sonos\n" +
     "- Sois concis\n" +
     "- Ne demande PAS les IDs d'appareils, utilise les valeurs par défaut\n" +
     "- Quand on demande de parler sur Echo/Sonos, utilise directement l'outil\n" +
