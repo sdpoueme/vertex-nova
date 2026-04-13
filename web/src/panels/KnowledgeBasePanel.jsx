@@ -27,20 +27,30 @@ function parseKbYaml(text) {
     const enabled = (b.match(/enabled:\s*(.+)/) || [])[1]?.trim() !== 'false';
     const ftMatch = b.match(/file_types:\s*\[([^\]]*)\]/);
     const fileTypes = ftMatch ? ftMatch[1].split(',').map(s => s.trim().replace(/"/g, '')) : ['.md', '.html', '.json'];
-    if (name) kbs.push({ name, description: desc, repo, branch, sync_interval_hours: syncH, file_types: fileTypes, enabled });
+    // Parse URLs
+    const urls = [];
+    const urlSection = b.match(/urls:\s*\n((?:\s+-\s+https?:\/\/[^\n]+\n?)*)/);
+    if (urlSection) { const urlLines = urlSection[1].match(/https?:\/\/[^\s]+/g); if (urlLines) urls.push(...urlLines); }
+    const type = repo ? 'git' : urls.length > 0 ? 'urls' : 'git';
+    if (name) kbs.push({ name, description: desc, repo, branch, sync_interval_hours: syncH, file_types: fileTypes, enabled, urls, type });
   }
   return kbs;
 }
 
 function buildKbYaml(kbs) {
-  let y = '# Vertex Nova — Family Knowledge Bases\n\nknowledgebases:\n';
+  let y = '# Vertex Nova — Knowledge Bases\n\nknowledgebases:\n';
   for (const kb of kbs) {
     y += '  - name: ' + kb.name + '\n';
     y += '    description: "' + (kb.description || '').replace(/"/g, '\\"') + '"\n';
-    y += '    repo: ' + kb.repo + '\n';
-    y += '    branch: ' + (kb.branch || 'main') + '\n';
+    if (kb.type === 'urls' || (!kb.repo && kb.urls?.length > 0)) {
+      y += '    urls:\n';
+      for (const url of (kb.urls || [])) y += '      - ' + url + '\n';
+    } else {
+      y += '    repo: ' + (kb.repo || '') + '\n';
+      y += '    branch: ' + (kb.branch || 'main') + '\n';
+      y += '    file_types: ["' + (kb.file_types || ['.md']).join('", "') + '"]\n';
+    }
     y += '    sync_interval_hours: ' + (kb.sync_interval_hours || 24) + '\n';
-    y += '    file_types: ["' + (kb.file_types || ['.md']).join('", "') + '"]\n';
     y += '    enabled: ' + kb.enabled + '\n\n';
   }
   return y;
@@ -62,6 +72,26 @@ function FileTypeEditor({ items, onChange }) {
         <Button onClick={() => { if (val.trim()) { onChange([...(items || []), val.trim()]); setVal(''); } }} iconName="add-plus">Ajouter</Button>
       </div>
       {tokens.length > 0 && <TokenGroup items={tokens} onDismiss={({ detail }) => { const n = [...items]; n.splice(detail.itemIndex, 1); onChange(n); }} />}
+    </SpaceBetween>
+  );
+}
+
+// URL list editor
+function UrlListEditor({ urls, onChange }) {
+  const [val, setVal] = useState('');
+  const tokens = (urls || []).map(u => ({ label: u, dismissLabel: 'Retirer ' + u }));
+  return (
+    <SpaceBetween size="xs">
+      <div style={{ display: 'flex', gap: '6px' }}>
+        <div style={{ flex: 1 }}>
+          <Input value={val} onChange={({ detail }) => setVal(detail.value)}
+            onKeyDown={({ detail }) => { if (detail.key === 'Enter' && val.trim()) { onChange([...(urls || []), val.trim()]); setVal(''); } }}
+            placeholder="https://example.com/page"
+          />
+        </div>
+        <Button onClick={() => { if (val.trim()) { onChange([...(urls || []), val.trim()]); setVal(''); } }} iconName="add-plus">Ajouter</Button>
+      </div>
+      {tokens.length > 0 && <TokenGroup items={tokens} onDismiss={({ detail }) => { const n = [...urls]; n.splice(detail.itemIndex, 1); onChange(n); }} />}
     </SpaceBetween>
   );
 }
@@ -120,9 +150,12 @@ export default function KnowledgeBasePanel({ api }) {
     const n = [...parsed]; n[idx] = { ...n[idx], [field]: value }; updateFromForm(n);
   };
   const removeKb = (idx) => updateFromForm(parsed.filter((_, i) => i !== idx));
-  const addKb = () => updateFromForm([...parsed, {
+  const addKb = (type) => updateFromForm([...parsed, type === 'urls' ? {
+    name: 'new-web-kb', description: '', repo: '', branch: '', sync_interval_hours: 168,
+    file_types: ['.md'], enabled: true, urls: ['https://'], type: 'urls',
+  } : {
     name: 'new-kb', description: '', repo: 'https://github.com/user/repo.git',
-    branch: 'main', sync_interval_hours: 24, file_types: ['.md', '.html', '.json'], enabled: true,
+    branch: 'main', sync_interval_hours: 24, file_types: ['.md', '.html', '.json'], enabled: true, urls: [], type: 'git',
   }]);
 
   // Match stats to parsed KBs
@@ -133,7 +166,12 @@ export default function KnowledgeBasePanel({ api }) {
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
       <ColumnLayout columns={2}>
         <SpaceBetween size="m">
-          <Header variant="h3" actions={<Button onClick={addKb} iconName="add-plus">Ajouter une base</Button>}>
+          <Header variant="h3" actions={
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button onClick={() => addKb('git')} iconName="add-plus">Dépôt Git</Button>
+              <Button onClick={() => addKb('urls')} iconName="add-plus">Sites web</Button>
+            </SpaceBetween>
+          }>
             Bases de connaissances ({parsed.length})
           </Header>
           {parsed.map((kb, i) => {
@@ -155,23 +193,44 @@ export default function KnowledgeBasePanel({ api }) {
                     <FormField label="Nom">
                       <Input value={kb.name} onChange={({ detail }) => updateKb(i, 'name', detail.value)} />
                     </FormField>
-                    <FormField label="Branche">
-                      <Input value={kb.branch || 'main'} onChange={({ detail }) => updateKb(i, 'branch', detail.value)} />
+                    <FormField label="Type">
+                      <Select
+                        selectedOption={{ value: kb.type || 'git', label: kb.type === 'urls' ? '🌐 Sites web (URLs)' : '📦 Dépôt Git' }}
+                        onChange={({ detail }) => updateKb(i, 'type', detail.selectedOption.value)}
+                        options={[
+                          { value: 'git', label: '📦 Dépôt Git' },
+                          { value: 'urls', label: '🌐 Sites web (URLs)' },
+                        ]}
+                      />
                     </FormField>
                   </ColumnLayout>
                   <FormField label="Description">
                     <Input value={kb.description} onChange={({ detail }) => updateKb(i, 'description', detail.value)} />
                   </FormField>
-                  <FormField label="URL du dépôt Git">
-                    <Input value={kb.repo} onChange={({ detail }) => updateKb(i, 'repo', detail.value)} placeholder="https://github.com/user/repo.git" />
-                  </FormField>
+                  {(kb.type !== 'urls') && (
+                    <ColumnLayout columns={2}>
+                      <FormField label="URL du dépôt Git">
+                        <Input value={kb.repo} onChange={({ detail }) => updateKb(i, 'repo', detail.value)} placeholder="https://github.com/user/repo.git" />
+                      </FormField>
+                      <FormField label="Branche">
+                        <Input value={kb.branch || 'main'} onChange={({ detail }) => updateKb(i, 'branch', detail.value)} />
+                      </FormField>
+                    </ColumnLayout>
+                  )}
+                  {(kb.type === 'urls') && (
+                    <FormField label="URLs à indexer" description="Ajoutez les pages web à ingérer">
+                      <UrlListEditor urls={kb.urls || []} onChange={(urls) => updateKb(i, 'urls', urls)} />
+                    </FormField>
+                  )}
                   <ColumnLayout columns={2}>
                     <FormField label="Sync (heures)">
                       <Input type="number" value={String(kb.sync_interval_hours || 24)} onChange={({ detail }) => updateKb(i, 'sync_interval_hours', parseInt(detail.value) || 24)} />
                     </FormField>
-                    <FormField label="Types de fichiers">
-                      <FileTypeEditor items={kb.file_types || []} onChange={(ft) => updateKb(i, 'file_types', ft)} />
-                    </FormField>
+                    {(kb.type !== 'urls') && (
+                      <FormField label="Types de fichiers">
+                        <FileTypeEditor items={kb.file_types || []} onChange={(ft) => updateKb(i, 'file_types', ft)} />
+                      </FormField>
+                    )}
                   </ColumnLayout>
                   {st.synced !== undefined && (
                     <ColumnLayout columns={2}>
