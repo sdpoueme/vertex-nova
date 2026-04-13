@@ -1,10 +1,4 @@
-# ═══════════════════════════════════════════════════════
 # Vertex Nova — Family Knowledge Bases
-# ═══════════════════════════════════════════════════════
-#
-# Each knowledge base is a git repo synced to vault/kb/<name>/
-# Content is indexed for RAG (Retrieval-Augmented Generation).
-# The agent can search across all KBs using the kb_search tool.
 
 knowledgebases:
   - name: emmanuel-poueme
@@ -15,11 +9,19 @@ knowledgebases:
     file_types: [".html", ".json", ".md"]
     enabled: true
 
-# Add more family knowledge bases:
-#  - name: family-recipes
-#    description: "Recettes de famille"
-#    repo: https://github.com/user/recipes.git
-#    branch: main
-#    sync_interval_hours: 48
-#    file_types: [".md", ".txt"]
-#    enabled: true
+  - name: serge-poueme
+    description: "Page personnelle GitHub de Serge Poueme"
+    repo: https://github.com/sdpoueme/sdpoueme.git
+    branch: main
+    sync_interval_hours: 24
+    file_types: [".md", ".html", ".json"]
+    enabled: true
+
+
+  - name: home-resources
+    description: "Sites web utiles pour la maison — services, énergie, municipalité"
+    urls:
+      - https://www.hydroquebec.com/residentiel/
+      - https://www.ville.sainte-julie.qc.ca/
+    sync_interval_hours: 168
+    enabled: true

@@ -34,7 +34,17 @@ function parseKbYaml(text) {
     var enabled = (b.match(/enabled:\s*(.+)/) || [])[1]?.trim() !== 'false';
     var ftMatch = b.match(/file_types:\s*\[([^\]]*)\]/);
     var fileTypes = ftMatch ? ftMatch[1].split(',').map(function(s) { return s.trim().replace(/"/g, ''); }) : ['.md', '.html', '.json'];
-    if (name && repo) kbs.push({ name: name, description: desc, repo: repo, branch: branch, sync_interval_hours: syncH, file_types: fileTypes, enabled: enabled });
+
+    // Parse URLs list
+    var urls = [];
+    var urlSection = b.match(/urls:\s*\n((?:\s+-\s+https?:\/\/[^\n]+\n?)*)/);
+    if (urlSection) {
+      var urlLines = urlSection[1].match(/https?:\/\/[^\s]+/g);
+      if (urlLines) urls = urlLines;
+    }
+
+    var type = repo ? 'git' : urls.length > 0 ? 'urls' : 'git';
+    if (name && (repo || urls.length > 0)) kbs.push({ name: name, description: desc, repo: repo, branch: branch, sync_interval_hours: syncH, file_types: fileTypes, enabled: enabled, urls: urls, type: type });
   }
   return kbs;
 }
@@ -50,6 +60,7 @@ function runGit(args, cwd) {
 }
 
 async function syncRepo(kb) {
+  if (kb.type === 'urls') return syncUrls(kb);
   var repoDir = join(kbDir, kb.name);
   try {
     if (existsSync(join(repoDir, '.git'))) {
@@ -65,6 +76,43 @@ async function syncRepo(kb) {
     log.error('KB sync failed (' + kb.name + '): ' + err.message);
     return false;
   }
+}
+
+// --- URL sync: fetch web pages and save as HTML files ---
+async function syncUrls(kb) {
+  var urlDir = join(kbDir, kb.name);
+  mkdirSync(urlDir, { recursive: true });
+
+  var fetched = 0;
+  for (var url of (kb.urls || [])) {
+    try {
+      var res = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' },
+        signal: AbortSignal.timeout(15000),
+        redirect: 'follow',
+      });
+      if (!res.ok) { log.warn('KB URL fetch failed (' + url + '): ' + res.status); continue; }
+      var html = await res.text();
+
+      // Extract clean text
+      var text = extractHtml(html);
+      if (text.length < 50) { log.debug('KB URL too short, skipping: ' + url); continue; }
+
+      // Extract page title
+      var titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+      var title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : url;
+
+      // Save as markdown file (URL-safe filename)
+      var safeName = url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '_').slice(0, 80);
+      var content = '# ' + title + '\n\nSource: ' + url + '\nFetched: ' + new Date().toISOString() + '\n\n' + text;
+      writeFileSync(join(urlDir, safeName + '.md'), content);
+      fetched++;
+    } catch (err) {
+      log.warn('KB URL error (' + url + '): ' + err.message);
+    }
+  }
+  log.info('KB URL sync (' + kb.name + '): ' + fetched + '/' + kb.urls.length + ' pages fetched');
+  return fetched > 0;
 }
 
 // --- Text extraction ---
@@ -320,9 +368,9 @@ export function searchKb(query, maxResults) {
 export function listKbs() {
   return kbConfigs.map(function(kb) {
     var repoDir = join(kbDir, kb.name);
-    var synced = existsSync(join(repoDir, '.git'));
+    var synced = kb.type === 'urls' ? existsSync(repoDir) : existsSync(join(repoDir, '.git'));
     var chunks = index.filter(function(e) { return e.kb === kb.name; }).length;
-    return { name: kb.name, description: kb.description, repo: kb.repo, enabled: kb.enabled, synced: synced, chunks: chunks };
+    return { name: kb.name, description: kb.description, repo: kb.repo, urls: kb.urls || [], type: kb.type || 'git', enabled: kb.enabled, synced: synced, chunks: chunks };
   });
 }
 
