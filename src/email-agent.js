@@ -233,6 +233,28 @@ export class EmailAgent {
     }
     return items;
   }
+
+  /**
+   * Compose and send a new email (not a reply).
+   */
+  async composeAndSend(to, subject, body) {
+    var smtp = this._getSmtp();
+    if (!smtp) return 'SMTP non configuré. Vérifiez EMAIL_MONITOR_ADDRESS et EMAIL_MONITOR_PASSWORD dans .env';
+
+    try {
+      await smtp.sendMail({
+        from: this.email,
+        to: to,
+        subject: subject,
+        text: body,
+      });
+      log.info('Email composed and sent to ' + to + ': ' + subject);
+      return '✅ Email envoyé à ' + to + '\nSujet: ' + subject;
+    } catch (err) {
+      log.error('Compose send failed: ' + err.message);
+      return '❌ Erreur d\'envoi: ' + err.message;
+    }
+  }
 }
 
 // Singleton for access from AI tools

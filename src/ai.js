@@ -302,6 +302,20 @@ var tools = [
       },
       required: ['email_key']
     }
+  },
+  {
+    name: 'email_compose',
+    description: 'Compose et envoie un nouvel email. Utilise quand l\'utilisateur veut écrire un email à quelqu\'un (pas une réponse). Demande TOUJOURS confirmation avant d\'envoyer.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        to: { type: 'string', description: 'Adresse email du destinataire' },
+        subject: { type: 'string', description: 'Sujet de l\'email' },
+        body: { type: 'string', description: 'Corps de l\'email' },
+        confirm: { type: 'boolean', description: 'true pour envoyer, false pour montrer le brouillon d\'abord' }
+      },
+      required: ['to', 'subject', 'body']
+    }
   }
 ];
 
@@ -848,6 +862,19 @@ async function executeTool(name, input) {
       var ea3 = getEA3();
       if (!ea3) return 'Agent email non configuré.';
       return await ea3.sendReply(input.email_key);
+    } catch (err) { return 'Erreur: ' + err.message; }
+  }
+
+  if (name === 'email_compose') {
+    try {
+      var { getEmailAgent: getEA4 } = await import('./email-agent.js');
+      var ea4 = getEA4();
+      if (!ea4) return 'Agent email non configuré. Ajoutez EMAIL_MONITOR_ADDRESS et EMAIL_MONITOR_PASSWORD dans .env';
+      if (!input.confirm) {
+        // Show draft for approval
+        return '✏️ Brouillon d\'email:\nÀ: ' + input.to + '\nSujet: ' + input.subject + '\n\n' + input.body + '\n\nDemande confirmation à l\'utilisateur avant d\'envoyer.';
+      }
+      return await ea4.composeAndSend(input.to, input.subject, input.body);
     } catch (err) { return 'Erreur: ' + err.message; }
   }
 
