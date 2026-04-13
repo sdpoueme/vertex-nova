@@ -860,6 +860,8 @@ async function withRetry(fn, maxRetries, delayMs) {
     try {
       return await fn();
     } catch (err) {
+      // Don't retry credit/billing errors — they won't resolve with retries
+      if (err.message.includes('credit') || err.message.includes('billing') || err.message.includes('balance')) throw err;
       if (attempt === maxRetries) throw err;
       log.warn('Retry ' + (attempt + 1) + '/' + maxRetries + ': ' + err.message);
       await new Promise(function(r) { setTimeout(r, delayMs * (attempt + 1)); });

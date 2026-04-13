@@ -7,15 +7,15 @@ routing:
   morning:
     hours: [7, 8]
     channel: echo
-    device: vertexnovaspeaker
+    device: Serge's Echo Show
   workday:
     hours: [9, 10, 11, 12, 13, 14, 15, 16]
     channel: echo
-    device: vertexnovaspeakeroffice
+    device: Bureau Serge
   evening:
     hours: [17, 18]
     channel: echo
-    device: vertexnovaspeaker
+    device: Serge's Echo Show
   prime_time:
     hours: [19, 20]
     channel: sonos
@@ -84,7 +84,7 @@ actions:
 
   - name: friday-movies
     description: "Friday movie recommendations"
-    interval_minutes: 1440
+    interval_minutes: 600
     model: qwen3:8b
     day_of_week: friday
     active_hours: [17, 18, 19]
