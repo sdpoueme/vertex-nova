@@ -121,12 +121,17 @@ export default function ChatPanel({ api }) {
             const data = await res.json();
             if (data.text) {
               setMessages(m => { const u = [...m]; const li = u.findLastIndex(msg => msg.role === 'user'); if (li >= 0) u[li] = { role: 'user', text: '🎤 ' + data.text }; return u; });
-              const aiRes = await fetch(api + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: '[Voice message] ' + data.text }) });
+              const voiceBody = { message: '[Voice message] ' + data.text };
+              if (voiceMode && voiceDevice) { voiceBody.voiceMode = true; voiceBody.voiceDevice = voiceDevice.value; }
+              const aiRes = await fetch(api + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(voiceBody) });
               const aiData = await aiRes.json();
               setMessages(m => [...m, { role: 'assistant', text: aiData.response || aiData.error }]);
               loadHistory();
+            } else if (data.error) {
+              setMessages(m => { const u = [...m]; const li = u.findLastIndex(msg => msg.role === 'user'); if (li >= 0) u[li] = { role: 'user', text: '🎤 (aucune parole détectée)' }; return u; });
+              setMessages(m => [...m, { role: 'assistant', text: data.error }]);
             } else {
-              setMessages(m => [...m, { role: 'assistant', text: 'Erreur transcription: ' + (data.error || 'échec') }]);
+              setMessages(m => [...m, { role: 'assistant', text: 'Erreur transcription' }]);
             }
             setLoading(false);
           };

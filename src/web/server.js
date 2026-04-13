@@ -117,7 +117,7 @@ export function startDashboard(config, port) {
       var tBody = await readBody(req);
       try {
         var tData = JSON.parse(tBody);
-        var { writeFileSync: writeTmp, unlinkSync: unlinkTmp, mkdirSync: mkTmp } = await import('node:fs');
+        var { writeFileSync: writeTmp, unlinkSync: unlinkTmp, mkdirSync: mkTmp, statSync: statTmp } = await import('node:fs');
         var { join: joinTmp } = await import('node:path');
         var { execFile: execTmp } = await import('node:child_process');
         var { randomUUID } = await import('node:crypto');
@@ -127,10 +127,29 @@ export function startDashboard(config, port) {
         var webmPath = joinTmp(tmpDir, id + '.webm');
         var wavPath = joinTmp(tmpDir, id + '.wav');
         writeTmp(webmPath, Buffer.from(tData.audio, 'base64'));
+
+        // Check audio size — too small = probably silence
+        var audioSize = Buffer.from(tData.audio, 'base64').length;
+        if (audioSize < 2000) {
+          try { unlinkTmp(webmPath); } catch {}
+          json(res, 200, { text: '', error: 'Audio trop court' });
+          return;
+        }
+
         // Convert webm → wav
         await new Promise(function(resolve, reject) {
           execTmp('ffmpeg', ['-i', webmPath, '-ar', '16000', '-ac', '1', '-y', wavPath], { timeout: 30000 }, function(err) { if (err) reject(err); else resolve(); });
         });
+
+        // Check wav duration — skip if < 0.5s
+        var wavSize = 0;
+        try { wavSize = statTmp(wavPath).size; } catch {}
+        if (wavSize < 16000) { // 16kHz × 1 channel × 0.5s = 16000 bytes
+          try { unlinkTmp(webmPath); } catch {} try { unlinkTmp(wavPath); } catch {}
+          json(res, 200, { text: '', error: 'Audio trop court' });
+          return;
+        }
+
         // Transcribe with whisper
         var sttPath = config.sttPath || 'whisper-cli';
         var sttModel = config.sttModel || '';
@@ -141,6 +160,32 @@ export function startDashboard(config, port) {
         var { readFileSync: readTmp } = await import('node:fs');
         var text = readTmp(wavPath + '.txt', 'utf8').trim();
         try { unlinkTmp(webmPath); } catch {} try { unlinkTmp(wavPath); } catch {} try { unlinkTmp(wavPath + '.txt'); } catch {}
+
+        // Filter whisper hallucinations — common phrases generated from silence/noise
+        var HALLUCINATIONS = [
+          'merci d\'avoir regardé',
+          'merci d\'avoir regardé cette vidéo',
+          'sous-titres réalisés par',
+          'sous-titres par',
+          'thank you for watching',
+          'thanks for watching',
+          'please subscribe',
+          'like and subscribe',
+          'n\'oubliez pas de vous abonner',
+          'abonnez-vous',
+          'merci à tous',
+          'à bientôt',
+          'music',
+          '♪',
+          '...',
+        ];
+        var textLower = text.toLowerCase().replace(/[.,!?]/g, '').trim();
+        var isHallucination = HALLUCINATIONS.some(function(h) { return textLower === h || textLower.startsWith(h); });
+        if (isHallucination || text.length < 3) {
+          json(res, 200, { text: '', error: 'Aucune parole détectée. Réessayez en parlant plus fort.' });
+          return;
+        }
+
         json(res, 200, { text: text });
       } catch (err) {
         json(res, 500, { error: err.message });
