@@ -9,6 +9,8 @@ import Box from '@cloudscape-design/components/box';
 import Spinner from '@cloudscape-design/components/spinner';
 import StatusIndicator from '@cloudscape-design/components/status-indicator';
 import Icon from '@cloudscape-design/components/icon';
+import Toggle from '@cloudscape-design/components/toggle';
+import Select from '@cloudscape-design/components/select';
 
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -25,12 +27,32 @@ export default function ChatPanel({ api }) {
   const [image, setImage] = useState(null);
   const [recording, setRecording] = useState(false);
   const [history, setHistory] = useState([]);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [voiceDevice, setVoiceDevice] = useState(null);
+  const [voiceDevices, setVoiceDevices] = useState([]);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const mediaRecRef = useRef(null);
   const chunksRef = useRef([]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Load available voice devices (Echo + Sonos)
+  useEffect(() => {
+    Promise.all([
+      fetch(api + '/api/alexa/echo-devices').then(r => r.ok ? r.json() : { devices: [] }).catch(() => ({ devices: [] })),
+      fetch(api + '/api/models').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    ]).then(([echoData, models]) => {
+      const devs = [];
+      for (const d of (echoData.devices || [])) {
+        if (d.online) devs.push({ value: d.name, label: '🔊 ' + d.name + ' (Echo)' });
+      }
+      if (models.sonos_day_room) devs.push({ value: 'sonos:' + models.sonos_day_room, label: '🔈 ' + models.sonos_day_room + ' (Sonos)' });
+      if (models.sonos_night_room && models.sonos_night_room !== models.sonos_day_room) devs.push({ value: 'sonos:' + models.sonos_night_room, label: '🔈 ' + models.sonos_night_room + ' (Sonos)' });
+      setVoiceDevices(devs);
+      if (devs.length > 0 && !voiceDevice) setVoiceDevice(devs[0]);
+    });
+  }, [api]);
 
   const loadHistory = useCallback(() => {
     fetch(api + '/api/history').then(r => r.json()).then(d => setHistory(d.interactions || [])).catch(() => {});
@@ -48,6 +70,7 @@ export default function ChatPanel({ api }) {
     try {
       const body = { message: text };
       if (image) body.image = { base64: image.base64, mediaType: image.mediaType };
+      if (voiceMode && voiceDevice) { body.voiceMode = true; body.voiceDevice = voiceDevice.value; }
       const res = await fetch(api + '/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -221,9 +244,26 @@ export default function ChatPanel({ api }) {
   );
 
   return (
-    <Tabs tabs={[
-      { id: 'chat', label: 'Chat', content: chatContent },
-      { id: 'history', label: 'Interactions (' + history.length + ')', content: historyContent },
-    ]} />
+    <SpaceBetween size="s">
+      {voiceDevices.length > 0 && (
+        <SpaceBetween direction="horizontal" size="m">
+          <Toggle checked={voiceMode} onChange={({ detail }) => setVoiceMode(detail.checked)}>
+            {voiceMode ? '🔊 Voix activée' : '🔇 Voix désactivée'}
+          </Toggle>
+          {voiceMode && (
+            <Select
+              selectedOption={voiceDevice}
+              onChange={({ detail }) => setVoiceDevice(detail.selectedOption)}
+              options={voiceDevices}
+              placeholder="Appareil"
+            />
+          )}
+        </SpaceBetween>
+      )}
+      <Tabs tabs={[
+        { id: 'chat', label: 'Chat', content: chatContent },
+        { id: 'history', label: 'Interactions (' + history.length + ')', content: historyContent },
+      ]} />
+    </SpaceBetween>
   );
 }

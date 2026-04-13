@@ -354,7 +354,7 @@ async function executeTool(name, input) {
   if (name === 'sonos_speak') {
     var cliPath = join(config.projectDir, 'scripts/sonos-cli.js');
     var out = await runCmd('node', [cliPath, 'speak', input.text, input.room || ''], 30000);
-    return out.trim();
+    return 'OK. Confirme brièvement à l\'utilisateur dans sa langue que le message a été lu sur Sonos ' + (input.room || '') + '.';
   }
   if (name === 'sonos_speak_all') {
     var cliPath2 = join(config.projectDir, 'scripts/sonos-cli.js');
@@ -439,16 +439,16 @@ async function executeTool(name, input) {
   if (name === 'echo_speak') {
     var { alexaSpeak } = await import('./outputs/alexa-speak.js');
     var ok = await alexaSpeak(input.text, input.device);
-    if (ok) return 'Annonce envoyée sur Echo: ' + input.text.slice(0, 100);
-    return 'Erreur: Alexa cookies may have expired. Send me the new cookies on Telegram.';
+    if (ok) return 'OK. Confirme brièvement à l\'utilisateur dans sa langue que le message a été lu sur ' + (input.device || 'l\'appareil') + '.';
+    return 'Erreur: les cookies Alexa ont peut-être expiré. Envoie-moi les nouveaux cookies sur Telegram.';
   }
 
   if (name === 'echo_speak_all') {
     var { alexaSpeakAll } = await import('./outputs/alexa-speak.js');
     var allResults = await alexaSpeakAll(input.text);
     var allOk = allResults.filter(function(r) { return r; }).length;
-    if (allOk > 0) return 'Annonce envoyée sur ' + allOk + ' appareils Echo';
-    return 'Erreur: Alexa cookies may have expired. Send me the new cookies on Telegram.';
+    if (allOk > 0) return 'OK. Confirme brièvement que le message a été lu sur ' + allOk + ' appareils.';
+    return 'Erreur: les cookies Alexa ont peut-être expiré. Envoie-moi les nouveaux cookies sur Telegram.';
   }
 
   // Google News search + Business Insider + Cameroon
@@ -989,7 +989,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
           }
         }
         // If no good assistant message, check if a voice tool succeeded
-        if (tc.function.name.includes('speak')) return 'Annonce effectuée.';
+        if (tc.function.name.includes('speak')) return 'C\'est fait, le message a été lu.';
         return 'Voici les résultats.';
       }
 
@@ -1030,8 +1030,8 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     for (var li2 = messages.length - 1; li2 >= 0; li2--) {
       if (messages[li2].role === 'tool' && messages[li2].content) {
         var tc2 = typeof messages[li2].content === 'string' ? messages[li2].content : '';
-        if (tc2.includes('Annonce envoyée') || tc2.includes('annoncé avec succès')) {
-          lastContent = 'Annonce effectuée.';
+        if (tc2.includes('OK. Confirme') || tc2.includes('annoncé avec succès')) {
+          lastContent = 'C\'est fait.';
           break;
         }
         if (tc2.length > 20 && !tc2.includes('Déjà') && !tc2.includes('Error')) {

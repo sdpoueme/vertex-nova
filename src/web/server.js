@@ -155,11 +155,26 @@ export function startDashboard(config, port) {
         var data = JSON.parse(body);
         var sessionId = 'web-dashboard-' + new Date().toISOString().slice(0, 10);
         logInteraction('web', 'in', data.message, !!data.image);
-        // Timeout after 90 seconds
         var chatTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 90000); });
         var chatPromise = chat(data.message, sessionId, data.image || null);
         var response = await Promise.race([chatPromise, chatTimeout]);
         logInteraction('web', 'out', response);
+
+        // Voice mode: auto-speak response on selected device
+        if (data.voiceMode && data.voiceDevice && response && response.length > 5) {
+          try {
+            var cleanVoice = response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s*/g, '').replace(/```[\s\S]*?```/g, '').replace(/`([^`]+)`/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
+            if (data.voiceDevice.startsWith('sonos:')) {
+              var { execFile: execVoiceChat } = await import('node:child_process');
+              var cliVoice = join(projectDir, 'scripts/sonos-cli.js');
+              execVoiceChat('node', [cliVoice, 'speak', cleanVoice.slice(0, 800), data.voiceDevice.slice(6)], { timeout: 30000 }, function() {});
+            } else {
+              var { alexaSpeak: asVoiceChat } = await import('../outputs/alexa-speak.js');
+              await asVoiceChat(cleanVoice.slice(0, 800), data.voiceDevice);
+            }
+          } catch (vErr) { log.debug('Voice mode speak failed: ' + vErr.message); }
+        }
+
         json(res, 200, { response: response });
       } catch (err) {
         if (err.message === 'timeout') {
