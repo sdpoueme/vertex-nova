@@ -189,6 +189,8 @@ async function handleMessage(msg) {
     log.info('[' + channel + '] Message from ' + userId + ': ' + text.slice(0, 100));
     var start = Date.now();
     var response = await chat(stamped, sessionId, msg.image || null);
+    // Clean markdown from response (AI sometimes adds ** _ # despite instructions)
+    response = response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/__([^_]+)__/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '').replace(/```[\s\S]*?```/g, function(m) { return m.replace(/```\w*\n?/g, '').trim(); }).replace(/`([^`]+)`/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
     var elapsed = ((Date.now() - start) / 1000).toFixed(1);
     log.info('Response in ' + elapsed + 's (' + response.length + ' chars)');
 

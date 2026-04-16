@@ -341,46 +341,47 @@ var agents = {};
  */
 export function initStrandsAgents() {
   var model = createOllamaModel();
+  var NO_MD = ' IMPORTANT: N\'utilise JAMAIS de formatage markdown (pas de **, _, #, ```, []()). Écris en texte simple.';
 
   agents.news = new Agent({
     model: model,
     tools: [newsSearchTool, webSearchTool],
-    systemPrompt: 'Tu es un agent actualités. Utilise news_search pour les nouvelles. Réponds en français, concis.',
+    systemPrompt: 'Tu es un agent actualités. Utilise news_search pour les nouvelles. Réponds en français, concis.' + NO_MD,
     printer: false,
   });
 
   agents.media = new Agent({
     model: model,
     tools: [movieTool, echoSpeakTool, sonosSpeakTool],
-    systemPrompt: 'Tu es un agent média. Pour les films utilise movie_recommend. Pour parler sur les appareils utilise echo_speak ou sonos_speak directement.',
+    systemPrompt: 'Tu es un agent média. Pour les films utilise movie_recommend. Pour parler sur les appareils utilise echo_speak ou sonos_speak directement.' + NO_MD,
     printer: false,
   });
 
   agents.home = new Agent({
     model: model,
     tools: [vaultReadTool, vaultSearchTool, kbSearchTool],
-    systemPrompt: 'Tu es un agent maison. Utilise vault et kb pour trouver des informations. Réponds en français.',
+    systemPrompt: 'Tu es un agent maison. Utilise vault et kb pour trouver des informations. Réponds en français.' + NO_MD,
     printer: false,
   });
 
   agents.memory = new Agent({
     model: model,
     tools: [memoryViewTool, reminderSetTool],
-    systemPrompt: 'Tu es un agent mémoire. Gère les rappels et la mémoire.',
+    systemPrompt: 'Tu es un agent mémoire. Gère les rappels et la mémoire.' + NO_MD,
     printer: false,
   });
 
   agents.email = new Agent({
     model: model,
     tools: [emailListTool, emailComposeTool, emailDraftTool],
-    systemPrompt: 'Tu es un agent email. Tu peux lister les emails, rédiger des brouillons, et envoyer des emails. Montre TOUJOURS le brouillon avant d\'envoyer. Réponds dans la langue de l\'utilisateur.',
+    systemPrompt: 'Tu es un agent email. Tu peux lister les emails, rédiger des brouillons, et envoyer des emails. Montre TOUJOURS le brouillon avant d\'envoyer. Réponds dans la langue de l\'utilisateur.' + NO_MD,
     printer: false,
   });
 
   agents.general = new Agent({
     model: model,
     tools: [newsSearchTool, webSearchTool, echoSpeakTool, sonosSpeakTool, vaultReadTool, vaultSearchTool, kbSearchTool, movieTool, memoryViewTool, reminderSetTool, emailListTool, emailComposeTool, emailDraftTool],
-    systemPrompt: 'Tu es Vertex Nova, assistant maison. Tu peux envoyer des emails, parler sur les appareils, chercher des infos, gérer les rappels. Réponds dans la langue de l\'utilisateur. Sois concis.',
+    systemPrompt: 'Tu es Vertex Nova, assistant maison. Tu peux envoyer des emails, parler sur les appareils, chercher des infos, gérer les rappels. Réponds dans la langue de l\'utilisateur. Sois concis.' + NO_MD,
     printer: false,
   });
 

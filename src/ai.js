@@ -908,14 +908,14 @@ async function chatOllama(message, sessionId, modelOverride, image) {
   var ollamaSystemPrompt = "Tu es Vertex Nova, assistant maison intelligent.\n\n" +
     "<rules>\n" +
     "- Réponds dans la langue du message\n" +
-    "- Sois concis\n" +
-    "- Tu PEUX envoyer des emails avec email_compose (nouveau) et email_draft/email_send (réponse)\n" +
+    "- Sois concis et naturel\n" +
+    "- N'utilise PAS de formatage markdown (pas de **, pas de _, pas de #, pas de ```, pas de []())\n" +
+    "- Écris en texte simple et lisible, comme si tu parlais\n" +
+    "- Tu PEUX envoyer des emails avec email_compose et email_draft/email_send\n" +
     "- Tu PEUX parler sur les appareils Echo et Sonos\n" +
-    "- Sois concis\n" +
     "- Ne demande PAS les IDs d'appareils, utilise les valeurs par défaut\n" +
     "- Quand on demande de parler sur Echo/Sonos, utilise directement l'outil\n" +
     "- Ne RÉPÈTE PAS une réponse précédente quand on te demande de la lire sur un appareil\n" +
-    "- Pour les outils vocaux, envoie du texte SIMPLE sans emoji ni formatage\n" +
     "- Pour un résumé de semaine, lis les notes dans 'daily' ou 'weekly' du vault\n" +
     "</rules>\n\n" +
     "<reasoning_protocol>\n" +
@@ -1375,6 +1375,22 @@ async function chatClaude(message, sessionId, image) {
   }
 
   return 'Trop d\'itérations.';
+}
+
+// Strip markdown formatting from AI responses
+function cleanMarkdown(text) {
+  if (!text) return text;
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/#{1,6}\s+/g, '')
+    .replace(/```[\s\S]*?```/g, function(m) { return m.replace(/```\w*\n?/g, '').trim(); })
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s*>\s+/gm, '')
+    .trim();
 }
 
 export { clearConversation };
