@@ -1042,6 +1042,23 @@ async function chatOllama(message, sessionId, modelOverride, image) {
         } catch {}
       }
       maybeSummarize(sessionId);
+      // Detect degeneration (repeated words/phrases — Qwen3 bug)
+      if (rawContent && rawContent.length > 50) {
+        var words = rawContent.split(/\s+/);
+        if (words.length > 10) {
+          var last5 = words.slice(-5).join(' ');
+          var repeats = 0;
+          for (var wi = 0; wi < words.length - 5; wi++) {
+            if (words.slice(wi, wi + 5).join(' ') === last5) repeats++;
+          }
+          if (repeats > 3) {
+            log.warn('Degeneration detected, truncating response');
+            // Find the first non-repeating part
+            var sentences = rawContent.split(/[.!?]\s/);
+            rawContent = sentences[0] + (sentences.length > 1 ? '. ' + sentences[1] : '') + '.';
+          }
+        }
+      }
       return rawContent || 'Pas de réponse.';
     }
 
