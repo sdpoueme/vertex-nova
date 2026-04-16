@@ -1261,42 +1261,38 @@ export async function chat(message, sessionId, image) {
 
     // Save vision description in conversation for follow-ups
     addUserMessage(sessionId, '[Image analysée] ' + message);
-    addAssistantMessage(sessionId, '[Description de l\'image] ' + visionDescription);
+    addAssistantMessage(sessionId, visionDescription);
 
-    // Stage 2: Pass the description to the text model for action
-    var stage2Message = 'L\'utilisateur a envoyé une image avec le message: "' + message + '"\n\n' +
-      'Voici ce que l\'analyse visuelle a révélé:\n' + visionDescription + '\n\n' +
-      'Réponds à la demande de l\'utilisateur en te basant sur cette analyse. Sois précis et utile.';
+    // Return the vision description directly — it already answers the user's question
+    // Stage 2 only runs if the user's message explicitly requests an action
+    var needsAction = /envoie|email|rappel|remind|cherche|search|sauvegarde|save|vault/i.test(message);
+    if (!needsAction) {
+      return visionDescription;
+    }
 
+    // Stage 2: Quick action based on vision description (30s timeout)
     try {
-      // Direct Ollama call — bypass Strands and agent routing for Stage 2
       var s2res = await fetch(OLLAMA_URL + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(60000),
+        signal: AbortSignal.timeout(30000),
         body: JSON.stringify({
           model: OLLAMA_MODEL,
           messages: [
-            { role: 'system', content: 'Tu es Vertex Nova, assistant maison. L\'utilisateur t\'a envoyé une image qui a été analysée. Utilise l\'analyse pour répondre. Sois concis et précis. Réponds dans la langue de l\'utilisateur. Pas de formatage markdown.' },
-            { role: 'user', content: stage2Message },
+            { role: 'system', content: 'Tu es Vertex Nova. Réponds en 1-2 phrases. Pas de markdown.' },
+            { role: 'user', content: 'Image analysée: ' + visionDescription.slice(0, 500) + '\n\nDemande: ' + message },
           ],
-          stream: false,
-          think: false,
+          stream: false, think: false,
         }),
       });
       if (s2res.ok) {
         var s2data = await s2res.json();
-        var stage2Response = s2data.message?.content || '';
-        stage2Response = stage2Response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '');
-
-        if (stage2Response && stage2Response.length > 20) {
-          // Combine vision + specialist response
-          return visionDescription + '\n\n' + stage2Response;
-        }
+        var s2text = (s2data.message?.content || '').replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1');
+        if (s2text && s2text.length > 10) return visionDescription + '\n\n' + s2text;
       }
-    } catch (err) {
-      log.warn('Vision Stage 2 failed: ' + err.message);
-    }
+    } catch {}
+
+    return visionDescription;
 
     // Fallback: return vision-only response
     return visionDescription;
