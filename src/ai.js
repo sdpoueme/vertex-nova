@@ -998,9 +998,9 @@ async function chatOllama(message, sessionId, modelOverride, image) {
         body: JSON.stringify({
           model: modelName,
           messages: ollamaMessages,
-          tools: ollamaTools,
+          tools: image ? undefined : ollamaTools, // Vision models don't support tools
           stream: false,
-          think: false, // Fast response — thinking happens async in background
+          think: false,
         }),
       });
       if (!res.ok) throw new Error('Ollama error: ' + res.status);
