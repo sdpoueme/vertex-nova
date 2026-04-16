@@ -9,8 +9,8 @@
 var MAX_PAGES_PER_SITE = 50;
 var FETCH_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' };
 
-var { writeFileSync, mkdirSync } = require('node:fs');
-var { join } = require('node:path');
+import { writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 async function fetchPage(url) {
   try {
