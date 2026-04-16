@@ -1,16 +1,12 @@
 #!/usr/bin/env node
 /**
  * KB URL Worker — runs in a child process to fetch web pages without blocking the main event loop.
- * 
- * Usage: node kb-url-worker.js <outputDir> <url1> <url2> ...
- * Writes fetched pages as .md files to outputDir.
- * Exits with code 0 on success, 1 on failure.
  */
-var MAX_PAGES_PER_SITE = 50;
-var FETCH_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' };
-
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+
+var MAX_PAGES_PER_SITE = 50;
+var FETCH_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' };
 
 async function fetchPage(url) {
   try {
