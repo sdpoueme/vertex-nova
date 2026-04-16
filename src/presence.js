@@ -44,9 +44,33 @@ function saveState() {
   try { writeFileSync(stateFile, JSON.stringify(presenceState, null, 2)); } catch {}
 }
 
-// Get current ARP table
-function getArpTable() {
+// Ping known devices to refresh ARP table (needed for devices on mesh pods)
+function pingDevices(devices) {
   return new Promise(function(resolve) {
+    // Ping the subnet broadcast to wake up ARP entries, then ping each known IP
+    execFile('/sbin/ping', ['-c', '1', '-W', '1', '-t', '1', '192.168.2.255'], { timeout: 3000 }, function() {
+      // Also do a quick subnet scan for the common range
+      var pending = 0;
+      for (var i = 1; i <= 254; i++) {
+        pending++;
+        execFile('/sbin/ping', ['-c', '1', '-W', '1', '-t', '1', '192.168.2.' + i], { timeout: 2000 }, function() {
+          pending--;
+          if (pending <= 0) resolve();
+        });
+      }
+      // Safety timeout
+      setTimeout(resolve, 4000);
+    });
+  });
+}
+
+// Get current ARP table (with optional pre-ping to populate it)
+function getArpTable(doPing) {
+  return new Promise(async function(resolve) {
+    // Ping sweep first to ensure devices on mesh pods appear in ARP
+    if (doPing) {
+      try { await pingDevices(); } catch {}
+    }
     execFile('/usr/sbin/arp', ['-a'], { timeout: 5000 }, function(err, stdout) {
       if (err) { resolve([]); return; }
       var macs = [];
@@ -95,9 +119,15 @@ export function startPresenceMonitor(onEvent, vaultPath) {
 
   log.info('Presence monitor started: ' + devices.map(function(d) { return d.name + ' (' + d.mac + ')'; }).join(', '));
 
+  var pollCount = 0;
+
   async function poll() {
     try {
-      var arpMacs = await getArpTable();
+      pollCount++;
+      // Full ping sweep every 5th poll (every ~2.5 min) to find devices on mesh pods
+      // Quick ARP-only check on other polls
+      var doPing = (pollCount % 5 === 1);
+      var arpMacs = await getArpTable(doPing);
       log.debug('Presence poll: ' + arpMacs.length + ' MACs in ARP table');
       var now = Date.now();
 
