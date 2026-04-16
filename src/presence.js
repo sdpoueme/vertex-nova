@@ -5,7 +5,7 @@
  * Detects arrivals and departures, notifies the agent.
  *
  * Config in .env:
- *   PRESENCE_DEVICES=Serge:6c:3a:ff:8a:06:ed,Stéphanie:aa:bb:cc:dd:ee:ff
+ *   PRESENCE_DEVICES=Name1:aa:bb:cc:dd:ee:ff,Name2:11:22:33:44:55:66
  *   PRESENCE_POLL_SECONDS=30
  */
 import { execFile } from 'node:child_process';
