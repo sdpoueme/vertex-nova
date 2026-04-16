@@ -958,18 +958,23 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     "Exécute le plan directement sans expliquer ton raisonnement.\n" +
     "</reasoning_protocol>";
 
-  // Route to specialist agent for fewer tools = faster inference
+  // Route to specialist agent for fewer tools = faster inference (skip for vision models)
   var agentTools = tools;
-  try {
-    var { routeToAgent, getCombinedTools, getCombinedPrompt } = await import('./agents.js');
-    var agentRoute = routeToAgent(message);
-    if (agentRoute.primary !== 'general') {
-      agentTools = getCombinedTools(agentRoute.primary, agentRoute.secondary, tools);
-      var agentPrompt = getCombinedPrompt(agentRoute.primary, agentRoute.secondary);
-      if (agentPrompt) ollamaSystemPrompt += '\n\n' + agentPrompt;
-      log.info('Agent: ' + agentRoute.primary + (agentRoute.secondary ? ' + ' + agentRoute.secondary : '') + ' (' + agentTools.length + ' tools)');
-    }
-  } catch {}
+  if (!image) {
+    try {
+      var { routeToAgent, getCombinedTools, getCombinedPrompt } = await import('./agents.js');
+      var agentRoute = routeToAgent(message);
+      if (agentRoute.primary !== 'general') {
+        agentTools = getCombinedTools(agentRoute.primary, agentRoute.secondary, tools);
+        var agentPrompt = getCombinedPrompt(agentRoute.primary, agentRoute.secondary);
+        if (agentPrompt) ollamaSystemPrompt += '\n\n' + agentPrompt;
+        log.info('Agent: ' + agentRoute.primary + (agentRoute.secondary ? ' + ' + agentRoute.secondary : '') + ' (' + agentTools.length + ' tools)');
+      }
+    } catch {}
+  } else {
+    // Vision mode: simple prompt, no agent routing
+    ollamaSystemPrompt = 'Tu es un assistant visuel. Analyse l\'image fournie et réponds en détail dans la langue de l\'utilisateur. Décris ce que tu vois précisément.';
+  }
 
   var ollamaTools = agentTools.map(function(t) {
     return { type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } };
