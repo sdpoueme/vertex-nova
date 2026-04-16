@@ -1210,15 +1210,15 @@ export async function chat(message, sessionId, image) {
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
   // === TWO-STAGE VISION PIPELINE ===
-  // Stage 1: Vision Agent analyzes the image → produces a description
-  // Stage 2: Specialist Agent acts on the description (search vault, draft email, etc.)
+  // Uses isolated session IDs to avoid contaminating the main conversation
   if (image) {
+    var visionId = Date.now().toString(36);
     var visionDescription = null;
 
     // Stage 1: Get image description from vision model
     if (CLAUDE_API_KEY && Date.now() >= claudeDisabledUntil) {
       try {
-        visionDescription = await chatClaude(message, sessionId + '-vision', image);
+        visionDescription = await chatClaude(message, 'vision-' + visionId, image);
       } catch (err) {
         log.warn('Claude vision failed: ' + err.message + ', trying local vision model');
         if (err.message.includes('credit') || err.message.includes('billing')) {
@@ -1228,7 +1228,7 @@ export async function chat(message, sessionId, image) {
     }
     if (!visionDescription) {
       try {
-        visionDescription = await chatOllama(message, sessionId + '-vision', 'qwen2.5vl:7b', image);
+        visionDescription = await chatOllama(message, 'vision-' + visionId, 'qwen2.5vl:7b', image);
         if (!visionDescription || visionDescription.length < 20 || visionDescription.includes('difficultés techniques')) {
           visionDescription = null;
         }
