@@ -47,7 +47,7 @@ function saveState() {
 // Get current ARP table
 function getArpTable() {
   return new Promise(function(resolve) {
-    execFile('arp', ['-a'], { timeout: 5000 }, function(err, stdout) {
+    execFile('/usr/sbin/arp', ['-a'], { timeout: 5000 }, function(err, stdout) {
       if (err) { resolve([]); return; }
       var macs = [];
       var lines = stdout.split('\n');
