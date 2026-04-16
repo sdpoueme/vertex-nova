@@ -287,9 +287,10 @@ The agent starts:
 - IFTTT/webhook server on port 3001
 - Proactive scheduler
 - Reminder engine
-- Email agent (inbox monitoring, reply drafting, SMTP sending)
-- Knowledge base sync
+- Email agent (inbox monitoring, reply drafting, compose, SMTP sending)
+- Knowledge base sync (git repos + URL crawling in background worker)
 - Identity layer (user profiles and fact extraction)
+- Presence detection (ARP + ping sweep for mesh WiFi)
 - Dream engine (1-5 AM)
 
 ---

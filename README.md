@@ -30,10 +30,11 @@ graph TB
             HOME[Home Agent<br/>7 tools]
             MEDIA[Media Agent<br/>7 tools]
             MEM[Memory Agent<br/>5 tools]
-            GEN[General Agent<br/>25 tools]
+            EMAIL[Email Agent<br/>3 tools]
+            GEN[General Agent<br/>27 tools]
         end
         OLLAMA[Qwen3 8B<br/>local · free]
-        CLAUDE[Claude 4.6<br/>escalation]
+        CLAUDE[Claude 4.6<br/>escalation · 24h cooldown]
         THINKER[Async Thinker<br/>background review]
         IDENTITY[Identity Layer<br/>user profiles]
     end
@@ -45,15 +46,16 @@ graph TB
         EMAIL_OUT[Email Replies<br/>SMTP]
     end
 
-    subgraph Monitor["Device Monitoring"]
+    subgraph Monitor["Monitoring"]
         ALEXA_API[Alexa Smart Home API<br/>state polling · 60s]
         DISCOVER[Device Discovery<br/>every 6h]
         RULES[Alert Rules<br/>devices.yaml]
+        PRESENCE[Presence Detection<br/>ARP + ping sweep]
     end
 
     subgraph Knowledge["Knowledge & Memory"]
         VAULT[Obsidian Vault]
-        KB[Knowledge Bases<br/>Git RAG]
+        KB[Knowledge Bases<br/>Git + URL crawling]
         DREAM[Dream Engine<br/>1-5 AM]
         MEMORIES[Learned Facts<br/>Preferences]
     end
@@ -76,6 +78,7 @@ graph TB
     ALEXA_API --> RULES
     DISCOVER --> ALEXA_API
     RULES -->|alert| Core
+    PRESENCE -->|arrived/left| Core
 
     DREAM --> VAULT & MEMORIES
     KB --> VAULT
@@ -95,21 +98,24 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md).
 
 | Feature | Description |
 |---------|-------------|
-| Multi-Agent System | 6 specialist agents via Strands SDK, each with 3-7 tools for faster inference |
-| Telegram & WhatsApp | Text, voice (whisper.cpp), images (Gemma 4 vision) |
-| Web Dashboard | HTTPS, multimodal chat, device monitoring, config editor, live device states |
-| Echo Devices | Native Alexa Behavior API — speak directly, no Voice Monkey needed |
-| Sonos TTS | Piper TTS (offline FR/EN), auto token refresh |
-| Email Agent | Inbox monitoring, Telegram notifications, AI-drafted replies, approval workflow, SMTP sending |
-| Smart Home Monitor | Alexa API device discovery + state polling, context-driven alert rules |
+| Multi-Agent System | 7 specialist agents (news, home, media, memory, email, weather, general) via Strands SDK |
+| Telegram & WhatsApp | Text, voice (whisper.cpp with hallucination filtering), images (Gemma 4 vision) |
+| Web Dashboard | HTTPS, multimodal chat with voice mode toggle + device selector, config editor |
+| Echo Devices | Native Alexa Behavior API — speak directly on any Echo, auto-discovered |
+| Sonos TTS | Piper TTS (offline FR/EN), auto token refresh, time-based room routing |
+| Email Agent | Inbox monitoring, Telegram notifications, AI-drafted replies, compose new emails, SMTP |
+| Smart Home Monitor | Alexa API device discovery + state polling, context-driven alert rules per device |
+| Presence Detection | WiFi-based who's-home tracking via ARP + ping sweep (works with mesh pods) |
 | Task Orchestrator | Pre-fetches news/weather/movies for device requests (1 AI call instead of 3+) |
 | Async Thinker | Background agent reviews every response and saves learnings |
 | Identity Layer | Per-user profiles, automatic fact extraction, topic tracking |
-| Knowledge Bases | Git-synced repos with relationship-aware RAG |
+| Knowledge Bases | Git repos + URL crawling (sitemap discovery, link extraction, up to 50 pages/site) |
+| Image Queue | Failed vision requests saved to disk, auto-retried when Claude comes back online |
 | Dream Engine | Nightly self-improvement: conversation review, memory consolidation, weekly summaries |
 | Movie Recommendations | TMDB + NYT, multi-language, scored by user genre preferences |
 | Proactive Actions | Scheduled news, weather, maintenance, movies — persistent across restarts |
 | Night Mode | Voice devices blocked 10 PM – 7 AM, auto-routes to Telegram |
+| Claude Cooldown | 24h cooldown on credit errors, persisted to disk across restarts |
 
 ## Smart Home Monitoring
 
@@ -149,6 +155,35 @@ Each device rule includes an AI context field — specific instructions for what
 | 🍳 Oven | On > 2 hours → reminder. On after 11 PM → safety alert. |
 | 🔌 Front Door Socket | Off at night → suggest turning on for security. |
 
+## Presence Detection
+
+Tracks who's home by scanning the local network for known phone MAC addresses.
+
+- Polls ARP table every 30 seconds
+- Ping sweep every ~2.5 minutes to find devices on mesh WiFi pods
+- 5-minute away threshold before marking someone as "left"
+- Arrival: Telegram notification + Echo welcome greeting (daytime)
+- Departure: Telegram notification
+- Dashboard widget shows real-time presence status
+- AI tool `who_is_home` for conversational queries
+
+Configure in the dashboard (Configuration → Détection de présence) or `.env`:
+```env
+PRESENCE_DEVICES=Name1:aa:bb:cc:dd:ee:ff,Name2:11:22:33:44:55:66
+```
+Get MAC addresses from `arp -a` or your router admin page. For phones using randomized MACs (iOS/Android), use the WiFi-specific MAC shown in the phone's WiFi settings.
+
+## Knowledge Bases
+
+Two types of knowledge bases, configurable from the dashboard:
+
+| Type | Source | How it works |
+|------|--------|-------------|
+| Git repo | GitHub/GitLab URL | Clones repo, extracts text from HTML/JSON/MD, relationship-aware for genealogy |
+| URL collection | List of websites | Discovers pages via sitemap.xml (or link extraction fallback), fetches up to 50 pages/site, runs in background worker process |
+
+URL crawling runs in a child process to avoid blocking the main event loop.
+
 ## Email Agent
 
 ```mermaid
@@ -177,7 +212,7 @@ When Alexa cookies expire, the agent automatically:
 3. Sends you a Telegram message with the cookie format
 4. When you paste the new cookies, updates `.env` and restarts monitoring
 
-## AI Tools (25)
+## AI Tools (27)
 
 | Category | Tools |
 |----------|-------|
@@ -186,7 +221,8 @@ When Alexa cookies expire, the agent automatically:
 | Vault | `vault_read`, `vault_search`, `vault_create`, `vault_append`, `vault_list` |
 | Memory | `memory_view`, `memory_write`, `memory_append`, `reminder_set`, `reminder_list` |
 | Knowledge | `kb_search`, `kb_list` |
-| Email | `email_list`, `email_draft`, `email_send` |
+| Email | `email_list`, `email_draft`, `email_send`, `email_compose` |
+| Presence | `who_is_home` |
 
 ## Web Dashboard
 
@@ -194,11 +230,11 @@ Served over HTTPS (auto-generated self-signed cert). Access: `https://<your-ip>:
 
 | Panel | Features |
 |-------|----------|
-| Accueil | Live device status (security/appliances/other), channels, KBs, Alexa summary, interactions |
-| Chat | Text, image upload, voice recording, interaction history |
-| Configuration | AI models, Sonos/Echo routing, home location, news, movies, Alexa cookies, Telegram multi-user |
-| Appareils | Alexa device discovery, live states, alert rule editor with device picker |
-| Connaissances | Knowledge base management with forms and YAML editor |
+| Accueil | Live device status, presence widget, channels, KBs, recent interactions |
+| Chat | Text, image upload, voice recording, voice mode toggle + device selector, interaction history |
+| Configuration | AI models, Sonos/Echo routing (auto-discovered devices), presence detection (name+MAC editor), home location, news, movies, Alexa cookies, Telegram multi-user |
+| Appareils | Alexa device discovery with capabilities, alert rule editor with device picker from discovered list |
+| Connaissances | Git repos + URL collections, sitemap crawling, sync per KB |
 | Logs | Live tail of agent logs |
 
 ## Offline Capability
@@ -212,9 +248,9 @@ Everything runs locally without any cloud API:
 | Voice output | Piper TTS → Sonos |
 | Image analysis | Gemma 4 E2B (Ollama) |
 | Search | DuckDuckGo / Google News RSS |
-| All 25 tools | Work on Qwen3 via Strands |
+| All 27 tools | Work on Qwen3 via Strands |
 
-Claude is only used for escalation when the local model gives a weak response, and has a 30-minute cooldown if credits run out.
+Claude is only used for escalation when the local model gives a weak response. On credit errors, it enters a 24-hour cooldown persisted to disk — no wasted API calls across restarts.
 
 ## Configuration
 
