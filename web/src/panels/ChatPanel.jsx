@@ -62,6 +62,13 @@ export default function ChatPanel({ api }) {
   const send = async () => {
     if (!input.trim() && !image) return;
     const text = input || (image ? "Décris cette image." : '');
+
+    // Warn if user mentions image but none is attached
+    if (!image && /image|photo|plan|document|fichier|pièce jointe/i.test(text)) {
+      setMessages(m => [...m, { role: 'user', text }, { role: 'assistant', text: 'Aucune image jointe. Cliquez d\'abord sur 📷 pour sélectionner une image, puis envoyez votre message.' }]);
+      return;
+    }
+
     setInput('');
     const msgObj = { role: 'user', text };
     if (image) msgObj.imagePreview = true;
