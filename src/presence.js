@@ -53,7 +53,7 @@ function getArpTable() {
       var lines = stdout.split('\n');
       for (var line of lines) {
         var match = line.match(/at\s+([0-9a-f:]+)\s/i);
-        if (match) macs.push(match[1].toLowerCase().replace(/\b(\d):/g, '0$1:'));
+        if (match) macs.push(normalizeMac(match[1].toLowerCase()));
       }
       resolve(macs);
     });
@@ -97,12 +97,11 @@ export function startPresenceMonitor(onEvent, vaultPath) {
 
   async function poll() {
     var arpMacs = await getArpTable();
-    var normalizedArp = arpMacs.map(normalizeMac);
     var now = Date.now();
 
     for (var d of devices) {
       var normalizedDevMac = normalizeMac(d.mac);
-      var isOnNetwork = normalizedArp.some(function(m) { return m === normalizedDevMac; });
+      var isOnNetwork = arpMacs.some(function(m) { return m === normalizedDevMac; });
       var state = presenceState[d.name];
       var wasHome = state.home;
 
