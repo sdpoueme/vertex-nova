@@ -200,7 +200,8 @@ export function startDashboard(config, port) {
         var data = JSON.parse(body);
         var sessionId = 'web-dashboard-' + new Date().toISOString().slice(0, 10);
         logInteraction('web', 'in', data.message, !!data.image);
-        var chatTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 90000); });
+        var timeoutMs = data.image ? 200000 : 90000; // 200s for images, 90s for text
+        var chatTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, timeoutMs); });
         var chatPromise = chat(data.message, sessionId, data.image || null);
         var response = await Promise.race([chatPromise, chatTimeout]);
         logInteraction('web', 'out', response);

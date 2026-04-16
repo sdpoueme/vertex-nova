@@ -994,7 +994,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
       var res = await fetch(OLLAMA_URL + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(60000), // 60s per iteration
+        signal: AbortSignal.timeout(image ? 180000 : 60000), // 3min for vision, 60s for text
         body: JSON.stringify({
           model: modelName,
           messages: ollamaMessages,
