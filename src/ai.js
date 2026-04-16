@@ -1193,7 +1193,7 @@ export async function chat(message, sessionId, image) {
       }
     }
     try {
-      var visionResponse = await chatOllama(message, sessionId, 'gemma4:e2b', image);
+      var visionResponse = await chatOllama(message, sessionId, 'qwen2.5vl:7b', image);
       if (visionResponse && visionResponse.length > 20 && !visionResponse.includes('difficultés techniques')) {
         return visionResponse;
       }

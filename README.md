@@ -99,7 +99,7 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md).
 | Feature | Description |
 |---------|-------------|
 | Multi-Agent System | 7 specialist agents (news, home, media, memory, email, weather, general) via Strands SDK |
-| Telegram & WhatsApp | Text, voice (whisper.cpp with hallucination filtering), images (Gemma 4 vision) |
+| Telegram & WhatsApp | Text, voice (whisper.cpp with hallucination filtering), images (Qwen2.5-VL vision) |
 | Web Dashboard | HTTPS, multimodal chat with voice mode toggle + device selector, config editor |
 | Echo Devices | Native Alexa Behavior API — speak directly on any Echo, auto-discovered |
 | Sonos TTS | Piper TTS (offline FR/EN), auto token refresh, time-based room routing |
@@ -246,7 +246,7 @@ Everything runs locally without any cloud API:
 | Text chat | Qwen3 8B (Ollama) |
 | Voice input | whisper.cpp |
 | Voice output | Piper TTS → Sonos |
-| Image analysis | Gemma 4 E2B (Ollama) |
+| Image analysis | Qwen2.5-VL 7B (Ollama) |
 | Search | DuckDuckGo / Google News RSS |
 | All 27 tools | Work on Qwen3 via Strands |
 
