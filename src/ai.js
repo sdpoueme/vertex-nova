@@ -1192,11 +1192,16 @@ export async function chat(message, sessionId, image) {
   var routing = routeMessage(message, { hasImage: !!image });
   log.info('Model: ' + routing.model + ' (route: ' + routing.route + ')');
 
-  // Images: try Claude first, fall back to vision model, queue if both fail
+  // === TWO-STAGE VISION PIPELINE ===
+  // Stage 1: Vision Agent analyzes the image → produces a description
+  // Stage 2: Specialist Agent acts on the description (search vault, draft email, etc.)
   if (image) {
+    var visionDescription = null;
+
+    // Stage 1: Get image description from vision model
     if (CLAUDE_API_KEY && Date.now() >= claudeDisabledUntil) {
       try {
-        return await chatClaude(message, sessionId, image);
+        visionDescription = await chatClaude(message, sessionId + '-vision', image);
       } catch (err) {
         log.warn('Claude vision failed: ' + err.message + ', trying local vision model');
         if (err.message.includes('credit') || err.message.includes('billing')) {
@@ -1204,38 +1209,65 @@ export async function chat(message, sessionId, image) {
         }
       }
     }
-    try {
-      var visionResponse = await chatOllama(message, sessionId, 'qwen2.5vl:7b', image);
-      if (visionResponse && visionResponse.length > 20 && !visionResponse.includes('difficultés techniques')) {
-        // Save the vision description in the main conversation so follow-up questions have context
-        addUserMessage(sessionId, '[Image analysée] ' + message);
-        addAssistantMessage(sessionId, visionResponse);
-        return visionResponse;
+    if (!visionDescription) {
+      try {
+        visionDescription = await chatOllama(message, sessionId + '-vision', 'qwen2.5vl:7b', image);
+        if (!visionDescription || visionDescription.length < 20 || visionDescription.includes('difficultés techniques')) {
+          visionDescription = null;
+        }
+      } catch (err) {
+        log.warn('Local vision failed: ' + err.message);
       }
-    } catch (err) {
-      log.warn('Local vision failed: ' + err.message);
     }
-    // Both failed — queue the image request for later retry
+
+    // If vision failed completely, queue for later
+    if (!visionDescription) {
+      try {
+        var { writeFileSync: writeQ, mkdirSync: mkQ } = await import('node:fs');
+        var { join: joinQ } = await import('node:path');
+        var queueDir = joinQ(resolve(config.vaultPath || joinQ(config.projectDir, 'vault')), 'pending-images');
+        mkQ(queueDir, { recursive: true });
+        var qId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+        writeQ(joinQ(queueDir, qId + '.json'), JSON.stringify({
+          message: message, sessionId: sessionId,
+          image: { base64: image.base64.slice(0, 100) + '...truncated', mediaType: image.mediaType },
+          imageBase64: image.base64, timestamp: Date.now(), status: 'pending',
+        }));
+        log.info('Image request queued for later: ' + qId);
+        return 'Je n\'ai pas pu analyser l\'image pour le moment. J\'ai sauvegardé ta demande (réf: ' + qId + ').';
+      } catch (qErr) {
+        return 'L\'analyse d\'image n\'est pas disponible pour le moment.';
+      }
+    }
+
+    log.info('Vision Stage 1 complete: ' + visionDescription.length + ' chars');
+
+    // Save vision description in conversation for follow-ups
+    addUserMessage(sessionId, '[Image analysée] ' + message);
+    addAssistantMessage(sessionId, '[Description de l\'image] ' + visionDescription);
+
+    // Stage 2: Pass the description to a specialist agent for action
+    // The specialist can search the vault, draft emails, set reminders, etc.
+    var stage2Message = '<image_analysis>\n' + visionDescription + '\n</image_analysis>\n\n' +
+      'L\'utilisateur a envoyé une image avec le message: "' + message + '"\n' +
+      'Voici l\'analyse de l\'image ci-dessus. Utilise cette analyse pour répondre à la demande de l\'utilisateur. ' +
+      'Si pertinent, utilise tes outils (vault, email, rappels, recherche web) pour agir.';
+
+    // Route to the right specialist based on the user's message
     try {
-      var { writeFileSync: writeQ, mkdirSync: mkQ } = await import('node:fs');
-      var { join: joinQ } = await import('node:path');
-      var queueDir = joinQ(resolve(config.vaultPath || joinQ(config.projectDir, 'vault')), 'pending-images');
-      mkQ(queueDir, { recursive: true });
-      var qId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
-      writeQ(joinQ(queueDir, qId + '.json'), JSON.stringify({
-        message: message,
-        sessionId: sessionId,
-        image: { base64: image.base64.slice(0, 100) + '...truncated', mediaType: image.mediaType },
-        imageBase64: image.base64,
-        timestamp: Date.now(),
-        status: 'pending',
-      }));
-      log.info('Image request queued for later: ' + qId);
-      return 'Je n\'ai pas pu analyser l\'image pour le moment (API vision indisponible). ' +
-        'J\'ai sauvegardé ta demande et je l\'analyserai dès que possible. Référence: ' + qId;
-    } catch (qErr) {
-      log.error('Failed to queue image: ' + qErr.message);
-      return 'Désolé, l\'analyse d\'image n\'est pas disponible pour le moment. Réessayez plus tard.';
+      var stage2Response = await chatOllama(stage2Message, sessionId, OLLAMA_MODEL, null);
+      // Clean markdown
+      stage2Response = stage2Response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '');
+
+      // Combine: show the vision analysis + the specialist's action
+      var combined = visionDescription;
+      if (stage2Response && stage2Response.length > 20 && stage2Response !== visionDescription) {
+        combined += '\n\n' + stage2Response;
+      }
+      return combined;
+    } catch (err) {
+      log.warn('Stage 2 failed: ' + err.message + ', returning vision-only response');
+      return visionDescription;
     }
   }
 
