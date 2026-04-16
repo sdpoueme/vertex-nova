@@ -3,7 +3,7 @@
  * If Claude returns 429/529/error, automatically falls back to local Ollama.
  * Handles tool use (vault + Sonos) in a loop until the AI is done.
  */
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import { config } from './home-config.js';
@@ -25,7 +25,22 @@ var OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'qwen3:8b';
 var OLLAMA_FAST_MODEL = process.env.OLLAMA_FAST_MODEL || 'mistral';
 var usingFallback = false;
 var MAX_TOKENS = 4096;
-var claudeDisabledUntil = 0; // Timestamp — skip Claude if recently failed with credit error
+var claudeDisabledUntil = 0;
+// Load persisted cooldown
+try {
+  var _cooldownFile = join(resolve(config.vaultPath || join(config.projectDir, 'vault')), 'memories', 'claude-cooldown.json');
+  if (existsSync(_cooldownFile)) {
+    var _cd = JSON.parse(readFileSync(_cooldownFile, 'utf8'));
+    if (_cd.until > Date.now()) { claudeDisabledUntil = _cd.until; }
+  }
+} catch {}
+
+function persistCooldown() {
+  try {
+    var dir = join(resolve(config.vaultPath || join(config.projectDir, 'vault')), 'memories');
+    writeFileSync(join(dir, 'claude-cooldown.json'), JSON.stringify({ until: claudeDisabledUntil }));
+  } catch {}
+}
 
 // Load system prompt from agent.md + CLAUDE.md
 function loadSystemPrompt() {
@@ -1173,7 +1188,7 @@ export async function chat(message, sessionId, image) {
       } catch (err) {
         log.warn('Claude vision failed: ' + err.message + ', trying local vision model');
         if (err.message.includes('credit') || err.message.includes('billing')) {
-          claudeDisabledUntil = Date.now() + 60 * 60 * 1000;
+          claudeDisabledUntil = Date.now() + 24 * 60 * 60 * 1000; persistCooldown();
         }
       }
     }
@@ -1219,8 +1234,8 @@ export async function chat(message, sessionId, image) {
       return await chatClaude(message, sessionId, null);
     } catch (err) {
       if (err.message.includes('credit') || err.message.includes('billing')) {
-        claudeDisabledUntil = Date.now() + 60 * 60 * 1000; // 1 hour cooldown
-        log.info('Claude disabled for 1 hour (no credits)');
+        claudeDisabledUntil = Date.now() + 24 * 60 * 60 * 1000; persistCooldown();
+        log.info('Claude disabled for 24h (no credits)');
       }
       return chatOllama(message, sessionId, OLLAMA_MODEL);
     }
@@ -1245,8 +1260,8 @@ export async function chat(message, sessionId, image) {
       } catch (claudeErr) {
         log.warn('Claude escalation failed: ' + claudeErr.message + ', using local response');
         if (claudeErr.message.includes('credit') || claudeErr.message.includes('billing') || claudeErr.message.includes('balance')) {
-          claudeDisabledUntil = Date.now() + 30 * 60 * 1000; // 30 min cooldown
-          log.info('Claude disabled for 30 min (no credits)');
+          claudeDisabledUntil = Date.now() + 24 * 60 * 60 * 1000; persistCooldown(); // 24h cooldown — credits won't appear soon
+          log.info('Claude disabled for 24h (no credits)');
         }
         return localResponse;
       }
@@ -1266,7 +1281,7 @@ export async function chat(message, sessionId, image) {
     } catch (claudeErr) {
       log.error('Both models failed. Local: ' + localErr.message + ', Claude: ' + claudeErr.message);
       if (claudeErr.message.includes('credit') || claudeErr.message.includes('billing')) {
-        claudeDisabledUntil = Date.now() + 30 * 60 * 1000;
+        claudeDisabledUntil = Date.now() + 24 * 60 * 60 * 1000; persistCooldown();
       }
       return 'Désolé, je rencontre des difficultés techniques. Réessayez dans un moment.';
     }
@@ -1459,7 +1474,7 @@ setInterval(async function() {
       } catch (err) {
         log.debug('Queue retry failed for ' + f + ': ' + err.message);
         if (err.message.includes('credit') || err.message.includes('billing')) {
-          claudeDisabledUntil = Date.now() + 60 * 60 * 1000;
+          claudeDisabledUntil = Date.now() + 24 * 60 * 60 * 1000; persistCooldown();
           break; // Stop retrying
         }
       }
