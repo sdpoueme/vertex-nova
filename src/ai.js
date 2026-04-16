@@ -1246,29 +1246,43 @@ export async function chat(message, sessionId, image) {
     addUserMessage(sessionId, '[Image analysée] ' + message);
     addAssistantMessage(sessionId, '[Description de l\'image] ' + visionDescription);
 
-    // Stage 2: Pass the description to a specialist agent for action
-    // The specialist can search the vault, draft emails, set reminders, etc.
-    var stage2Message = '<image_analysis>\n' + visionDescription + '\n</image_analysis>\n\n' +
-      'L\'utilisateur a envoyé une image avec le message: "' + message + '"\n' +
-      'Voici l\'analyse de l\'image ci-dessus. Utilise cette analyse pour répondre à la demande de l\'utilisateur. ' +
-      'Si pertinent, utilise tes outils (vault, email, rappels, recherche web) pour agir.';
+    // Stage 2: Pass the description to the text model for action
+    var stage2Message = 'L\'utilisateur a envoyé une image avec le message: "' + message + '"\n\n' +
+      'Voici ce que l\'analyse visuelle a révélé:\n' + visionDescription + '\n\n' +
+      'Réponds à la demande de l\'utilisateur en te basant sur cette analyse. Sois précis et utile.';
 
-    // Route to the right specialist based on the user's message
     try {
-      var stage2Response = await chatOllama(stage2Message, sessionId, OLLAMA_MODEL, null);
-      // Clean markdown
-      stage2Response = stage2Response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '');
+      // Direct Ollama call — bypass Strands and agent routing for Stage 2
+      var s2res = await fetch(OLLAMA_URL + '/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(60000),
+        body: JSON.stringify({
+          model: OLLAMA_MODEL,
+          messages: [
+            { role: 'system', content: 'Tu es Vertex Nova, assistant maison. L\'utilisateur t\'a envoyé une image qui a été analysée. Utilise l\'analyse pour répondre. Sois concis et précis. Réponds dans la langue de l\'utilisateur. Pas de formatage markdown.' },
+            { role: 'user', content: stage2Message },
+          ],
+          stream: false,
+          think: false,
+        }),
+      });
+      if (s2res.ok) {
+        var s2data = await s2res.json();
+        var stage2Response = s2data.message?.content || '';
+        stage2Response = stage2Response.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '');
 
-      // Combine: show the vision analysis + the specialist's action
-      var combined = visionDescription;
-      if (stage2Response && stage2Response.length > 20 && stage2Response !== visionDescription) {
-        combined += '\n\n' + stage2Response;
+        if (stage2Response && stage2Response.length > 20) {
+          // Combine vision + specialist response
+          return visionDescription + '\n\n' + stage2Response;
+        }
       }
-      return combined;
     } catch (err) {
-      log.warn('Stage 2 failed: ' + err.message + ', returning vision-only response');
-      return visionDescription;
+      log.warn('Vision Stage 2 failed: ' + err.message);
     }
+
+    // Fallback: return vision-only response
+    return visionDescription;
   }
 
   // Explicit route to Claude (from proactive scheduler)
