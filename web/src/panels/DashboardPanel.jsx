@@ -39,6 +39,36 @@ function formatCapShort(key, val) {
   return '';
 }
 
+function PresenceWidget({ api }) {
+  const [presence, setPresence] = useState(null);
+  useEffect(() => {
+    const load = () => fetch(api + '/api/presence').then(r => r.ok ? r.json() : null).then(setPresence).catch(() => {});
+    load();
+    const t = setInterval(load, 30000);
+    return () => clearInterval(t);
+  }, [api]);
+
+  if (!presence || (presence.home?.length === 0 && presence.away?.length === 0)) {
+    return <Box variant="small" color="text-body-secondary">Non configuré</Box>;
+  }
+  return (
+    <SpaceBetween size="xs">
+      {(presence.home || []).map(name => (
+        <SpaceBetween key={name} direction="horizontal" size="xs">
+          <StatusIndicator type="success">{name}</StatusIndicator>
+          <Box variant="small" color="text-body-secondary">a la maison</Box>
+        </SpaceBetween>
+      ))}
+      {(presence.away || []).map(name => (
+        <SpaceBetween key={name} direction="horizontal" size="xs">
+          <StatusIndicator type="stopped">{name}</StatusIndicator>
+          <Box variant="small" color="text-body-secondary">absent</Box>
+        </SpaceBetween>
+      ))}
+    </SpaceBetween>
+  );
+}
+
 export default function DashboardPanel({ api, onNavigate }) {
   const [status, setStatus] = useState(null);
   const [kbs, setKbs] = useState([]);
@@ -129,7 +159,7 @@ export default function DashboardPanel({ api, onNavigate }) {
         </Container>
       )}
 
-      <ColumnLayout columns={2}>
+      <ColumnLayout columns={3}>
         <Container header={<Header variant="h3">Canaux</Header>}>
           <SpaceBetween size="xs">
             <SpaceBetween direction="horizontal" size="xs">
@@ -149,6 +179,10 @@ export default function DashboardPanel({ api, onNavigate }) {
               <StatusIndicator type={status?.email ? 'success' : 'stopped'}>Email</StatusIndicator>
             </SpaceBetween>
           </SpaceBetween>
+        </Container>
+
+        <Container header={<Header variant="h3">Présence</Header>}>
+          <PresenceWidget api={api} />
         </Container>
 
         <Container header={<Header variant="h3">Connaissances</Header>}>

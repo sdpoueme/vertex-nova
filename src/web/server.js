@@ -604,8 +604,22 @@ export function startDashboard(config, port) {
         whatsapp: config.whatsappEnabled,
         sonos: config.sonosEnabled,
         email: !!config.emailMonitorAddress,
+        presence: !!process.env.PRESENCE_DEVICES,
         memory: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB',
       });
+      return;
+    }
+
+    // --- API: Presence ---
+    if (path === '/api/presence' && req.method === 'GET') {
+      try {
+        var { whoIsHome, getPresenceState } = await import('../presence.js');
+        var pres = whoIsHome();
+        var states = getPresenceState();
+        json(res, 200, { home: pres.home, away: pres.away, details: states });
+      } catch {
+        json(res, 200, { home: [], away: [], configured: false });
+      }
       return;
     }
 

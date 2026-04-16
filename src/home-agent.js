@@ -455,9 +455,31 @@ async function main() {
   // Proactive scheduler
   var { startProactive } = await import('./proactive.js');
 
-  // macOS Notification Center monitor — REMOVED (replaced by Alexa Smart Home API)
+  // Network presence detection — who's home?
+  try {
+    var { startPresenceMonitor } = await import('./presence.js');
+    startPresenceMonitor(async function(event) {
+      var hour = new Date().getHours();
+      if (event.event === 'arrived') {
+        var greeting = '🏠 ' + event.name + ' est arrivé(e) à la maison.';
+        await sendTelegram(greeting);
+        // Speak welcome during daytime
+        if (hour >= 7 && hour < 22) {
+          try {
+            var { alexaSpeak: asWelcome } = await import('./outputs/alexa-speak.js');
+            var welcomeDevice = config.echoMorningDevice || config.echoWorkdayDevice || '';
+            if (welcomeDevice) await asWelcome('Bienvenue ' + event.name + '.', welcomeDevice);
+          } catch {}
+        }
+      } else if (event.event === 'left') {
+        await sendTelegram('👋 ' + event.name + ' a quitté la maison.');
+      }
+    }, vaultPath);
+  } catch (err) {
+    log.debug('Presence monitor not started: ' + err.message);
+  }
 
-  // Alexa Smart Home state monitor — 4th notification source
+  // Alexa Smart Home state monitor
   try {
     var { startAlexaMonitor } = await import('./alexa-monitor.js');
     await startAlexaMonitor(async function(alert) {

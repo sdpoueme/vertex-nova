@@ -316,6 +316,11 @@ var tools = [
       },
       required: ['to', 'subject', 'body']
     }
+  },
+  {
+    name: 'who_is_home',
+    description: 'Vérifie qui est à la maison en ce moment (détection par réseau WiFi). Utilise quand on demande qui est là, si quelqu\'un est rentré, ou pour vérifier la présence.',
+    input_schema: { type: 'object', properties: {} }
   }
 ];
 
@@ -875,6 +880,18 @@ async function executeTool(name, input) {
         return '✏️ Brouillon d\'email:\nÀ: ' + input.to + '\nSujet: ' + input.subject + '\n\n' + input.body + '\n\nDemande confirmation à l\'utilisateur avant d\'envoyer.';
       }
       return await ea4.composeAndSend(input.to, input.subject, input.body);
+    } catch (err) { return 'Erreur: ' + err.message; }
+  }
+
+  if (name === 'who_is_home') {
+    try {
+      var { whoIsHome } = await import('./presence.js');
+      var presence = whoIsHome();
+      if (presence.home.length === 0 && presence.away.length === 0) return 'Détection de présence non configurée. Ajoutez PRESENCE_DEVICES dans .env';
+      var parts = [];
+      if (presence.home.length > 0) parts.push('A la maison: ' + presence.home.join(', '));
+      if (presence.away.length > 0) parts.push('Absent(s): ' + presence.away.join(', '));
+      return parts.join('\n');
     } catch (err) { return 'Erreur: ' + err.message; }
   }
 
