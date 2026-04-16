@@ -79,39 +79,113 @@ async function syncRepo(kb) {
 }
 
 // --- URL sync: fetch web pages and save as HTML files ---
+var FETCH_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' };
+var MAX_PAGES_PER_SITE = 50;
+
+async function fetchPage(url) {
+  var res = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(15000), redirect: 'follow' });
+  if (!res.ok) return null;
+  return res.text();
+}
+
+/**
+ * Try to discover all pages from a site via sitemap.xml.
+ * Falls back to extracting same-domain links from the page if no sitemap.
+ */
+async function discoverSitePages(baseUrl) {
+  var origin = new URL(baseUrl).origin;
+  var pages = new Set();
+  pages.add(baseUrl);
+
+  // Try sitemap.xml
+  var sitemapUrls = [origin + '/sitemap.xml', origin + '/sitemap_index.xml'];
+  for (var smUrl of sitemapUrls) {
+    try {
+      var smHtml = await fetchPage(smUrl);
+      if (!smHtml) continue;
+
+      // Check if it's a sitemap index (contains other sitemaps)
+      var subSitemaps = smHtml.match(/<sitemap>[\s\S]*?<loc>([\s\S]*?)<\/loc>/g) || [];
+      var locsToProcess = [smHtml];
+
+      for (var sub of subSitemaps) {
+        var subLoc = (sub.match(/<loc>([\s\S]*?)<\/loc>/) || [])[1]?.trim();
+        if (subLoc) {
+          try { var subContent = await fetchPage(subLoc); if (subContent) locsToProcess.push(subContent); } catch {}
+        }
+      }
+
+      for (var content of locsToProcess) {
+        var locRegex = /<url>[\s\S]*?<loc>([\s\S]*?)<\/loc>/g;
+        var m;
+        while ((m = locRegex.exec(content)) !== null && pages.size < MAX_PAGES_PER_SITE) {
+          var loc = m[1].trim().replace(/&amp;/g, '&');
+          if (loc.startsWith(origin)) pages.add(loc);
+        }
+      }
+
+      if (pages.size > 1) {
+        log.info('Sitemap found for ' + origin + ': ' + pages.size + ' pages');
+        return Array.from(pages);
+      }
+    } catch {}
+  }
+
+  // No sitemap — fallback: extract same-domain links from the base page
+  try {
+    var html = await fetchPage(baseUrl);
+    if (html) {
+      var linkRegex = /href="(\/[^"]*|https?:\/\/[^"]*?)"/g;
+      var lm;
+      while ((lm = linkRegex.exec(html)) !== null && pages.size < MAX_PAGES_PER_SITE) {
+        var href = lm[1];
+        if (href.startsWith('/')) href = origin + href;
+        if (href.startsWith(origin) && !href.match(/\.(jpg|png|gif|css|js|svg|pdf|zip|ico)(\?|$)/i)) {
+          pages.add(href.split('#')[0].split('?')[0]); // strip fragments and query params
+        }
+      }
+    }
+  } catch {}
+
+  log.info('Link extraction for ' + origin + ': ' + pages.size + ' pages (no sitemap)');
+  return Array.from(pages);
+}
+
 async function syncUrls(kb) {
   var urlDir = join(kbDir, kb.name);
   mkdirSync(urlDir, { recursive: true });
 
+  // Discover all pages from each base URL
+  var allPages = new Set();
+  for (var baseUrl of (kb.urls || [])) {
+    var discovered = await discoverSitePages(baseUrl);
+    for (var p of discovered) allPages.add(p);
+  }
+
+  log.info('KB URL discovery (' + kb.name + '): ' + allPages.size + ' total pages from ' + kb.urls.length + ' site(s)');
+
+  // Fetch and save each page
   var fetched = 0;
-  for (var url of (kb.urls || [])) {
+  for (var url of allPages) {
     try {
-      var res = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' },
-        signal: AbortSignal.timeout(15000),
-        redirect: 'follow',
-      });
-      if (!res.ok) { log.warn('KB URL fetch failed (' + url + '): ' + res.status); continue; }
-      var html = await res.text();
+      var html = await fetchPage(url);
+      if (!html) continue;
 
-      // Extract clean text
       var text = extractHtml(html);
-      if (text.length < 50) { log.debug('KB URL too short, skipping: ' + url); continue; }
+      if (text.length < 50) continue;
 
-      // Extract page title
       var titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
       var title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : url;
 
-      // Save as markdown file (URL-safe filename)
       var safeName = url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '_').slice(0, 80);
       var content = '# ' + title + '\n\nSource: ' + url + '\nFetched: ' + new Date().toISOString() + '\n\n' + text;
       writeFileSync(join(urlDir, safeName + '.md'), content);
       fetched++;
     } catch (err) {
-      log.warn('KB URL error (' + url + '): ' + err.message);
+      log.debug('KB page fetch error (' + url + '): ' + err.message);
     }
   }
-  log.info('KB URL sync (' + kb.name + '): ' + fetched + '/' + kb.urls.length + ' pages fetched');
+  log.info('KB URL sync (' + kb.name + '): ' + fetched + '/' + allPages.size + ' pages saved');
   return fetched > 0;
 }
 
