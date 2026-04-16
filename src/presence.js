@@ -96,13 +96,14 @@ export function startPresenceMonitor(onEvent, vaultPath) {
   log.info('Presence monitor started: ' + devices.map(function(d) { return d.name + ' (' + d.mac + ')'; }).join(', '));
 
   async function poll() {
-    var arpMacs = await getArpTable();
-    var now = Date.now();
+    try {
+      var arpMacs = await getArpTable();
+      var now = Date.now();
 
-    for (var d of devices) {
-      var normalizedDevMac = normalizeMac(d.mac);
-      var isOnNetwork = arpMacs.some(function(m) { return m === normalizedDevMac; });
-      var state = presenceState[d.name];
+      for (var d of devices) {
+        var normalizedDevMac = normalizeMac(d.mac);
+        var isOnNetwork = arpMacs.some(function(m) { return m === normalizedDevMac; });
+        var state = presenceState[d.name];
       var wasHome = state.home;
 
       if (isOnNetwork) {
@@ -126,6 +127,9 @@ export function startPresenceMonitor(onEvent, vaultPath) {
     }
 
     saveState();
+    } catch (err) {
+      log.error('Presence poll error: ' + err.message);
+    }
   }
 
   // First poll after 10s
