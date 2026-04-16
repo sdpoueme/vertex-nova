@@ -991,17 +991,21 @@ async function chatOllama(message, sessionId, modelOverride, image) {
         }
       }
 
+      var requestBody = {
+        model: modelName,
+        messages: ollamaMessages,
+        tools: image ? undefined : ollamaTools,
+        stream: false,
+        think: false,
+      };
+      // Reduce context for vision models to fit in GPU memory alongside the chat model
+      if (image) requestBody.options = { num_ctx: 2048 };
+
       var res = await fetch(OLLAMA_URL + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(image ? 180000 : 60000), // 3min for vision, 60s for text
-        body: JSON.stringify({
-          model: modelName,
-          messages: ollamaMessages,
-          tools: image ? undefined : ollamaTools, // Vision models don't support tools
-          stream: false,
-          think: false,
-        }),
+        signal: AbortSignal.timeout(image ? 180000 : 60000),
+        body: JSON.stringify(requestBody),
       });
       if (!res.ok) throw new Error('Ollama error: ' + res.status);
       return res.json();
@@ -1193,8 +1197,11 @@ export async function chat(message, sessionId, image) {
       }
     }
     try {
-      var visionResponse = await chatOllama(message, sessionId, 'qwen2.5vl:3b', image);
+      var visionResponse = await chatOllama(message, sessionId, 'qwen2.5vl:7b', image);
       if (visionResponse && visionResponse.length > 20 && !visionResponse.includes('difficultés techniques')) {
+        // Save the vision description in the main conversation so follow-up questions have context
+        addUserMessage(sessionId, '[Image analysée] ' + message);
+        addAssistantMessage(sessionId, visionResponse);
         return visionResponse;
       }
     } catch (err) {
