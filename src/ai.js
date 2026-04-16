@@ -1151,6 +1151,9 @@ async function maybeSummarize(sessionId) {
  *   5. If Claude fails → return Gemma 4's response anyway
  */
 export async function chat(message, sessionId, image) {
+  // Debug image detection
+  if (image) log.info('Image received: ' + image.mediaType + ', base64 length: ' + (image.base64?.length || 0));
+
   // Try Strands agents first (if enabled and no image)
   if (!image && process.env.USE_STRANDS !== 'false') {
     try {
