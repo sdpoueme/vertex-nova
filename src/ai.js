@@ -1228,7 +1228,7 @@ export async function chat(message, sessionId, image) {
     }
     if (!visionDescription) {
       try {
-        visionDescription = await chatOllama(message, 'vision-' + visionId, 'qwen2.5vl:7b', image);
+        visionDescription = await chatOllama(message, 'vision-' + visionId, 'gemma4:e2b', image);
         if (!visionDescription || visionDescription.length < 20 || visionDescription.includes('difficultés techniques')) {
           visionDescription = null;
         }
