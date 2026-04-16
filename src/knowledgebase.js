@@ -79,114 +79,27 @@ async function syncRepo(kb) {
 }
 
 // --- URL sync: fetch web pages and save as HTML files ---
-var FETCH_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' };
-var MAX_PAGES_PER_SITE = 50;
-
-async function fetchPage(url) {
-  var res = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(15000), redirect: 'follow' });
-  if (!res.ok) return null;
-  return res.text();
-}
-
-/**
- * Try to discover all pages from a site via sitemap.xml.
- * Falls back to extracting same-domain links from the page if no sitemap.
- */
-async function discoverSitePages(baseUrl) {
-  var origin = new URL(baseUrl).origin;
-  var pages = new Set();
-  pages.add(baseUrl);
-
-  // Try sitemap.xml
-  var sitemapUrls = [origin + '/sitemap.xml', origin + '/sitemap_index.xml'];
-  for (var smUrl of sitemapUrls) {
-    try {
-      var smHtml = await fetchPage(smUrl);
-      if (!smHtml) continue;
-
-      // Check if it's a sitemap index (contains other sitemaps)
-      var subSitemaps = smHtml.match(/<sitemap>[\s\S]*?<loc>([\s\S]*?)<\/loc>/g) || [];
-      var locsToProcess = [smHtml];
-
-      for (var sub of subSitemaps) {
-        var subLoc = (sub.match(/<loc>([\s\S]*?)<\/loc>/) || [])[1]?.trim();
-        if (subLoc) {
-          try { var subContent = await fetchPage(subLoc); if (subContent) locsToProcess.push(subContent); } catch {}
-        }
-      }
-
-      for (var content of locsToProcess) {
-        var locRegex = /<url>[\s\S]*?<loc>([\s\S]*?)<\/loc>/g;
-        var m;
-        while ((m = locRegex.exec(content)) !== null && pages.size < MAX_PAGES_PER_SITE) {
-          var loc = m[1].trim().replace(/&amp;/g, '&');
-          if (loc.startsWith(origin)) pages.add(loc);
-        }
-      }
-
-      if (pages.size > 1) {
-        log.info('Sitemap found for ' + origin + ': ' + pages.size + ' pages');
-        return Array.from(pages);
-      }
-    } catch {}
-  }
-
-  // No sitemap — fallback: extract same-domain links from the base page
-  try {
-    var html = await fetchPage(baseUrl);
-    if (html) {
-      var linkRegex = /href="(\/[^"]*|https?:\/\/[^"]*?)"/g;
-      var lm;
-      while ((lm = linkRegex.exec(html)) !== null && pages.size < MAX_PAGES_PER_SITE) {
-        var href = lm[1];
-        if (href.startsWith('/')) href = origin + href;
-        if (href.startsWith(origin) && !href.match(/\.(jpg|png|gif|css|js|svg|pdf|zip|ico)(\?|$)/i)) {
-          pages.add(href.split('#')[0].split('?')[0]); // strip fragments and query params
-        }
-      }
-    }
-  } catch {}
-
-  log.info('Link extraction for ' + origin + ': ' + pages.size + ' pages (no sitemap)');
-  return Array.from(pages);
-}
-
+// --- URL sync: runs in a child process (kb-url-worker.js) ---
 async function syncUrls(kb) {
   var urlDir = join(kbDir, kb.name);
   mkdirSync(urlDir, { recursive: true });
 
-  // Discover all pages from each base URL
-  var allPages = new Set();
-  for (var baseUrl of (kb.urls || [])) {
-    var discovered = await discoverSitePages(baseUrl);
-    for (var p of discovered) allPages.add(p);
-  }
+  // Spawn a child process to fetch URLs without blocking the event loop
+  var workerPath = join(resolve(import.meta.dirname), 'kb-url-worker.js');
+  var args = [workerPath, urlDir].concat(kb.urls || []);
 
-  log.info('KB URL discovery (' + kb.name + '): ' + allPages.size + ' total pages from ' + kb.urls.length + ' site(s)');
-
-  // Fetch and save each page
-  var fetched = 0;
-  for (var url of allPages) {
-    try {
-      var html = await fetchPage(url);
-      if (!html) continue;
-
-      var text = extractHtml(html);
-      if (text.length < 50) continue;
-
-      var titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      var title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : url;
-
-      var safeName = url.replace(/https?:\/\//, '').replace(/[^a-zA-Z0-9.-]/g, '_').slice(0, 80);
-      var content = '# ' + title + '\n\nSource: ' + url + '\nFetched: ' + new Date().toISOString() + '\n\n' + text;
-      writeFileSync(join(urlDir, safeName + '.md'), content);
-      fetched++;
-    } catch (err) {
-      log.debug('KB page fetch error (' + url + '): ' + err.message);
-    }
-  }
-  log.info('KB URL sync (' + kb.name + '): ' + fetched + '/' + allPages.size + ' pages saved');
-  return fetched > 0;
+  return new Promise(function(resolve) {
+    log.info('KB URL sync (' + kb.name + '): spawning worker for ' + (kb.urls || []).length + ' site(s)...');
+    execFile('node', args, { timeout: 5 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 }, function(err, stdout, stderr) {
+      if (stdout) stdout.trim().split('\n').forEach(function(line) { if (line) log.info('[kb-worker] ' + line); });
+      if (err) {
+        log.error('KB URL worker failed (' + kb.name + '): ' + (stderr || err.message));
+        resolve(false);
+      } else {
+        resolve(true);
+      }
+    });
+  });
 }
 
 // --- Text extraction ---
@@ -467,8 +380,15 @@ export async function startKnowledgeBases(projectDir, vaultPath) {
   // Initial sync + index
   for (var kb of kbConfigs) {
     if (!kb.enabled) continue;
-    await syncRepo(kb);
-    indexKb(kb);
+    if (kb.type === 'urls') {
+      // URL KBs run in background — don't block startup
+      (function(kbRef) {
+        syncRepo(kbRef).then(function(ok) { if (ok) indexKb(kbRef); });
+      })(kb);
+    } else {
+      await syncRepo(kb);
+      indexKb(kb);
+    }
   }
 
   // Schedule periodic sync

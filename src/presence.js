@@ -98,6 +98,7 @@ export function startPresenceMonitor(onEvent, vaultPath) {
   async function poll() {
     try {
       var arpMacs = await getArpTable();
+      log.debug('Presence poll: ' + arpMacs.length + ' MACs in ARP table');
       var now = Date.now();
 
       for (var d of devices) {
