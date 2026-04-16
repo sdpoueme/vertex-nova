@@ -46,6 +46,49 @@ function TagListEditor({ items, onChange, placeholder }) {
   );
 }
 
+// Presence device editor: Name + MAC pairs
+function PresenceDeviceEditor({ devices, onChange }) {
+  // Parse "Name1:mac1,Name2:mac2" into array of {name, mac}
+  const parsed = (devices || '').split(',').map(e => {
+    const parts = e.trim().split(':');
+    if (parts.length < 2) return null;
+    return { name: parts[0].trim(), mac: parts.slice(1).join(':').trim() };
+  }).filter(Boolean);
+
+  const [newName, setNewName] = useState('');
+  const [newMac, setNewMac] = useState('');
+
+  const serialize = (list) => list.map(d => d.name + ':' + d.mac).join(',');
+  const add = () => {
+    if (!newName.trim() || !newMac.trim()) return;
+    onChange(serialize([...parsed, { name: newName.trim(), mac: newMac.trim().toLowerCase() }]));
+    setNewName(''); setNewMac('');
+  };
+  const remove = (idx) => { const n = [...parsed]; n.splice(idx, 1); onChange(serialize(n)); };
+
+  return (
+    <SpaceBetween size="s">
+      {parsed.length > 0 && (
+        <TokenGroup items={parsed.map(d => ({ label: d.name + '  (' + d.mac + ')', dismissLabel: 'Retirer ' + d.name }))}
+          onDismiss={({ detail }) => remove(detail.itemIndex)} />
+      )}
+      <ColumnLayout columns={3}>
+        <FormField label="Nom">
+          <Input value={newName} onChange={({ detail }) => setNewName(detail.value)} placeholder="Serge"
+            onKeyDown={({ detail }) => { if (detail.key === 'Enter') add(); }} />
+        </FormField>
+        <FormField label="Adresse MAC">
+          <Input value={newMac} onChange={({ detail }) => setNewMac(detail.value)} placeholder="aa:bb:cc:dd:ee:ff"
+            onKeyDown={({ detail }) => { if (detail.key === 'Enter') add(); }} />
+        </FormField>
+        <FormField label=" ">
+          <Button onClick={add} iconName="add-plus">Ajouter</Button>
+        </FormField>
+      </ColumnLayout>
+    </SpaceBetween>
+  );
+}
+
 // --- Minimal YAML helpers for our config shapes ---
 function parseRoutingYaml(text) {
   const routes = [];
@@ -365,6 +408,21 @@ function ModelsPanel({ api }) {
               <Input value="" placeholder="Coller at-main ici pour remplacer" onChange={({ detail }) => { if (detail.value) save('ALEXA_AT_MAIN', detail.value); }} />
             </FormField>
           </ColumnLayout>
+        </SpaceBetween>
+      </Container>
+
+      <Container header={<Header variant="h3">Détection de présence (WiFi)</Header>}>
+        <SpaceBetween size="m">
+          <Alert type="info">
+            Détecte qui est à la maison via l'adresse MAC du téléphone sur le réseau WiFi. Trouvez les MAC avec la commande: arp -a
+          </Alert>
+          <PresenceDeviceEditor
+            devices={models.presence_devices || ''}
+            onChange={(val) => save('PRESENCE_DEVICES', val)}
+          />
+          <FormField label="Intervalle de vérification (secondes)">
+            <Input type="number" value={models.presence_poll_seconds || '30'} onChange={({ detail }) => save('PRESENCE_POLL_SECONDS', detail.value)} />
+          </FormField>
         </SpaceBetween>
       </Container>
 

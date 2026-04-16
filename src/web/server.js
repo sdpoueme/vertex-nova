@@ -306,6 +306,8 @@ export function startDashboard(config, port) {
         whatsapp_webhook_port: process.env.WHATSAPP_WEBHOOK_PORT || '3001',
         alexa_configured: !!(process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN),
         alexa_ubid_main: process.env.ALEXA_UBID_MAIN ? '***' + (process.env.ALEXA_UBID_MAIN || '').slice(-6) : '',
+        presence_devices: process.env.PRESENCE_DEVICES || '',
+        presence_poll_seconds: process.env.PRESENCE_POLL_SECONDS || '30',
       });
       return;
     }
@@ -319,6 +321,7 @@ export function startDashboard(config, port) {
           'OLLAMA_MODEL', 'OLLAMA_FAST_MODEL', 'CLAUDE_MODEL',
           'SONOS_DEFAULT_ROOM', 'SONOS_DAY_ROOM', 'SONOS_NIGHT_ROOM', 'SONOS_TTS_VOLUME',
           'ECHO_MORNING_DEVICE', 'ECHO_WORKDAY_DEVICE', 'ECHO_EVENING_DEVICE',
+          'PRESENCE_DEVICES', 'PRESENCE_POLL_SECONDS',
           'HOME_LOCATION', 'HOME_COUNTRY', 'NEWS_LOCALE', 'NEWS_COUNTRY', 'NEWS_EXTRA_TOPICS',
           'TMDB_API_KEY', 'MOVIE_GENRES', 'MOVIE_LANGUAGE', 'MOVIE_LANGUAGES', 'MOVIE_REGION', 'TMDB_READ_TOKEN',
           'USE_STRANDS',
