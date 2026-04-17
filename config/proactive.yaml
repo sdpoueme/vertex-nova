@@ -89,10 +89,10 @@ actions:
     day_of_week: friday
     active_hours: [17, 18, 19]
     prompt: >
-      Utilise web_search pour chercher "meilleurs films streaming Canada 2026"
-      et "best movies Netflix Prime Video Disney+ Crave this week".
-      Recommande 3 films pour une soirée cinéma en famille. Pour chaque film:
-      titre, genre, note, et une phrase de description. Écris en français.
+      Utilise l'outil movie_recommend UNE SEULE FOIS pour obtenir les films tendance.
+      Avec les résultats, recommande 3 films pour une soirée cinéma en famille.
+      Pour chaque film: titre, année, note, et une phrase de description.
+      Écris en français. Si aucun résultat, réponds SKIP.
     notify_condition: always
     priority: medium
 
