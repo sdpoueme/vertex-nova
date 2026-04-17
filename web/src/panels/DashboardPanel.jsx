@@ -53,6 +53,7 @@ function PresenceWidget({ api }) {
   }
   return (
     <SpaceBetween size="xs">
+      {presence.vacationMode && <StatusIndicator type="warning">Mode vacances</StatusIndicator>}
       {(presence.home || []).map(name => (
         <SpaceBetween key={name} direction="horizontal" size="xs">
           <StatusIndicator type="success">{name}</StatusIndicator>

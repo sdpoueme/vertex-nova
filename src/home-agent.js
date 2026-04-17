@@ -109,6 +109,28 @@ async function handleMessage(msg) {
     }
   }
 
+  // Vacation mode command
+  if (/^oui\s+voyage/i.test(text)) {
+    try {
+      var { setVacationMode } = await import('./presence.js');
+      setVacationMode(true);
+      if (channel === 'telegram' && telegramChannel) {
+        await telegramChannel.sendText(replyTo, '🏖️ Mode vacances activé. Surveillance renforcée des appareils de sécurité.');
+      }
+      return;
+    } catch {}
+  }
+  if (/^(fin|stop)\s+voyage/i.test(text) || /^retour\s+maison/i.test(text)) {
+    try {
+      var { setVacationMode: svm2 } = await import('./presence.js');
+      svm2(false);
+      if (channel === 'telegram' && telegramChannel) {
+        await telegramChannel.sendText(replyTo, '🏠 Mode vacances désactivé. Bon retour !');
+      }
+      return;
+    } catch {}
+  }
+
   // Email reply workflow commands
   var replyMatch = text.match(/^(?:répondre|reply|repondre)\s+([a-zA-Z0-9]+)(?:\s+(.+))?$/i);
   var sendMatch = text.match(/^(?:envoyer|send|approuver|approve)\s+([a-zA-Z0-9]+)$/i);
@@ -460,10 +482,10 @@ async function main() {
     var { startPresenceMonitor } = await import('./presence.js');
     startPresenceMonitor(async function(event) {
       var hour = new Date().getHours();
+
       if (event.event === 'arrived') {
         var greeting = '🏠 ' + event.name + ' est arrivé(e) à la maison.';
         await sendTelegram(greeting);
-        // Speak welcome on Sonos RDC during daytime
         if (hour >= 7 && hour < 22) {
           try {
             var { execFile: execWelcome } = await import('node:child_process');
@@ -479,6 +501,14 @@ async function main() {
         }
       } else if (event.event === 'left') {
         await sendTelegram('👋 ' + event.name + ' a quitté la maison.');
+      } else if (event.event === 'night_no_return') {
+        await sendTelegram('⚠️ ' + event.name + ' a quitté la maison pendant la nuit et n\'est pas revenu(e) à 7h. Tout va bien ?');
+      } else if (event.event === 'travel_ask') {
+        await sendTelegram('✈️ ' + event.name + ' est absent(e) depuis plus de 6 heures. Êtes-vous en voyage ? (Répondez "oui voyage" pour activer le mode vacances)');
+      } else if (event.event === 'vacation_start') {
+        await sendTelegram('🏖️ Mode vacances activé — tous les résidents sont absents depuis 24h. Surveillance renforcée des appareils de sécurité.');
+      } else if (event.event === 'vacation_end') {
+        await sendTelegram('🏠 Mode vacances désactivé — ' + event.name + ' est de retour.');
       }
     }, vaultPath);
   } catch (err) {

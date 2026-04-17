@@ -902,10 +902,11 @@ async function executeTool(name, input) {
     try {
       var { whoIsHome } = await import('./presence.js');
       var presence = whoIsHome();
-      if (presence.home.length === 0 && presence.away.length === 0) return 'Détection de présence non configurée. Ajoutez PRESENCE_DEVICES dans .env';
+      if (presence.home.length === 0 && presence.away.length === 0) return 'Détection de présence non configurée.';
       var parts = [];
       if (presence.home.length > 0) parts.push('A la maison: ' + presence.home.join(', '));
       if (presence.away.length > 0) parts.push('Absent(s): ' + presence.away.join(', '));
+      if (presence.vacationMode) parts.push('Mode vacances: ACTIF');
       return parts.join('\n');
     } catch (err) { return 'Erreur: ' + err.message; }
   }

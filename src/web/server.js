@@ -620,7 +620,7 @@ export function startDashboard(config, port) {
         var { whoIsHome, getPresenceState } = await import('../presence.js');
         var pres = whoIsHome();
         var states = getPresenceState();
-        json(res, 200, { home: pres.home, away: pres.away, details: states });
+        json(res, 200, { home: pres.home, away: pres.away, vacationMode: pres.vacationMode, details: states });
       } catch {
         json(res, 200, { home: [], away: [], configured: false });
       }
