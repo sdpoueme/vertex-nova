@@ -463,12 +463,18 @@ async function main() {
       if (event.event === 'arrived') {
         var greeting = '🏠 ' + event.name + ' est arrivé(e) à la maison.';
         await sendTelegram(greeting);
-        // Speak welcome during daytime
+        // Speak welcome on Sonos RDC during daytime
         if (hour >= 7 && hour < 22) {
           try {
-            var { alexaSpeak: asWelcome } = await import('./outputs/alexa-speak.js');
-            var welcomeDevice = config.echoMorningDevice || config.echoWorkdayDevice || '';
-            if (welcomeDevice) await asWelcome('Bienvenue ' + event.name + '.', welcomeDevice);
+            var { execFile: execWelcome } = await import('node:child_process');
+            var { join: joinWelcome } = await import('node:path');
+            var welcomeCli = joinWelcome(config.projectDir, 'scripts/sonos-cli.js');
+            var welcomeRoom = config.sonosDayRoom || config.sonosDefaultRoom || '';
+            if (welcomeRoom) {
+              execWelcome('node', [welcomeCli, 'speak', 'Bienvenue ' + event.name + '.', welcomeRoom], { timeout: 30000 }, function(err) {
+                if (err) log.error('Welcome Sonos failed: ' + err.message);
+              });
+            }
           } catch {}
         }
       } else if (event.event === 'left') {
