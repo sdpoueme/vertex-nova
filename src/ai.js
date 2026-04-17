@@ -281,7 +281,7 @@ var tools = [
   },
   {
     name: 'movie_recommend',
-    description: 'Recommande des films à regarder. Utilise TMDB pour trouver les films tendance, populaires ou par genre. Utilise TOUJOURS cet outil quand on demande des films, des recommandations cinéma, ou quoi regarder.',
+    description: 'Recommande des films RÉELS à regarder via TMDB. OBLIGATOIRE pour toute question sur les films — n\'invente JAMAIS de titres. Retourne des films réels avec titres, années et notes.',
     input_schema: {
       type: 'object',
       properties: {
@@ -942,7 +942,8 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     "<rules>\n" +
     "- Réponds dans la langue du message\n" +
     "- Sois concis et naturel\n" +
-    "- N'utilise PAS de formatage markdown (pas de **, pas de _, pas de #, pas de ```, pas de []())\n" +
+    "- N'utilise PAS de formatage markdown (pas de **, _, #, ```, []())\n" +
+    "- N'INVENTE JAMAIS de contenu. Pour les films, actualités, météo: utilise TOUJOURS les outils (movie_recommend, news_search, web_search). Ne génère pas de faux titres de films ou de fausses informations.\n" +
     "- Écris en texte simple et lisible, comme si tu parlais\n" +
     "- Tu PEUX envoyer des emails avec email_compose et email_draft/email_send\n" +
     "- Tu PEUX parler sur les appareils Echo et Sonos\n" +

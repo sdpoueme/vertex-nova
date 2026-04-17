@@ -353,7 +353,7 @@ export function initStrandsAgents() {
   agents.media = new Agent({
     model: model,
     tools: [movieTool, echoSpeakTool, sonosSpeakTool],
-    systemPrompt: 'Tu es un agent média. Pour les films utilise movie_recommend. Pour parler sur les appareils utilise echo_speak ou sonos_speak directement.' + NO_MD,
+    systemPrompt: 'Tu es un agent média. Pour les films, utilise TOUJOURS l\'outil movie_recommend — n\'invente JAMAIS de titres de films. Pour parler sur les appareils utilise echo_speak ou sonos_speak.' + NO_MD,
     printer: false,
   });
 
