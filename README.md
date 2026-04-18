@@ -99,7 +99,7 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md).
 | Feature | Description |
 |---------|-------------|
 | Multi-Agent System | 7 specialist agents (news, home, media, memory, email, weather, general) via Strands SDK |
-| Telegram & WhatsApp | Text, voice (whisper.cpp with hallucination filtering), images (Qwen2.5-VL vision) |
+| Telegram & WhatsApp | Text, voice (whisper.cpp with hallucination filtering), images (two-stage vision pipeline) |
 | Web Dashboard | HTTPS, multimodal chat with voice mode toggle + device selector, config editor |
 | Echo Devices | Native Alexa Behavior API — speak directly on any Echo, auto-discovered |
 | Sonos TTS | Piper TTS (offline FR/EN), auto token refresh, time-based room routing |
@@ -159,13 +159,17 @@ Each device rule includes an AI context field — specific instructions for what
 
 Tracks who's home by scanning the local network for known phone MAC addresses.
 
-- Polls ARP table every 30 seconds
-- Ping sweep every ~2.5 minutes to find devices on mesh WiFi pods
-- 5-minute away threshold before marking someone as "left"
-- Arrival: Telegram notification + Echo welcome greeting (daytime)
-- Departure: Telegram notification
-- Dashboard widget shows real-time presence status
+- ARP table polling every 30 seconds + ping sweep every ~2.5 minutes (works with mesh WiFi pods)
+- Smart thresholds: 15 minutes during day, 60 minutes at night (11 PM – 7 AM) to avoid false positives from phone sleep mode
+- Requires 2 consecutive missed polls before marking as "left"
+- Night suppression: departures between 11 PM – 7 AM are logged silently (no notification)
+- Morning check: if someone "left" at night and hasn't returned by 7 AM → alert
+- Travel detection: after 6 hours away → asks "are you traveling?" via Telegram
+- Vacation mode: auto-enables when all residents away 24h+, enhanced security monitoring
+- Arrival: Telegram notification + Sonos welcome greeting (daytime, RDC speaker)
+- Dashboard widget with real-time presence + vacation mode status
 - AI tool `who_is_home` for conversational queries
+- Commands: "oui voyage" to enable vacation mode, "fin voyage" to disable
 
 Configure in the dashboard (Configuration → Détection de présence) or `.env`:
 ```env
@@ -203,6 +207,23 @@ sequenceDiagram
     Agent->>SMTP: Send reply
     SMTP->>User: ✅ Email envoyé
 ```
+
+## Two-Stage Vision Pipeline
+
+When you send an image:
+1. **Vision Agent** (Gemma 4 E2B) analyzes the image → produces a text description (~10-30s)
+2. **Text Agent** (Qwen3 8B) interprets the description and takes action if needed
+3. Both results are combined and returned
+
+If the user requests an action ("analyse ce plan et sauvegarde-le"), Stage 2 uses tools (vault, email, reminders). For simple analysis ("décris cette image"), only Stage 1 runs.
+
+If both Claude and the local vision model fail, the request is queued to disk and auto-retried every 15 minutes.
+
+## Anti-Hallucination
+
+The system prompt explicitly forbids inventing content: "N'INVENTE JAMAIS de contenu. Pour les films, actualités, météo: utilise TOUJOURS les outils." This prevents the AI from generating fake movie titles, fake news, or fake data instead of calling the appropriate tool.
+
+A degeneration detector catches repeated word loops (a known Qwen3 bug) and truncates the response to the first coherent sentences.
 
 ## Cookie Expiry Handling
 
@@ -246,7 +267,7 @@ Everything runs locally without any cloud API:
 | Text chat | Qwen3 8B (Ollama) |
 | Voice input | whisper.cpp |
 | Voice output | Piper TTS → Sonos |
-| Image analysis | Qwen2.5-VL 7B (Ollama) |
+| Image analysis | Gemma 4 E2B (Ollama) → Qwen3 8B for follow-up actions |
 | Search | DuckDuckGo / Google News RSS |
 | All 27 tools | Work on Qwen3 via Strands |
 
