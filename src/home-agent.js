@@ -492,12 +492,20 @@ async function main() {
             var { join: joinWelcome } = await import('node:path');
             var welcomeCli = joinWelcome(config.projectDir, 'scripts/sonos-cli.js');
             var welcomeRoom = config.sonosDayRoom || config.sonosDefaultRoom || '';
+            log.info('Welcome Sonos: room=' + welcomeRoom + ', hour=' + hour + ', name=' + event.name);
             if (welcomeRoom) {
-              execWelcome('node', [welcomeCli, 'speak', 'Bienvenue ' + event.name + '.', welcomeRoom], { timeout: 30000 }, function(err) {
-                if (err) log.error('Welcome Sonos failed: ' + err.message);
+              execWelcome('node', [welcomeCli, 'speak', 'Bienvenue ' + event.name + '.', welcomeRoom], { timeout: 30000 }, function(err, stdout, stderr) {
+                if (err) log.error('Welcome Sonos failed: ' + err.message + (stderr ? ' stderr: ' + stderr.slice(0, 200) : ''));
+                else log.info('Welcome Sonos OK: ' + (stdout || '').trim());
               });
+            } else {
+              log.warn('Welcome Sonos skipped: no room configured');
             }
-          } catch {}
+          } catch (err) {
+            log.error('Welcome Sonos exception: ' + err.message);
+          }
+        } else {
+          log.info('Welcome Sonos skipped: night mode (hour=' + hour + ')');
         }
       } else if (event.event === 'left') {
         await sendTelegram('👋 ' + event.name + ' a quitté la maison.');
