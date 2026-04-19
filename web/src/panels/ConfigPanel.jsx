@@ -424,6 +424,17 @@ function ModelsPanel({ api }) {
           <FormField label="Intervalle de vérification (secondes)">
             <Input type="number" value={models.presence_poll_seconds || '30'} onChange={({ detail }) => save('PRESENCE_POLL_SECONDS', detail.value)} />
           </FormField>
+          <FormField label="Style de bienvenue" description="Message annoncé sur Sonos quand quelqu'un rentre">
+            <Select
+              selectedOption={{ simple: { value: 'simple', label: 'Simple — Bienvenue [nom]' }, briefing: { value: 'briefing', label: 'Briefing — avec rappels et emails en attente' }, activity_summary: { value: 'activity_summary', label: 'Résumé complet — briefing + activités du jour' } }[models.welcome_style || 'briefing'] || { value: 'briefing', label: 'Briefing' }}
+              onChange={({ detail }) => save('WELCOME_STYLE', detail.selectedOption.value)}
+              options={[
+                { value: 'simple', label: 'Simple — "Bienvenue [nom]"' },
+                { value: 'briefing', label: 'Briefing — avec rappels et emails en attente' },
+                { value: 'activity_summary', label: 'Résumé complet — briefing + activités du jour' },
+              ]}
+            />
+          </FormField>
         </SpaceBetween>
       </Container>
 

@@ -484,28 +484,63 @@ async function main() {
       var hour = new Date().getHours();
 
       if (event.event === 'arrived') {
-        var greeting = '🏠 ' + event.name + ' est arrivé(e) à la maison.';
-        await sendTelegram(greeting);
+        await sendTelegram('🏠 ' + event.name + ' est arrivé(e) à la maison.');
         if (hour >= 7 && hour < 22) {
           try {
-            var { execFile: execWelcome } = await import('node:child_process');
-            var { join: joinWelcome } = await import('node:path');
-            var welcomeCli = joinWelcome(config.projectDir, 'scripts/sonos-cli.js');
-            var welcomeRoom = config.sonosDayRoom || config.sonosDefaultRoom || '';
-            log.info('Welcome Sonos: room=' + welcomeRoom + ', hour=' + hour + ', name=' + event.name);
-            if (welcomeRoom) {
-              execWelcome('node', [welcomeCli, 'speak', 'Bienvenue ' + event.name + '.', welcomeRoom], { timeout: 30000 }, function(err, stdout, stderr) {
-                if (err) log.error('Welcome Sonos failed: ' + err.message + (stderr ? ' stderr: ' + stderr.slice(0, 200) : ''));
-                else log.info('Welcome Sonos OK: ' + (stdout || '').trim());
-              });
-            } else {
-              log.warn('Welcome Sonos skipped: no room configured');
+            var welcomeStyle = process.env.WELCOME_STYLE || 'briefing';
+            var welcomeText = 'Bienvenue ' + event.name + '.';
+
+            if (welcomeStyle !== 'simple') {
+              try {
+                var { whoIsHome: wih } = await import('./presence.js');
+                var pres = wih();
+                var othersHome = pres.home.filter(function(n) { return n !== event.name; });
+                var prompt = 'Génère un message de bienvenue vocal en français québécois naturel pour ' + event.name + ' qui rentre à la maison.\n' +
+                  'Heure: ' + hour + 'h. ' + (othersHome.length > 0 ? 'Déjà à la maison: ' + othersHome.join(', ') + '.' : event.name + ' est le premier à rentrer.') + '\n';
+
+                if (welcomeStyle === 'activity_summary') {
+                  try {
+                    var { readFileSync: readF, existsSync: exF } = await import('node:fs');
+                    var { join: joinV } = await import('node:path');
+                    var dailyPath = joinV(vaultPath, 'daily', new Date().toISOString().slice(0, 10) + '.md');
+                    if (exF(dailyPath)) prompt += 'Résumé du jour:\n' + readF(dailyPath, 'utf8').slice(0, 400) + '\n';
+                  } catch {}
+                }
+
+                try {
+                  var { readdirSync: rdR, readFileSync: rfR } = await import('node:fs');
+                  var { join: jR } = await import('node:path');
+                  var rPath = jR(vaultPath, 'home', 'reminders');
+                  var rems = rdR(rPath).filter(function(f) { return f.endsWith('.md'); }).map(function(f) { var c = rfR(jR(rPath, f), 'utf8'); if (c.includes('status: pending')) { var m = c.match(/reminder:\s*"([^"]+)"/); return m ? m[1] : null; } return null; }).filter(Boolean);
+                  if (rems.length > 0) prompt += 'Rappels: ' + rems.slice(0, 3).join('; ') + '.\n';
+                } catch {}
+
+                try {
+                  var { getEmailAgent: gEA } = await import('./email-agent.js');
+                  var ea = gEA();
+                  if (ea) { var pe = ea.listPending(); if (pe.length > 0) prompt += pe.length + ' emails en attente.\n'; }
+                } catch {}
+
+                prompt += '\n2-3 phrases max, chaleureux et naturel. Pas de formatage markdown. Commence par "Bienvenue ' + event.name + '".';
+                var resp = await chat(prompt, 'welcome-' + Date.now().toString(36));
+                if (resp && resp.length > 20 && !resp.includes('difficultés')) {
+                  welcomeText = resp.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '').trim();
+                }
+              } catch (aiErr) { log.warn('Welcome AI failed: ' + aiErr.message); }
             }
-          } catch (err) {
-            log.error('Welcome Sonos exception: ' + err.message);
-          }
-        } else {
-          log.info('Welcome Sonos skipped: night mode (hour=' + hour + ')');
+
+            var { execFile: execW } = await import('node:child_process');
+            var { join: joinW } = await import('node:path');
+            var wCli = joinW(config.projectDir, 'scripts/sonos-cli.js');
+            var wRoom = config.sonosDayRoom || config.sonosDefaultRoom || '';
+            log.info('Welcome: room=' + wRoom + ', style=' + welcomeStyle + ', text=' + welcomeText.slice(0, 100));
+            if (wRoom) {
+              execW('node', [wCli, 'speak', welcomeText.slice(0, 500), wRoom], { timeout: 45000 }, function(err) {
+                if (err) log.error('Welcome Sonos failed: ' + err.message);
+                else log.info('Welcome Sonos OK');
+              });
+            }
+          } catch (err) { log.error('Welcome exception: ' + err.message); }
         }
       } else if (event.event === 'left') {
         await sendTelegram('👋 ' + event.name + ' a quitté la maison.');
