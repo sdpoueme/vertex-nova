@@ -534,10 +534,15 @@ async function main() {
                   if (ea) { var pe = ea.listPending(); if (pe.length > 0) prompt += pe.length + ' emails en attente.\n'; }
                 } catch {}
 
-                prompt += '\n2-3 phrases max, chaleureux et naturel. Pas de formatage markdown. Commence par "Bienvenue ' + event.name + '".';
+                prompt += '\n2-3 phrases max, chaleureux et naturel. Pas de formatage markdown. Commence par "Bienvenue ' + event.name + '". IMPORTANT: le message est pour ' + event.name + ' et personne d\'autre.';
                 var resp = await chat(prompt, 'welcome-' + Date.now().toString(36));
                 if (resp && resp.length > 20 && !resp.includes('difficultés')) {
                   welcomeText = resp.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '').trim();
+                  // Safety: ensure the welcome text starts with the correct name
+                  if (!welcomeText.toLowerCase().includes(event.name.toLowerCase())) {
+                    log.warn('Welcome text does not contain ' + event.name + ', using fallback');
+                    welcomeText = 'Bienvenue ' + event.name + '. ' + welcomeText;
+                  }
                 }
               } catch (aiErr) { log.warn('Welcome AI failed: ' + aiErr.message); }
             }

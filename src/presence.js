@@ -325,6 +325,11 @@ export function startPresenceMonitor(onEvent, vaultPath) {
         let state = presenceState[d.name];
         let wasHome = state.home;
 
+        // Debug: log state transitions
+        if (isOnNetwork !== wasHome) {
+          log.debug(d.name + ' state change: wasHome=' + wasHome + ' isOnNetwork=' + isOnNetwork + ' mac=' + d.mac + ' normalized=' + normalizedDevMac + ' misses=' + state.consecutiveMisses);
+        }
+
         if (isOnNetwork) {
           state.lastSeen = now;
           state.consecutiveMisses = 0;
