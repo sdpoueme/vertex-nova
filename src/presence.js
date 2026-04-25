@@ -16,7 +16,7 @@
  */
 import { execFile } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { logger } from './log.js';
 
 var log = logger('presence');
@@ -26,26 +26,208 @@ var stateFile = null;
 var pollTimer = null;
 var vacationMode = false;
 var onEventCallback = null;
+var presenceConfig = null; // Parsed presence.yaml (per-person settings + thresholds)
 
-var DAY_AWAY_THRESHOLD = 15 * 60 * 1000;   // 15 min during day
-var NIGHT_AWAY_THRESHOLD = 60 * 60 * 1000;  // 60 min at night (phones sleep)
-var CONSECUTIVE_MISSES_REQUIRED = 2;         // Must miss 2 polls before "left"
-var TRAVEL_ASK_THRESHOLD = 6 * 60 * 60 * 1000;  // Ask about travel after 6h away
-var VACATION_THRESHOLD = 24 * 60 * 60 * 1000;   // Vacation mode after 24h all away
+// Defaults — overridden by presence.yaml settings section
+var DAY_AWAY_THRESHOLD = 15 * 60 * 1000;
+var NIGHT_AWAY_THRESHOLD = 60 * 60 * 1000;
+var CONSECUTIVE_MISSES_REQUIRED = 2;
+var TRAVEL_ASK_THRESHOLD = 6 * 60 * 60 * 1000;
+var VACATION_THRESHOLD = 24 * 60 * 60 * 1000;
+var NIGHT_START = 23;
+var NIGHT_END = 7;
 
 function isNightHours() {
   var h = new Date().getHours();
-  return h >= 23 || h < 7;
+  return h >= NIGHT_START || h < NIGHT_END;
+}
+
+/**
+ * Parse presence.yaml into structured config.
+ * Returns { settings: {...}, people: [...] }
+ */
+function parsePresenceYaml(text) {
+  var people = [];
+  var settings = {};
+
+  // Parse settings block
+  var settingsMatch = text.match(/settings:\s*\n((?:\s{2,}\S.*\n)*)/);
+  if (settingsMatch) {
+    var sBlock = settingsMatch[1];
+    var poll = sBlock.match(/poll_seconds:\s*(\d+)/);
+    var dayAway = sBlock.match(/day_away_minutes:\s*(\d+)/);
+    var nightAway = sBlock.match(/night_away_minutes:\s*(\d+)/);
+    var misses = sBlock.match(/consecutive_misses:\s*(\d+)/);
+    var travelAsk = sBlock.match(/travel_ask_hours:\s*(\d+)/);
+    var vacationH = sBlock.match(/vacation_hours:\s*(\d+)/);
+    var nightS = sBlock.match(/night_start:\s*(\d+)/);
+    var nightE = sBlock.match(/night_end:\s*(\d+)/);
+    settings = {
+      poll_seconds: poll ? parseInt(poll[1]) : 30,
+      day_away_minutes: dayAway ? parseInt(dayAway[1]) : 15,
+      night_away_minutes: nightAway ? parseInt(nightAway[1]) : 60,
+      consecutive_misses: misses ? parseInt(misses[1]) : 2,
+      travel_ask_hours: travelAsk ? parseInt(travelAsk[1]) : 6,
+      vacation_hours: vacationH ? parseInt(vacationH[1]) : 24,
+      night_start: nightS ? parseInt(nightS[1]) : 23,
+      night_end: nightE ? parseInt(nightE[1]) : 7,
+    };
+  } else {
+    settings = {
+      poll_seconds: parseInt(process.env.PRESENCE_POLL_SECONDS) || 30,
+      day_away_minutes: 15, night_away_minutes: 60, consecutive_misses: 2,
+      travel_ask_hours: 6, vacation_hours: 24, night_start: 23, night_end: 7,
+    };
+  }
+
+  // Parse people blocks
+  var blocks = text.split(/^\s+-\s+name:/m);
+  for (var i = 1; i < blocks.length; i++) {
+    var block = '  - name:' + blocks[i];
+    var name = (block.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+    var mac = (block.match(/mac:\s*(.+)/) || [])[1]?.trim().toLowerCase() || '';
+    var language = (block.match(/language:\s*(.+)/) || [])[1]?.trim() || 'fr';
+    var welcome_style = (block.match(/welcome_style:\s*(.+)/) || [])[1]?.trim() || 'briefing';
+    var welcome_room = (block.match(/welcome_room:\s*(.+)/) || [])[1]?.trim() || '';
+    var notifications = (block.match(/notifications:\s*(\S+)/) || [])[1]?.trim() || 'both';
+    notifications = notifications.replace(/#.*$/, '').trim();
+    if (name && mac) {
+      people.push({ name: name, mac: mac, language: language, welcome_style: welcome_style, welcome_room: welcome_room, notifications: notifications });
+    }
+  }
+  return { settings: settings, people: people };
+}
+
+/**
+ * Build presence.yaml from structured config.
+ */
+function buildPresenceYaml(config) {
+  var s = config.settings || {};
+  var yaml = '# Vertex Nova — Per-Person Presence Settings\n';
+  yaml += '# Each person has their own welcome preferences, language, and notification settings.\n\n';
+  yaml += 'settings:\n';
+  yaml += '  poll_seconds: ' + (s.poll_seconds || 30) + '\n';
+  yaml += '  day_away_minutes: ' + (s.day_away_minutes || 15) + '\n';
+  yaml += '  night_away_minutes: ' + (s.night_away_minutes || 60) + '\n';
+  yaml += '  consecutive_misses: ' + (s.consecutive_misses || 2) + '\n';
+  yaml += '  travel_ask_hours: ' + (s.travel_ask_hours || 6) + '\n';
+  yaml += '  vacation_hours: ' + (s.vacation_hours || 24) + '\n';
+  yaml += '  night_start: ' + (s.night_start != null ? s.night_start : 23) + '\n';
+  yaml += '  night_end: ' + (s.night_end != null ? s.night_end : 7) + '\n';
+  yaml += '\npeople:\n';
+  for (var p of config.people) {
+    yaml += '  - name: ' + p.name + '\n';
+    yaml += '    mac: ' + p.mac + '\n';
+    yaml += '    language: ' + (p.language || 'fr') + '\n';
+    yaml += '    welcome_style: ' + (p.welcome_style || 'briefing') + '\n';
+    yaml += '    welcome_room: ' + (p.welcome_room || '') + '\n';
+    yaml += '    notifications: ' + (p.notifications || 'both') + '\n';
+    yaml += '\n';
+  }
+  return yaml;
+}
+
+/**
+ * Apply settings from config to runtime thresholds.
+ */
+function applySettings(settings) {
+  DAY_AWAY_THRESHOLD = (settings.day_away_minutes || 15) * 60 * 1000;
+  NIGHT_AWAY_THRESHOLD = (settings.night_away_minutes || 60) * 60 * 1000;
+  CONSECUTIVE_MISSES_REQUIRED = settings.consecutive_misses || 2;
+  TRAVEL_ASK_THRESHOLD = (settings.travel_ask_hours || 6) * 60 * 60 * 1000;
+  VACATION_THRESHOLD = (settings.vacation_hours || 24) * 60 * 60 * 1000;
+  NIGHT_START = settings.night_start != null ? settings.night_start : 23;
+  NIGHT_END = settings.night_end != null ? settings.night_end : 7;
+}
+
+/**
+ * Load presence config from presence.yaml, falling back to PRESENCE_DEVICES env var.
+ */
+function loadPresenceConfig() {
+  var projectDir = process.env.SYNAPSE_PROJECT_DIR
+    ? resolve(process.env.SYNAPSE_PROJECT_DIR)
+    : resolve(import.meta.dirname, '..');
+  var yamlPath = join(projectDir, 'config', 'presence.yaml');
+
+  if (existsSync(yamlPath)) {
+    try {
+      var text = readFileSync(yamlPath, 'utf8');
+      presenceConfig = parsePresenceYaml(text);
+      applySettings(presenceConfig.settings);
+      log.info('Loaded presence config from presence.yaml: ' + presenceConfig.people.length + ' people');
+      return presenceConfig;
+    } catch (err) {
+      log.warn('Failed to parse presence.yaml: ' + err.message + ', falling back to env');
+    }
+  }
+
+  // Fallback: parse PRESENCE_DEVICES env var into minimal config
+  var raw = process.env.PRESENCE_DEVICES || '';
+  if (!raw) { presenceConfig = { settings: {}, people: [] }; return presenceConfig; }
+
+  var people = raw.split(',').map(function(entry) {
+    var parts = entry.trim().split(':');
+    if (parts.length < 2) return null;
+    return {
+      name: parts[0].trim(),
+      mac: parts.slice(1).join(':').trim().toLowerCase(),
+      language: 'fr',
+      welcome_style: process.env.WELCOME_STYLE || 'briefing',
+      welcome_room: '',
+      notifications: 'both',
+    };
+  }).filter(Boolean);
+
+  presenceConfig = { settings: { poll_seconds: parseInt(process.env.PRESENCE_POLL_SECONDS) || 30 }, people: people };
+  log.info('Loaded presence config from PRESENCE_DEVICES env: ' + people.length + ' people');
+  return presenceConfig;
 }
 
 function parseDevices() {
-  var raw = process.env.PRESENCE_DEVICES || '';
-  if (!raw) return [];
-  return raw.split(',').map(function(entry) {
-    var parts = entry.trim().split(':');
-    if (parts.length < 2) return null;
-    return { name: parts[0].trim(), mac: parts.slice(1).join(':').trim().toLowerCase() };
-  }).filter(Boolean);
+  if (!presenceConfig) loadPresenceConfig();
+  return presenceConfig.people.map(function(p) {
+    return { name: p.name, mac: p.mac };
+  });
+}
+
+/**
+ * Get per-person settings for a given person name.
+ */
+export function getPersonSettings(name) {
+  if (!presenceConfig) loadPresenceConfig();
+  return presenceConfig.people.find(function(p) { return p.name === name; }) || null;
+}
+
+/**
+ * Get the full presence config (for API).
+ */
+export function getPresenceConfig() {
+  if (!presenceConfig) loadPresenceConfig();
+  return presenceConfig;
+}
+
+/**
+ * Reload presence config from disk.
+ */
+export function reloadPresenceConfig() {
+  presenceConfig = null;
+  return loadPresenceConfig();
+}
+
+/**
+ * Save presence config to disk and reload.
+ */
+export function savePresenceConfig(newConfig) {
+  var projectDir = process.env.SYNAPSE_PROJECT_DIR
+    ? resolve(process.env.SYNAPSE_PROJECT_DIR)
+    : resolve(import.meta.dirname, '..');
+  var yamlPath = join(projectDir, 'config', 'presence.yaml');
+  var yaml = buildPresenceYaml(newConfig);
+  writeFileSync(yamlPath, yaml);
+  presenceConfig = newConfig;
+  if (newConfig.settings) applySettings(newConfig.settings);
+  log.info('Saved presence config: ' + newConfig.people.length + ' people');
+  return presenceConfig;
 }
 
 function loadState() {
@@ -101,9 +283,10 @@ function getArpTable(doPing) {
 }
 
 export function startPresenceMonitor(onEvent, vaultPath) {
+  loadPresenceConfig();
   var devices = parseDevices();
   if (devices.length === 0) {
-    log.info('Presence monitor not configured (PRESENCE_DEVICES not set)');
+    log.info('Presence monitor not configured (no presence.yaml or PRESENCE_DEVICES)');
     return null;
   }
 
@@ -121,7 +304,7 @@ export function startPresenceMonitor(onEvent, vaultPath) {
     if (!presenceState[d.name].consecutiveMisses) presenceState[d.name].consecutiveMisses = 0;
   }
 
-  var interval = (parseInt(process.env.PRESENCE_POLL_SECONDS) || 30) * 1000;
+  var interval = ((presenceConfig.settings?.poll_seconds || parseInt(process.env.PRESENCE_POLL_SECONDS) || 30)) * 1000;
   log.info('Presence monitor started: ' + devices.map(function(d) { return d.name + ' (' + d.mac + ')'; }).join(', '));
 
   var pollCount = 0;
@@ -135,11 +318,12 @@ export function startPresenceMonitor(onEvent, vaultPath) {
       var night = isNightHours();
       var threshold = night ? NIGHT_AWAY_THRESHOLD : DAY_AWAY_THRESHOLD;
 
-      for (var d of devices) {
-        var normalizedDevMac = normalizeMac(d.mac);
-        var isOnNetwork = arpMacs.some(function(m) { return m === normalizedDevMac; });
-        var state = presenceState[d.name];
-        var wasHome = state.home;
+      for (let di = 0; di < devices.length; di++) {
+        let d = devices[di];
+        let normalizedDevMac = normalizeMac(d.mac);
+        let isOnNetwork = arpMacs.some(function(m) { return m === normalizedDevMac; });
+        let state = presenceState[d.name];
+        let wasHome = state.home;
 
         if (isOnNetwork) {
           state.lastSeen = now;
@@ -154,7 +338,7 @@ export function startPresenceMonitor(onEvent, vaultPath) {
               log.info(d.name + ' returned home (night WiFi reconnect — not a real departure)');
               state.nightDeparture = false;
             } else {
-              log.info(d.name + ' arrived home');
+              log.info(d.name + ' arrived home (mac: ' + d.mac + ')');
               try { await onEvent({ name: d.name, event: 'arrived', mac: d.mac }); } catch (err) { log.error('Presence event error: ' + err.message); }
             }
 
@@ -182,7 +366,7 @@ export function startPresenceMonitor(onEvent, vaultPath) {
             } else {
               // Daytime departure — notify
               state.nightDeparture = false;
-              log.info(d.name + ' left home');
+              log.info(d.name + ' left home (mac: ' + d.mac + ')');
               try { await onEvent({ name: d.name, event: 'left', mac: d.mac }); } catch (err) { log.error('Presence event error: ' + err.message); }
             }
           }
@@ -199,8 +383,9 @@ export function startPresenceMonitor(onEvent, vaultPath) {
       // Morning check (7 AM): if someone had a night departure and hasn't returned
       var hour = new Date().getHours();
       if (hour === 7 && pollCount % 10 === 0) { // Check once around 7 AM
-        for (var d2 of devices) {
-          var s = presenceState[d2.name];
+        for (let di2 = 0; di2 < devices.length; di2++) {
+          let d2 = devices[di2];
+          let s = presenceState[d2.name];
           if (s.nightDeparture && !s.home) {
             log.warn(d2.name + ' left during the night and has not returned by 7 AM');
             s.nightDeparture = false; // Clear flag, treat as real departure
@@ -210,9 +395,9 @@ export function startPresenceMonitor(onEvent, vaultPath) {
       }
 
       // Vacation mode: if ALL tracked people are away for 24h+
-      var allAway = devices.every(function(d) {
-        var s = presenceState[d.name];
-        return !s.home && s.lastSeen && (now - s.lastSeen) > VACATION_THRESHOLD;
+      var allAway = devices.every(function(dev) {
+        var st = presenceState[dev.name];
+        return !st.home && st.lastSeen && (now - st.lastSeen) > VACATION_THRESHOLD;
       });
       if (allAway && !vacationMode) {
         vacationMode = true;

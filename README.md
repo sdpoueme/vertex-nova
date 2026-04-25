@@ -105,7 +105,7 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md).
 | Sonos TTS | Piper TTS (offline FR/EN), auto token refresh, time-based room routing |
 | Email Agent | Inbox monitoring, Telegram notifications, AI-drafted replies, compose new emails, SMTP |
 | Smart Home Monitor | Alexa API device discovery + state polling, context-driven alert rules per device |
-| Presence Detection | WiFi-based who's-home tracking via ARP + ping sweep (works with mesh pods) |
+| Presence Detection | Per-person WiFi tracking via ARP + ping sweep, configurable thresholds, vacation mode toggle |
 | Task Orchestrator | Pre-fetches news/weather/movies for device requests (1 AI call instead of 3+) |
 | Async Thinker | Background agent reviews every response and saves learnings |
 | Identity Layer | Per-user profiles, automatic fact extraction, topic tracking |
@@ -157,25 +157,44 @@ Each device rule includes an AI context field — specific instructions for what
 
 ## Presence Detection
 
-Tracks who's home by scanning the local network for known phone MAC addresses.
+Tracks who's home by scanning the local network for known phone MAC addresses. Each person has their own welcome preferences, language, and notification settings.
 
+- **Per-person config** in `config/presence.yaml`: language, welcome style, welcome device (Sonos/Echo), notification preference (Telegram, voice, or both)
 - ARP table polling every 30 seconds + ping sweep every ~2.5 minutes (works with mesh WiFi pods)
-- Smart thresholds: 15 minutes during day, 60 minutes at night (11 PM – 7 AM) to avoid false positives from phone sleep mode
+- Smart thresholds: 15 minutes during day, 60 minutes at night to avoid false positives from phone sleep mode
 - Requires 2 consecutive missed polls before marking as "left"
-- Night suppression: departures between 11 PM – 7 AM are logged silently (no notification)
+- Night suppression: departures during night hours are logged silently (no notification)
 - Morning check: if someone "left" at night and hasn't returned by 7 AM → alert
 - Travel detection: after 6 hours away → asks "are you traveling?" via Telegram
-- Vacation mode: auto-enables when all residents away 24h+, enhanced security monitoring
-- Arrival: Telegram notification + Sonos welcome greeting (daytime, RDC speaker)
-- Dashboard widget with real-time presence + vacation mode status
+- Vacation mode: auto-enables when all residents away 24h+, enhanced security monitoring. Can also be toggled manually from the dashboard or via Telegram ("oui voyage" / "fin voyage")
+- Arrival: notification per person's preference + AI welcome greeting on their configured device
+- All thresholds (day/night away time, night hours, travel ask delay, vacation delay, consecutive misses) are tunable from the dashboard
+- Dashboard widget with real-time presence + vacation mode toggle
 - AI tool `who_is_home` for conversational queries
-- Commands: "oui voyage" to enable vacation mode, "fin voyage" to disable
 
-Configure in the dashboard (Configuration → Détection de présence) or `.env`:
-```env
-PRESENCE_DEVICES=Name1:aa:bb:cc:dd:ee:ff,Name2:11:22:33:44:55:66
+Configure in the dashboard (Configuration → Détection de présence) or `config/presence.yaml`:
+```yaml
+settings:
+  poll_seconds: 30
+  day_away_minutes: 15
+  night_away_minutes: 60
+  consecutive_misses: 2
+  travel_ask_hours: 6
+  vacation_hours: 24
+  night_start: 23
+  night_end: 7
+
+people:
+  - name: Serge
+    mac: 6c:3a:ff:8a:06:ed
+    language: fr
+    welcome_style: briefing        # simple, briefing, activity_summary
+    welcome_room: Rez de Chaussee  # Sonos room or echo:Device Name
+    notifications: both            # telegram, voice, both
 ```
 Get MAC addresses from `arp -a` or your router admin page. For phones using randomized MACs (iOS/Android), use the WiFi-specific MAC shown in the phone's WiFi settings.
+
+Backward compatible: if `config/presence.yaml` doesn't exist, falls back to `PRESENCE_DEVICES` env var.
 
 ## Knowledge Bases
 
@@ -253,7 +272,7 @@ Served over HTTPS (auto-generated self-signed cert). Access: `https://<your-ip>:
 |-------|----------|
 | Accueil | Live device status, presence widget, channels, KBs, recent interactions |
 | Chat | Text, image upload, voice recording, voice mode toggle + device selector, interaction history |
-| Configuration | AI models, Sonos/Echo routing (auto-discovered devices), presence detection (name+MAC editor), home location, news, movies, Alexa cookies, Telegram multi-user |
+| Configuration | AI models, Sonos/Echo routing (auto-discovered devices), per-person presence (welcome style, device, language, notifications, detection thresholds, vacation toggle), home location, news, movies, Alexa cookies, Telegram multi-user |
 | Appareils | Alexa device discovery with capabilities, alert rule editor with device picker from discovered list |
 | Connaissances | Git repos + URL collections, sitemap crawling, sync per KB |
 | Logs | Live tail of agent logs |
@@ -283,6 +302,7 @@ Claude is only used for escalation when the local model gives a weak response. O
 | `config/proactive.yaml` | Scheduled proactive actions |
 | `config/knowledgebases.yaml` | Knowledge base git repos |
 | `config/devices.yaml` | Device alert rules |
+| `config/presence.yaml` | Per-person presence detection settings and thresholds |
 
 ## Installation
 

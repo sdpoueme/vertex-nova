@@ -46,45 +46,249 @@ function TagListEditor({ items, onChange, placeholder }) {
   );
 }
 
-// Presence device editor: Name + MAC pairs
-function PresenceDeviceEditor({ devices, onChange }) {
-  // Parse "Name1:mac1,Name2:mac2" into array of {name, mac}
-  const parsed = (devices || '').split(',').map(e => {
-    const parts = e.trim().split(':');
-    if (parts.length < 2) return null;
-    return { name: parts[0].trim(), mac: parts.slice(1).join(':').trim() };
-  }).filter(Boolean);
+// Per-person presence card editor — expandable cards with name, MAC, language, welcome style, room, notifications
+function PresencePersonEditor({ api }) {
+  const [people, setPeople] = useState([]);
+  const [settings, setSettings] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState(null);
+  const [expanded, setExpanded] = useState({});
+  const [voiceDevices, setVoiceDevices] = useState([]);
+  const [dirty, setDirty] = useState({});
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [vacationMode, setVacationMode] = useState(false);
 
-  const [newName, setNewName] = useState('');
-  const [newMac, setNewMac] = useState('');
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      fetch(api + '/api/presence/config').then(r => r.json()).catch(() => ({ people: [], settings: {} })),
+      fetch(api + '/api/sonos/rooms').then(r => r.json()).catch(() => ({ rooms: [] })),
+      fetch(api + '/api/alexa/echo-devices').then(r => r.json()).catch(() => ({ devices: [] })),
+      fetch(api + '/api/presence').then(r => r.json()).catch(() => ({ vacationMode: false })),
+    ]).then(([presData, sonosData, echoData, presState]) => {
+      const loadedPeople = presData.people || [];
+      setPeople(loadedPeople);
+      setSettings(presData.settings || {});
+      setVacationMode(!!presState.vacationMode);
 
-  const serialize = (list) => list.map(d => d.name + ':' + d.mac).join(',');
-  const add = () => {
-    if (!newName.trim() || !newMac.trim()) return;
-    onChange(serialize([...parsed, { name: newName.trim(), mac: newMac.trim().toLowerCase() }]));
-    setNewName(''); setNewMac('');
+      // Build combined voice device list (same approach as ChatPanel)
+      const devs = [];
+      for (const r of (sonosData.rooms || [])) {
+        devs.push({ value: r.name, label: '🔈 ' + r.name + ' (Sonos)' });
+      }
+      for (const d of (echoData.devices || [])) {
+        devs.push({ value: 'echo:' + d.name, label: '🔊 ' + d.name + ' (Echo' + (d.online ? ' 🟢' : '') + ')' });
+      }
+      setVoiceDevices(devs);
+
+      // Expand all existing people on first load
+      const exp = {};
+      loadedPeople.forEach((_, i) => { exp[i] = true; });
+      setExpanded(exp);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [api]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const saveAll = async (newPeople, newSettings) => {
+    const ppl = newPeople || people;
+    const stg = newSettings || settings;
+    setPeople(ppl);
+    setSettings(stg);
+    setDirty({});
+    setSettingsDirty(false);
+    try {
+      const res = await fetch(api + '/api/presence/config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ people: ppl, settings: stg }),
+      });
+      const data = await res.json();
+      if (data.saved) setAlert({ type: 'success', text: 'Présence sauvegardée (' + data.people + ' personnes)' });
+      else setAlert({ type: 'error', text: data.error || 'Erreur' });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
-  const remove = (idx) => { const n = [...parsed]; n.splice(idx, 1); onChange(serialize(n)); };
+
+  const updatePerson = (idx, field, value) => {
+    const newPeople = [...people];
+    newPeople[idx] = { ...newPeople[idx], [field]: value };
+    setPeople(newPeople);
+    setDirty({ ...dirty, [idx]: true });
+  };
+
+  const savePerson = () => { saveAll(people, settings); };
+
+  const removePerson = (idx) => {
+    const newPeople = people.filter((_, i) => i !== idx);
+    saveAll(newPeople, settings);
+  };
+
+  const addPerson = () => {
+    const newPeople = [...people, { name: '', mac: '', language: 'fr', welcome_style: 'briefing', welcome_room: '', notifications: 'both' }];
+    setPeople(newPeople);
+    setExpanded({ ...expanded, [newPeople.length - 1]: true });
+    setDirty({ ...dirty, [newPeople.length - 1]: true });
+  };
+
+  const toggleExpand = (idx) => {
+    setExpanded({ ...expanded, [idx]: !expanded[idx] });
+  };
+
+  const updateSetting = (key, value) => {
+    setSettings({ ...settings, [key]: parseInt(value) || 0 });
+    setSettingsDirty(true);
+  };
+
+  const toggleVacation = async (enabled) => {
+    setVacationMode(enabled);
+    try {
+      const res = await fetch(api + '/api/presence/vacation', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json();
+      setVacationMode(!!data.vacationMode);
+      setAlert({ type: 'success', text: enabled ? '🏖️ Mode vacances activé' : '🏠 Mode vacances désactivé' });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  const langOptions = [
+    { value: 'fr', label: 'Français' },
+    { value: 'en', label: 'English' },
+    { value: 'es', label: 'Español' },
+  ];
+
+  const styleOptions = [
+    { value: 'simple', label: 'Simple — "Bienvenue [nom]"' },
+    { value: 'briefing', label: 'Briefing — rappels + emails' },
+    { value: 'activity_summary', label: 'Résumé complet — briefing + activités' },
+  ];
+
+  const notifOptions = [
+    { value: 'both', label: 'Telegram + Voix' },
+    { value: 'telegram', label: 'Telegram seulement' },
+    { value: 'voice', label: 'Voix seulement' },
+  ];
+
+  // Build device options — ensure current person values are always in the list
+  const buildDeviceOptions = (currentRoom) => {
+    const opts = [...voiceDevices];
+    if (currentRoom && !opts.find(o => o.value === currentRoom)) {
+      opts.push({ value: currentRoom, label: currentRoom + ' (hors ligne)' });
+    }
+    return opts;
+  };
+
+  const pick = (options, value) => options.find(o => o.value === value) || (value ? { value, label: value } : null);
+
+  if (loading) return <Spinner size="large" />;
+
+  const hasDirty = Object.values(dirty).some(Boolean) || settingsDirty;
 
   return (
-    <SpaceBetween size="s">
-      {parsed.length > 0 && (
-        <TokenGroup items={parsed.map(d => ({ label: d.name + '  (' + d.mac + ')', dismissLabel: 'Retirer ' + d.name }))}
-          onDismiss={({ detail }) => remove(detail.itemIndex)} />
+    <SpaceBetween size="m">
+      {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
+      <Toggle checked={vacationMode} onChange={({ detail }) => toggleVacation(detail.checked)}>
+        {vacationMode ? '🏖️ Mode vacances activé — surveillance renforcée' : 'Mode vacances désactivé'}
+      </Toggle>
+      {people.map((person, idx) => {
+        const deviceOpts = buildDeviceOptions(person.welcome_room);
+        return (
+          <Container key={idx} header={
+            <Header variant="h4"
+              actions={
+                <SpaceBetween direction="horizontal" size="xs">
+                  <Button variant="icon" iconName={expanded[idx] ? 'angle-up' : 'angle-down'} onClick={() => toggleExpand(idx)} />
+                  <Button variant="icon" iconName="close" onClick={() => removePerson(idx)} />
+                </SpaceBetween>
+              }
+            >
+              <span onClick={() => toggleExpand(idx)} style={{ cursor: 'pointer' }}>
+                {person.name || '(nouveau)'} — {person.mac || '??:??:??'}
+              </span>
+            </Header>
+          }>
+            {expanded[idx] ? (
+              <SpaceBetween size="s">
+                <ColumnLayout columns={2}>
+                  <FormField label="Nom">
+                    <Input value={person.name} onChange={({ detail }) => updatePerson(idx, 'name', detail.value)} placeholder="Serge" />
+                  </FormField>
+                  <FormField label="Adresse MAC">
+                    <Input value={person.mac} onChange={({ detail }) => updatePerson(idx, 'mac', detail.value.toLowerCase())} placeholder="aa:bb:cc:dd:ee:ff" />
+                  </FormField>
+                </ColumnLayout>
+                <ColumnLayout columns={2}>
+                  <FormField label="Langue">
+                    <Select selectedOption={pick(langOptions, person.language)} onChange={({ detail }) => updatePerson(idx, 'language', detail.selectedOption.value)} options={langOptions} />
+                  </FormField>
+                  <FormField label="Style de bienvenue">
+                    <Select selectedOption={pick(styleOptions, person.welcome_style)} onChange={({ detail }) => updatePerson(idx, 'welcome_style', detail.selectedOption.value)} options={styleOptions} />
+                  </FormField>
+                </ColumnLayout>
+                <ColumnLayout columns={2}>
+                  <FormField label="Appareil de bienvenue" description="Sonos ou Echo pour l'annonce d'arrivée">
+                    <Select
+                      selectedOption={pick(deviceOpts, person.welcome_room)}
+                      onChange={({ detail }) => updatePerson(idx, 'welcome_room', detail.selectedOption.value)}
+                      options={deviceOpts}
+                      placeholder="Sélectionner un appareil"
+                      filteringType="auto"
+                    />
+                  </FormField>
+                  <FormField label="Notifications">
+                    <Select selectedOption={pick(notifOptions, person.notifications)} onChange={({ detail }) => updatePerson(idx, 'notifications', detail.selectedOption.value)} options={notifOptions} />
+                  </FormField>
+                </ColumnLayout>
+              </SpaceBetween>
+            ) : (
+              <Box variant="small" color="text-body-secondary">
+                {pick(langOptions, person.language)?.label || person.language} · {pick(styleOptions, person.welcome_style)?.label || person.welcome_style} · {person.welcome_room || '(par défaut)'} · {pick(notifOptions, person.notifications)?.label || person.notifications}
+              </Box>
+            )}
+          </Container>
+        );
+      })}
+      <Button onClick={addPerson} iconName="add-plus">Ajouter une personne</Button>
+
+      <Container header={<Header variant="h3">Seuils de détection</Header>}>
+        <SpaceBetween size="m">
+          <ColumnLayout columns={4}>
+            <FormField label="Vérification (sec)" description="Intervalle entre chaque scan réseau">
+              <Input type="number" value={String(settings.poll_seconds || 30)} onChange={({ detail }) => updateSetting('poll_seconds', detail.value)} />
+            </FormField>
+            <FormField label="Absence jour (min)" description="Délai avant de marquer comme parti en journée">
+              <Input type="number" value={String(settings.day_away_minutes || 15)} onChange={({ detail }) => updateSetting('day_away_minutes', detail.value)} />
+            </FormField>
+            <FormField label="Absence nuit (min)" description="Délai la nuit (les téléphones déconnectent le WiFi)">
+              <Input type="number" value={String(settings.night_away_minutes || 60)} onChange={({ detail }) => updateSetting('night_away_minutes', detail.value)} />
+            </FormField>
+            <FormField label="Scans manqués" description="Nombre de scans ratés avant de confirmer le départ">
+              <Input type="number" value={String(settings.consecutive_misses || 2)} onChange={({ detail }) => updateSetting('consecutive_misses', detail.value)} />
+            </FormField>
+          </ColumnLayout>
+          <ColumnLayout columns={4}>
+            <FormField label="Voyage (heures)" description="Demander si en voyage après cette durée d'absence">
+              <Input type="number" value={String(settings.travel_ask_hours || 6)} onChange={({ detail }) => updateSetting('travel_ask_hours', detail.value)} />
+            </FormField>
+            <FormField label="Vacances (heures)" description="Mode vacances auto quand tous absents depuis">
+              <Input type="number" value={String(settings.vacation_hours || 24)} onChange={({ detail }) => updateSetting('vacation_hours', detail.value)} />
+            </FormField>
+            <FormField label="Début nuit (heure)" description="Heure de début du mode nuit (0-23)">
+              <Input type="number" value={String(settings.night_start != null ? settings.night_start : 23)} onChange={({ detail }) => updateSetting('night_start', detail.value)} />
+            </FormField>
+            <FormField label="Fin nuit (heure)" description="Heure de fin du mode nuit (0-23)">
+              <Input type="number" value={String(settings.night_end != null ? settings.night_end : 7)} onChange={({ detail }) => updateSetting('night_end', detail.value)} />
+            </FormField>
+          </ColumnLayout>
+        </SpaceBetween>
+      </Container>
+
+      {hasDirty && (
+        <Box float="right">
+          <Button variant="primary" onClick={savePerson}>Sauvegarder les changements</Button>
+        </Box>
       )}
-      <ColumnLayout columns={3}>
-        <FormField label="Nom">
-          <Input value={newName} onChange={({ detail }) => setNewName(detail.value)} placeholder="Serge"
-            onKeyDown={({ detail }) => { if (detail.key === 'Enter') add(); }} />
-        </FormField>
-        <FormField label="Adresse MAC">
-          <Input value={newMac} onChange={({ detail }) => setNewMac(detail.value)} placeholder="aa:bb:cc:dd:ee:ff"
-            onKeyDown={({ detail }) => { if (detail.key === 'Enter') add(); }} />
-        </FormField>
-        <FormField label=" ">
-          <Button onClick={add} iconName="add-plus">Ajouter</Button>
-        </FormField>
-      </ColumnLayout>
     </SpaceBetween>
   );
 }
@@ -415,26 +619,9 @@ function ModelsPanel({ api }) {
       <Container header={<Header variant="h3">Détection de présence (WiFi)</Header>}>
         <SpaceBetween size="m">
           <Alert type="info">
-            Détecte qui est à la maison via l'adresse MAC du téléphone sur le réseau WiFi. Trouvez les MAC avec la commande: arp -a
+            Détecte qui est à la maison via l'adresse MAC du téléphone sur le réseau WiFi. Chaque personne a ses propres préférences de bienvenue, langue et notifications. Trouvez les MAC avec: arp -a
           </Alert>
-          <PresenceDeviceEditor
-            devices={models.presence_devices || ''}
-            onChange={(val) => save('PRESENCE_DEVICES', val)}
-          />
-          <FormField label="Intervalle de vérification (secondes)">
-            <Input type="number" value={models.presence_poll_seconds || '30'} onChange={({ detail }) => save('PRESENCE_POLL_SECONDS', detail.value)} />
-          </FormField>
-          <FormField label="Style de bienvenue" description="Message annoncé sur Sonos quand quelqu'un rentre">
-            <Select
-              selectedOption={{ simple: { value: 'simple', label: 'Simple — Bienvenue [nom]' }, briefing: { value: 'briefing', label: 'Briefing — avec rappels et emails en attente' }, activity_summary: { value: 'activity_summary', label: 'Résumé complet — briefing + activités du jour' } }[models.welcome_style || 'briefing'] || { value: 'briefing', label: 'Briefing' }}
-              onChange={({ detail }) => save('WELCOME_STYLE', detail.selectedOption.value)}
-              options={[
-                { value: 'simple', label: 'Simple — "Bienvenue [nom]"' },
-                { value: 'briefing', label: 'Briefing — avec rappels et emails en attente' },
-                { value: 'activity_summary', label: 'Résumé complet — briefing + activités du jour' },
-              ]}
-            />
-          </FormField>
+          <PresencePersonEditor api={api} />
         </SpaceBetween>
       </Container>
 

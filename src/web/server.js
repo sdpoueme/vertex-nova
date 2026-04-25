@@ -309,7 +309,6 @@ export function startDashboard(config, port) {
         alexa_ubid_main: process.env.ALEXA_UBID_MAIN ? '***' + (process.env.ALEXA_UBID_MAIN || '').slice(-6) : '',
         presence_devices: process.env.PRESENCE_DEVICES || '',
         presence_poll_seconds: process.env.PRESENCE_POLL_SECONDS || '30',
-        welcome_style: process.env.WELCOME_STYLE || 'briefing',
       });
       return;
     }
@@ -323,7 +322,7 @@ export function startDashboard(config, port) {
           'OLLAMA_MODEL', 'OLLAMA_FAST_MODEL', 'CLAUDE_MODEL',
           'SONOS_DEFAULT_ROOM', 'SONOS_DAY_ROOM', 'SONOS_NIGHT_ROOM', 'SONOS_TTS_VOLUME',
           'ECHO_MORNING_DEVICE', 'ECHO_WORKDAY_DEVICE', 'ECHO_EVENING_DEVICE',
-          'PRESENCE_DEVICES', 'PRESENCE_POLL_SECONDS', 'WELCOME_STYLE',
+          'PRESENCE_POLL_SECONDS',
           'HOME_LOCATION', 'HOME_COUNTRY', 'NEWS_LOCALE', 'NEWS_COUNTRY', 'NEWS_EXTRA_TOPICS',
           'TMDB_API_KEY', 'MOVIE_GENRES', 'MOVIE_LANGUAGE', 'MOVIE_LANGUAGES', 'MOVIE_REGION', 'TMDB_READ_TOKEN',
           'USE_STRANDS',
@@ -609,7 +608,7 @@ export function startDashboard(config, port) {
         whatsapp: config.whatsappEnabled,
         sonos: config.sonosEnabled,
         email: !!config.emailMonitorAddress,
-        presence: !!process.env.PRESENCE_DEVICES,
+        presence: existsSync(join(projectDir, 'config', 'presence.yaml')) || !!process.env.PRESENCE_DEVICES,
         memory: Math.round(process.memoryUsage().rss / 1024 / 1024) + 'MB',
       });
       return;
@@ -624,6 +623,62 @@ export function startDashboard(config, port) {
         json(res, 200, { home: pres.home, away: pres.away, vacationMode: pres.vacationMode, details: states });
       } catch {
         json(res, 200, { home: [], away: [], configured: false });
+      }
+      return;
+    }
+
+    if (path === '/api/presence/vacation' && req.method === 'PUT') {
+      var vacBody = await readBody(req);
+      try {
+        var vacData = JSON.parse(vacBody);
+        var { setVacationMode, isVacationMode } = await import('../presence.js');
+        setVacationMode(!!vacData.enabled);
+        log.info('Vacation mode set to ' + !!vacData.enabled + ' via dashboard');
+        json(res, 200, { vacationMode: isVacationMode() });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Presence config (per-person settings from presence.yaml) ---
+    if (path === '/api/presence/config' && req.method === 'GET') {
+      try {
+        var { getPresenceConfig } = await import('../presence.js');
+        var presConfig = getPresenceConfig();
+        json(res, 200, presConfig);
+      } catch (err) {
+        json(res, 200, { people: [] });
+      }
+      return;
+    }
+
+    if (path === '/api/presence/config' && req.method === 'PUT') {
+      var presBody = await readBody(req);
+      try {
+        var presData = JSON.parse(presBody);
+        if (!presData.people || !Array.isArray(presData.people)) {
+          json(res, 400, { error: 'Missing or invalid "people" array' });
+          return;
+        }
+        var { savePresenceConfig } = await import('../presence.js');
+        savePresenceConfig(presData);
+        json(res, 200, { saved: true, people: presData.people.length });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Sonos rooms ---
+    if (path === '/api/sonos/rooms' && req.method === 'GET') {
+      try {
+        var { SonosOutput } = await import('../outputs/sonos.js');
+        var sonos = new SonosOutput(config);
+        var rooms = await sonos.listRooms();
+        json(res, 200, { rooms: rooms });
+      } catch (err) {
+        json(res, 200, { rooms: [], error: err.message });
       }
       return;
     }

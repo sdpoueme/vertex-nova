@@ -484,10 +484,22 @@ async function main() {
       var hour = new Date().getHours();
 
       if (event.event === 'arrived') {
-        await sendTelegram('🏠 ' + event.name + ' est arrivé(e) à la maison.');
+        // Get per-person settings from presence.yaml
+        var personSettings = null;
+        try {
+          var { getPersonSettings } = await import('./presence.js');
+          personSettings = getPersonSettings(event.name);
+        } catch {}
+
+        var notifyPref = personSettings?.notifications || 'both';
+        if (notifyPref === 'both' || notifyPref === 'telegram') {
+          await sendTelegram('🏠 ' + event.name + ' est arrivé(e) à la maison.');
+        }
+
         if (hour >= 7 && hour < 22) {
           try {
-            var welcomeStyle = process.env.WELCOME_STYLE || 'briefing';
+            var welcomeStyle = personSettings?.welcome_style || process.env.WELCOME_STYLE || 'briefing';
+            var welcomeLang = personSettings?.language || 'fr';
             var welcomeText = 'Bienvenue ' + event.name + '.';
 
             if (welcomeStyle !== 'simple') {
@@ -495,7 +507,8 @@ async function main() {
                 var { whoIsHome: wih } = await import('./presence.js');
                 var pres = wih();
                 var othersHome = pres.home.filter(function(n) { return n !== event.name; });
-                var prompt = 'Génère un message de bienvenue vocal en français québécois naturel pour ' + event.name + ' qui rentre à la maison.\n' +
+                var langInstruction = welcomeLang === 'en' ? 'Generate a warm vocal welcome message in English' : 'Génère un message de bienvenue vocal en français québécois naturel';
+                var prompt = langInstruction + ' pour ' + event.name + ' qui rentre à la maison.\n' +
                   'Heure: ' + hour + 'h. ' + (othersHome.length > 0 ? 'Déjà à la maison: ' + othersHome.join(', ') + '.' : event.name + ' est le premier à rentrer.') + '\n';
 
                 if (welcomeStyle === 'activity_summary') {
@@ -529,21 +542,30 @@ async function main() {
               } catch (aiErr) { log.warn('Welcome AI failed: ' + aiErr.message); }
             }
 
-            var { execFile: execW } = await import('node:child_process');
-            var { join: joinW } = await import('node:path');
-            var wCli = joinW(config.projectDir, 'scripts/sonos-cli.js');
-            var wRoom = config.sonosDayRoom || config.sonosDefaultRoom || '';
-            log.info('Welcome: room=' + wRoom + ', style=' + welcomeStyle + ', text=' + welcomeText.slice(0, 100));
-            if (wRoom) {
-              execW('node', [wCli, 'speak', welcomeText.slice(0, 500), wRoom], { timeout: 45000 }, function(err) {
-                if (err) log.error('Welcome Sonos failed: ' + err.message);
-                else log.info('Welcome Sonos OK');
-              });
+            // Use per-person welcome room, falling back to global config
+            var shouldSpeak = notifyPref === 'both' || notifyPref === 'voice';
+            if (shouldSpeak) {
+              var { execFile: execW } = await import('node:child_process');
+              var { join: joinW } = await import('node:path');
+              var wCli = joinW(config.projectDir, 'scripts/sonos-cli.js');
+              var wRoom = personSettings?.welcome_room || config.sonosDayRoom || config.sonosDefaultRoom || '';
+              log.info('Welcome: room=' + wRoom + ', style=' + welcomeStyle + ', lang=' + welcomeLang + ', notify=' + notifyPref + ', text=' + welcomeText.slice(0, 100));
+              if (wRoom) {
+                execW('node', [wCli, 'speak', welcomeText.slice(0, 500), wRoom], { timeout: 45000 }, function(err) {
+                  if (err) log.error('Welcome Sonos failed: ' + err.message);
+                  else log.info('Welcome Sonos OK');
+                });
+              }
             }
           } catch (err) { log.error('Welcome exception: ' + err.message); }
         }
       } else if (event.event === 'left') {
-        await sendTelegram('👋 ' + event.name + ' a quitté la maison.');
+        var leftSettings = null;
+        try { var { getPersonSettings: gpsLeft } = await import('./presence.js'); leftSettings = gpsLeft(event.name); } catch {}
+        var leftNotif = leftSettings?.notifications || 'both';
+        if (leftNotif === 'both' || leftNotif === 'telegram') {
+          await sendTelegram('👋 ' + event.name + ' a quitté la maison.');
+        }
       } else if (event.event === 'night_no_return') {
         await sendTelegram('⚠️ ' + event.name + ' a quitté la maison pendant la nuit et n\'est pas revenu(e) à 7h. Tout va bien ?');
       } else if (event.event === 'travel_ask') {
