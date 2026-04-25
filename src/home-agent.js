@@ -492,8 +492,10 @@ async function main() {
         } catch {}
 
         var notifyPref = personSettings?.notifications || 'both';
+
+        // Send Telegram notification (non-blocking — don't delay Sonos welcome)
         if (notifyPref === 'both' || notifyPref === 'telegram') {
-          await sendTelegram('🏠 ' + event.name + ' est arrivé(e) à la maison.');
+          sendTelegram('🏠 ' + event.name + ' est arrivé(e) à la maison.').catch(function() {});
         }
 
         if (hour >= 7 && hour < 22) {
