@@ -124,7 +124,7 @@ function PresencePersonEditor({ api }) {
   };
 
   const addPerson = () => {
-    const newPeople = [...people, { name: '', mac: '', language: 'fr', welcome_style: 'briefing', welcome_room: '', notifications: 'both' }];
+    const newPeople = [...people, { name: '', mac: '', device: '', language: 'fr', welcome_style: 'briefing', welcome_room: '', notifications: 'both' }];
     setPeople(newPeople);
     setExpanded({ ...expanded, [newPeople.length - 1]: true });
     setDirty({ ...dirty, [newPeople.length - 1]: true });
@@ -204,18 +204,21 @@ function PresencePersonEditor({ api }) {
               }
             >
               <span onClick={() => toggleExpand(idx)} style={{ cursor: 'pointer' }}>
-                {person.name || '(nouveau)'} — {person.mac || '??:??:??'}
+                {person.name || '(nouveau)'} — {person.device || person.mac || '??:??:??'}
               </span>
             </Header>
           }>
             {expanded[idx] ? (
               <SpaceBetween size="s">
-                <ColumnLayout columns={2}>
+                <ColumnLayout columns={3}>
                   <FormField label="Nom">
                     <Input value={person.name} onChange={({ detail }) => updatePerson(idx, 'name', detail.value)} placeholder="Serge" />
                   </FormField>
                   <FormField label="Adresse MAC">
                     <Input value={person.mac} onChange={({ detail }) => updatePerson(idx, 'mac', detail.value.toLowerCase())} placeholder="aa:bb:cc:dd:ee:ff" />
+                  </FormField>
+                  <FormField label="Appareil">
+                    <Input value={person.device || ''} onChange={({ detail }) => updatePerson(idx, 'device', detail.value)} placeholder="iPhone, Pixel 8 Pro..." />
                   </FormField>
                 </ColumnLayout>
                 <ColumnLayout columns={2}>
@@ -243,7 +246,7 @@ function PresencePersonEditor({ api }) {
               </SpaceBetween>
             ) : (
               <Box variant="small" color="text-body-secondary">
-                {pick(langOptions, person.language)?.label || person.language} · {pick(styleOptions, person.welcome_style)?.label || person.welcome_style} · {person.welcome_room || '(par défaut)'} · {pick(notifOptions, person.notifications)?.label || person.notifications}
+                {person.device ? person.device + ' · ' : ''}{pick(langOptions, person.language)?.label || person.language} · {pick(styleOptions, person.welcome_style)?.label || person.welcome_style} · {person.welcome_room || '(par défaut)'} · {pick(notifOptions, person.notifications)?.label || person.notifications}
               </Box>
             )}
           </Container>

@@ -3,17 +3,18 @@
 
 settings:
   poll_seconds: 30
-  day_away_minutes: 15          # Minutes before marking as "left" during daytime
-  night_away_minutes: 60        # Minutes before marking as "left" at night (phones sleep on WiFi)
-  consecutive_misses: 2         # Must miss this many polls before marking as "left"
-  travel_ask_hours: 6           # Ask about travel after this many hours away
-  vacation_hours: 24            # Auto-enable vacation mode when everyone away this long
-  night_start: 23               # Night mode starts at this hour (0-23)
-  night_end: 7                  # Night mode ends at this hour (0-23)
+  day_away_minutes: 15
+  night_away_minutes: 60
+  consecutive_misses: 2
+  travel_ask_hours: 6
+  vacation_hours: 24
+  night_start: 23
+  night_end: 7
 
 people:
   - name: Serge
     mac: 6c:3a:ff:8a:06:ed
+    device: iPhone
     language: fr
     welcome_style: activity_summary
     welcome_room: Rez de Chaussee
@@ -21,6 +22,7 @@ people:
 
   - name: Stéphanie
     mac: a6:76:e3:60:57:6a
+    device: Pixel 8 Pro
     language: fr
     welcome_style: simple
     welcome_room: Rez de Chaussee
