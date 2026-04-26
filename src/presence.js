@@ -274,6 +274,8 @@ function getArpTable(doPing) {
       var macs = [];
       var lines = stdout.split('\n');
       for (var line of lines) {
+        // Skip permanent entries (local machine interfaces) and incomplete entries
+        if (line.includes('permanent') || line.includes('incomplete')) continue;
         var match = line.match(/at\s+([0-9a-f:]+)\s/i);
         if (match) macs.push(normalizeMac(match[1].toLowerCase()));
       }
@@ -308,9 +310,31 @@ export function startPresenceMonitor(onEvent, vaultPath) {
   log.info('Presence monitor started: ' + devices.map(function(d) { return d.name + ' (' + d.mac + ')'; }).join(', '));
 
   var pollCount = 0;
+  var lastPollTime = Date.now();
+  var WAKE_GRACE_POLLS = 3; // Skip this many polls after detecting a system wake
+  var wakeGraceRemaining = 0;
 
   async function poll() {
     try {
+      // Detect system wake: if time since last poll is much longer than the interval,
+      // the system was asleep. Skip a few polls to let ARP cache repopulate.
+      var now0 = Date.now();
+      var elapsed = now0 - lastPollTime;
+      lastPollTime = now0;
+
+      if (elapsed > interval * 3 && pollCount > 1) {
+        wakeGraceRemaining = WAKE_GRACE_POLLS;
+        log.info('System wake detected (gap: ' + Math.round(elapsed / 1000) + 's). Skipping ' + WAKE_GRACE_POLLS + ' polls to let ARP cache repopulate.');
+      }
+
+      if (wakeGraceRemaining > 0) {
+        wakeGraceRemaining--;
+        log.debug('Wake grace period: ' + wakeGraceRemaining + ' polls remaining, skipping presence check');
+        // Still do a ping sweep to repopulate ARP cache
+        try { await pingDevices(); } catch {}
+        return;
+      }
+
       pollCount++;
       var doPing = (pollCount % 5 === 1);
       var arpMacs = await getArpTable(doPing);
