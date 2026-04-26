@@ -387,6 +387,55 @@ function buildProactiveYaml(data) {
   return yaml;
 }
 
+// Alexa cookie editor — paste both cookies then save with one button
+function AlexaCookieEditor({ api, configured, onSaved }) {
+  const [ubid, setUbid] = useState('');
+  const [atMain, setAtMain] = useState('');
+  const [alert, setAlert] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const canSave = ubid.length > 5 || atMain.length > 5;
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const body = {};
+      if (ubid.trim()) body.ALEXA_UBID_MAIN = ubid.trim();
+      if (atMain.trim()) body.ALEXA_AT_MAIN = atMain.trim();
+      await fetch(api + '/api/models', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      setAlert({ type: 'success', text: 'Cookies Alexa mis à jour. Redémarrage nécessaire pour prendre effet.' });
+      setUbid(''); setAtMain('');
+      if (onSaved) onSaved();
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+    setSaving(false);
+  };
+
+  return (
+    <SpaceBetween size="m">
+      {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
+      <Alert type="info">
+        Cookies extraits de alexa.amazon.com (DevTools → Application → Cookies). Collez les deux valeurs puis cliquez Sauvegarder.
+      </Alert>
+      <ColumnLayout columns={2}>
+        <FormField label="UBID Main" description={configured ? '✅ Configuré' : 'Non configuré'}>
+          <Input value={ubid} placeholder="Coller ubid-main ici" onChange={({ detail }) => setUbid(detail.value)} />
+        </FormField>
+        <FormField label="AT Main" description={configured ? '✅ Configuré' : 'Non configuré'}>
+          <Input value={atMain} placeholder="Coller at-main ici" onChange={({ detail }) => setAtMain(detail.value)} />
+        </FormField>
+      </ColumnLayout>
+      {canSave && (
+        <Box float="right">
+          <Button variant="primary" onClick={save} loading={saving}>Sauvegarder les cookies</Button>
+        </Box>
+      )}
+    </SpaceBetween>
+  );
+}
+
 // ============================================================
 // Sub-panels
 // ============================================================
@@ -604,19 +653,7 @@ function ModelsPanel({ api }) {
       </Container>
 
       <Container header={<Header variant="h3">Alexa Smart Home API</Header>}>
-        <SpaceBetween size="m">
-          <Alert type="info">
-            Cookies extraits de alexa.amazon.com (DevTools → Application → Cookies). Permet de surveiller les appareils connectés à Alexa.
-          </Alert>
-          <ColumnLayout columns={2}>
-            <FormField label="UBID Main" description={models.alexa_configured ? '✅ Configuré' : 'Non configuré'}>
-              <Input value="" placeholder="Coller ubid-main ici pour remplacer" onChange={({ detail }) => { if (detail.value) save('ALEXA_UBID_MAIN', detail.value); }} />
-            </FormField>
-            <FormField label="AT Main" description={models.alexa_configured ? '✅ Configuré' : 'Non configuré'}>
-              <Input value="" placeholder="Coller at-main ici pour remplacer" onChange={({ detail }) => { if (detail.value) save('ALEXA_AT_MAIN', detail.value); }} />
-            </FormField>
-          </ColumnLayout>
-        </SpaceBetween>
+        <AlexaCookieEditor api={api} configured={models.alexa_configured} onSaved={load} />
       </Container>
 
       <Container header={<Header variant="h3">Détection de présence (WiFi)</Header>}>
