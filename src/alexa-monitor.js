@@ -18,7 +18,7 @@ var statesFile = null;
 var devicesFile = null;
 var pollTimer = null;
 var rediscoverTimer = null;
-var REDISCOVERY_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+var REDISCOVERY_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours (once per day)
 
 /**
  * Load a device rule from devices.yaml by friendly name.
@@ -184,7 +184,7 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs, onCo
   loadPreviousStates();
   loadDiscoveredDevices();
 
-  // Discovery function — called on startup and every 6 hours
+  // Discovery function — called on startup and once per day
   async function runDiscovery() {
     try {
       var monitorable = await getMonitorableDevices(env);
@@ -338,7 +338,7 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs, onCo
   setTimeout(poll, 30000);
   pollTimer = setInterval(poll, interval);
 
-  // Rediscover devices every 6 hours to catch new ones
+  // Rediscover devices once per day to catch new ones
   rediscoverTimer = setInterval(async function() {
     log.info('Periodic device rediscovery...');
     var newDevices = await runDiscovery();
@@ -347,7 +347,7 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs, onCo
     }
   }, REDISCOVERY_INTERVAL);
 
-  log.info('Alexa monitor started (state poll: ' + (interval / 1000) + 's, rediscovery: every 6h)');
+  log.info('Alexa monitor started (state poll: ' + (interval / 1000) + 's, rediscovery: every 24h)');
   return pollTimer;
 }
 
