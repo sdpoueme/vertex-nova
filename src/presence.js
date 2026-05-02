@@ -272,40 +272,27 @@ function getArpTable(doPing) {
   return new Promise(async function(resolve) {
     if (doPing) { try { await pingDevices(); } catch {} }
     execFile('/usr/sbin/arp', ['-a'], { timeout: 5000 }, function(err, stdout) {
-      if (err) { resolve({ macs: [], ipByMac: {} }); return; }
+      if (err) { resolve([]); return; }
       var macs = [];
-      var ipByMac = {};
       var lines = stdout.split('\n');
       for (var line of lines) {
         // Skip permanent entries (local machine interfaces) and incomplete entries
         if (line.includes('permanent') || line.includes('incomplete')) continue;
-        var match = line.match(/\(([0-9.]+)\)\s+at\s+([0-9a-f:]+)\s/i);
+        var match = line.match(/at\s+([0-9a-f:]+)\s/i);
         if (match) {
-          var ip = match[1];
-          var mac = normalizeMac(match[2].toLowerCase());
-          macs.push(mac);
-          ipByMac[mac] = ip;
+          macs.push(normalizeMac(match[1].toLowerCase()));
         }
       }
-      resolve({ macs: macs, ipByMac: ipByMac });
+      resolve(macs);
     });
   });
 }
 
 /**
- * Direct ping a specific IP to confirm if a device is still reachable.
- * Used as confirmation before marking someone as "left" (mesh pod disruptions
- * can cause ARP entries to go stale while the device is still on the network).
+ * Direct ping is unreliable for presence detection — routers often respond
+ * via proxy ARP even when the device is gone. Removed in favor of
+ * threshold + consecutive misses approach.
  */
-function confirmDeviceGone(ip) {
-  return new Promise(function(resolve) {
-    if (!ip) { resolve(true); return; } // No IP known, assume gone
-    execFile('/sbin/ping', ['-c', '2', '-W', '2', '-t', '2', ip], { timeout: 6000 }, function(err) {
-      if (err) { resolve(true); return; } // Ping failed = device is gone
-      resolve(false); // Ping succeeded = device is still there
-    });
-  });
-}
 
 export function startPresenceMonitor(onEvent, vaultPath) {
   loadPresenceConfig();
@@ -360,9 +347,7 @@ export function startPresenceMonitor(onEvent, vaultPath) {
 
       pollCount++;
       var doPing = (pollCount % 5 === 1);
-      var arpResult = await getArpTable(doPing);
-      var arpMacs = arpResult.macs;
-      var ipByMac = arpResult.ipByMac;
+      var arpMacs = await getArpTable(doPing);
       var now = Date.now();
       var night = isNightHours();
       var threshold = night ? NIGHT_AWAY_THRESHOLD : DAY_AWAY_THRESHOLD;
@@ -374,14 +359,9 @@ export function startPresenceMonitor(onEvent, vaultPath) {
         let state = presenceState[d.name];
         let wasHome = state.home;
 
-        // Track last known IP for confirmation pings
-        if (isOnNetwork && ipByMac[normalizedDevMac]) {
-          state.lastIp = ipByMac[normalizedDevMac];
-        }
-
         // Debug: log state transitions with full context
         if (isOnNetwork !== wasHome) {
-          log.info(d.name + ' state change: wasHome=' + wasHome + ' isOnNetwork=' + isOnNetwork + ' mac=' + d.mac + ' normalized=' + normalizedDevMac + ' misses=' + state.consecutiveMisses + ' arpCount=' + arpMacs.length);
+          log.info(d.name + ' state change: wasHome=' + wasHome + ' isOnNetwork=' + isOnNetwork + ' mac=' + d.mac + ' misses=' + state.consecutiveMisses + ' arpCount=' + arpMacs.length);
         }
 
         if (isOnNetwork) {
@@ -415,18 +395,6 @@ export function startPresenceMonitor(onEvent, vaultPath) {
           state.consecutiveMisses++;
 
           if (wasHome && state.lastSeen && (now - state.lastSeen) > threshold && state.consecutiveMisses >= CONSECUTIVE_MISSES_REQUIRED) {
-            // Confirmation ping: before marking as "left", directly ping the device's
-            // last known IP. Mesh pod disruptions can cause stale ARP entries while
-            // the device is still reachable.
-            let deviceGone = await confirmDeviceGone(state.lastIp);
-            if (!deviceGone) {
-              // Device responded to ping — it's still home, ARP was just stale
-              state.lastSeen = now;
-              state.consecutiveMisses = 0;
-              log.info(d.name + ' ARP stale but ping OK (ip: ' + state.lastIp + ') — still home');
-              continue;
-            }
-
             state.home = false;
             state.lastChange = now;
 
