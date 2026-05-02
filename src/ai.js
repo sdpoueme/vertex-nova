@@ -714,13 +714,19 @@ async function executeTool(name, input) {
         var GENRE_MAP = {28:'action',12:'adventure',16:'animation',35:'comedy',80:'crime',99:'documentary',18:'drama',10751:'family',14:'fantasy',36:'history',27:'horror',10402:'music',9648:'mystery',10749:'romance',878:'sci-fi',53:'thriller',10752:'war',37:'western'};
         for (var lang of movieLangs) {
           try {
-            var url = input.query
+            var baseUrl = input.query
               ? 'https://api.themoviedb.org/3/search/movie?language=' + lang + '&query=' + encodeURIComponent(input.query)
               : 'https://api.themoviedb.org/3/trending/movie/week?language=' + lang;
-            var headers = {};
-            if (tmdbToken) headers['Authorization'] = 'Bearer ' + tmdbToken;
-            else url += '&api_key=' + tmdbKey;
-            var tmdbRes = await fetch(url, { headers: headers, signal: AbortSignal.timeout(8000) });
+
+            // Try token first, fall back to API key
+            var tmdbRes = null;
+            if (tmdbToken) {
+              tmdbRes = await fetch(baseUrl, { headers: { 'Authorization': 'Bearer ' + tmdbToken }, signal: AbortSignal.timeout(8000) });
+            }
+            if (!tmdbRes || !tmdbRes.ok) {
+              tmdbRes = await fetch(baseUrl + (baseUrl.includes('?') ? '&' : '?') + 'api_key=' + tmdbKey, { signal: AbortSignal.timeout(8000) });
+            }
+
             if (tmdbRes.ok) {
               var tmdbData = await tmdbRes.json();
               for (var mv of (tmdbData.results || []).slice(0, 10)) {
@@ -922,6 +928,14 @@ async function withRetry(fn, maxRetries, delayMs) {
     } catch (err) {
       // Don't retry credit/billing errors — they won't resolve with retries
       if (err.message.includes('credit') || err.message.includes('billing') || err.message.includes('balance')) throw err;
+      // On rate limit, set a 5-minute cooldown so we stop hammering the API
+      if (err.message.includes('Rate limited') || err.message.includes('429') || err.message.includes('529')) {
+        if (claudeDisabledUntil < Date.now() + 5 * 60 * 1000) {
+          claudeDisabledUntil = Date.now() + 5 * 60 * 1000;
+          persistCooldown();
+          log.warn('Claude API limit hit (429), cooldown set for 5 minutes — switching to Ollama');
+        }
+      }
       if (attempt === maxRetries) throw err;
       log.warn('Retry ' + (attempt + 1) + '/' + maxRetries + ': ' + err.message);
       await new Promise(function(r) { setTimeout(r, delayMs * (attempt + 1)); });
@@ -1225,6 +1239,11 @@ export async function chat(message, sessionId, image) {
         log.warn('Claude vision failed: ' + err.message + ', trying local vision model');
         if (err.message.includes('credit') || err.message.includes('billing')) {
           claudeDisabledUntil = Date.now() + 24 * 60 * 60 * 1000; persistCooldown();
+        }
+        if (err.message.includes('Rate limited') || err.message.includes('429')) {
+          if (claudeDisabledUntil < Date.now() + 5 * 60 * 1000) {
+            claudeDisabledUntil = Date.now() + 5 * 60 * 1000; persistCooldown();
+          }
         }
       }
     }
