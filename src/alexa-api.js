@@ -18,6 +18,7 @@ var PHOENIX_ENDPOINT = 'https://alexa.amazon.com/api/phoenix/state';
 // Simple cache
 var cache = {};
 var CACHE_TTL = 5 * 60 * 1000; // 5 min
+var STALE_CACHE_TTL = 60 * 60 * 1000; // 1 hour — stale fallback
 
 function getCached(key) {
   var c = cache[key];
@@ -25,6 +26,13 @@ function getCached(key) {
   return null;
 }
 function setCache(key, value) { cache[key] = { value: value, ts: Date.now() }; }
+
+// Return stale cache (up to 1 hour old) as fallback when API fails
+function getStaleCached(key) {
+  var c = cache[key];
+  if (c && Date.now() - c.ts < STALE_CACHE_TTL && c.value && c.value.length > 0) return c.value;
+  return null;
+}
 export function clearCache() { cache = {}; }
 
 function buildHeaders(env, extra) {
@@ -83,8 +91,15 @@ export async function discoverDevices(env) {
     log.info('Discovered ' + devices.length + ' Alexa smart home devices');
     return devices;
   } catch (err) {
-    log.error('Device discovery failed: ' + err.message);
-    return getCached('devices') || [];
+    // Try stale cache first, then fresh cache, then empty
+    var stale = getStaleCached('devices');
+    if (stale) {
+      log.warn('Device discovery failed (' + err.message + '), using stale cache (' + stale.length + ' devices)');
+      return stale;
+    }
+    var fresh = getCached('devices');
+    log.error('Device discovery failed: ' + err.message + (fresh ? ' (returning cached)' : ' (no cache available)'));
+    return fresh || [];
   }
 }
 

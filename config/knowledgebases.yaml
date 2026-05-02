@@ -25,3 +25,30 @@ knowledgebases:
       - https://www.ville.sainte-julie.qc.ca/
     sync_interval_hours: 168
     enabled: true
+
+  - name: home-maintenance-seasonal
+    description: "Guides d'entretien saisonnier pour maison au Québec — printemps/été"
+    urls:
+      - https://www.caaquebec.com/fr/a-la-maison/
+      - https://www.rbq.gouv.qc.ca/
+      - https://www.canadiantire.ca/fr/cat/exterieur/piscines-de-jardin-et-accessoires/produits-chimiques-de-piscines-et-spas/trousses-douverture-et-de-fermeture-de-piscine-DC0001690.html
+    sync_interval_hours: 168
+    enabled: true
+
+  - name: appliance-maintenance
+    description: "Guides d'entretien pour les appareils de la maison — LG WashTower, Bosch, Ring"
+    urls:
+      - https://www.lg.com/ae/lg-story/helpful-guide/how-to-maintain-your-wash-tower-washing-machine
+      - https://lgparts.com/pt/blogs/post/washer-and-dryer-maintenance-tips-for-peak-lg-performance
+      - https://support.ring.com/hc/en-us/articles/360029966771
+      - https://support.ring.com/hc/en-us/articles/360052882811-Troubleshooting-your-Ring-Alarm
+    sync_interval_hours: 336
+    enabled: true
+
+  - name: home-safety-energy
+    description: "Sécurité domiciliaire et efficacité énergétique — Hydro-Québec, RBQ"
+    urls:
+      - https://www.hydroquebec.com/residentiel/mieux-consommer/
+      - https://www.rbq.gouv.qc.ca/
+    sync_interval_hours: 336
+    enabled: true

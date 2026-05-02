@@ -1,26 +1,17 @@
-# ═══════════════════════════════════════════════════════
 # Vertex Nova — Model Routing
-# ═══════════════════════════════════════════════════════
-#
-# Two-model architecture:
-#   gemma4  — Default for everything. Local, free, tool use.
-#   claude  — Escalation only: vision, complex reasoning, Gemma 4 failures.
-#
-# Gemma 4 handles 80%+ of requests. Claude is the safety net.
 
 routes:
-  # Only Claude can do vision
   - name: vision
     patterns:
       - "\\[image\\]"
       - "photo"
       - "image"
       - "que vois"
-    model: claude
+    model: gemma4:e2b
 
   - name: news
     patterns:
-      - "actualit"
+      - "actualites"
       - "nouvelles"
       - "news"
       - "briefing"
@@ -29,6 +20,3 @@ routes:
 
 default:
   model: qwen3:8b
-
-# Escalation: if Gemma 4 returns a bad response, retry with Claude
-# (handled in code, not here)

@@ -219,7 +219,14 @@ export async function startAlexaMonitor(onAlert, vaultPath, pollIntervalMs, onCo
 
   async function poll() {
     try {
-      var allDevices = await discoverDevices(env);
+      // Use persisted device list instead of re-discovering every poll.
+      // Discovery happens on startup and once per day via rediscoverTimer.
+      // This prevents "0 devices" when the Alexa GraphQL API is transiently unavailable.
+      var allDevices = discoveredDevices.length > 0 ? discoveredDevices : await discoverDevices(env);
+      if (allDevices.length === 0) {
+        log.warn('No devices available for polling — skipping cycle');
+        return;
+      }
       var states = await getDeviceStates(env, allDevices);
 
       for (var state of states) {

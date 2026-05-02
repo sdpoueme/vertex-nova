@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node src/home-agent.js",
+    "start": "bash scripts/vertex-nova.sh",
+    "start:bare": "node src/home-agent.js",
     "dev": "node --watch src/home-agent.js",
     "dev:debug": "LOG_LEVEL=debug node --watch src/home-agent.js",
     "sonos:auth": "node scripts/sonos-auth.js",

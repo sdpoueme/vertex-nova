@@ -1,0 +1,21 @@
+{
+  "name": "vertex-nova-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Vertex Nova — privacy-aware smart home interface",
+  "type": "module",
+  "bin": {
+    "vertex-nova-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "zod": "^3.25"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.7"
+  }
+}
