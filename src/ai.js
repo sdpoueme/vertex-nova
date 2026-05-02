@@ -1189,6 +1189,13 @@ async function maybeSummarize(sessionId) {
  *   5. If Claude fails → return Gemma 4's response anyway
  */
 export async function chat(message, sessionId, image) {
+  // Safety: prevent dream content from leaking into live responses
+  // Dream sessions start with 'dream-' prefix — only those can process [DREAM] content
+  if (message.includes('[DREAM]') && sessionId && !sessionId.startsWith('dream-')) {
+    log.warn('Blocked dream content in live session: ' + sessionId);
+    return 'Je ne peux pas traiter ce contenu.';
+  }
+
   // Debug image detection
   if (image) log.info('Image received: ' + image.mediaType + ', base64 length: ' + (image.base64?.length || 0));
 

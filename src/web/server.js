@@ -575,6 +575,74 @@ export function startDashboard(config, port) {
       return;
     }
 
+    // --- API: Dream Layer v2 ---
+    if (path === '/api/dreams/status' && req.method === 'GET') {
+      try {
+        var { getPoolStats } = await import('../dream-acu.js');
+        var { getDreamStatus } = await import('../dream-interpreter.js');
+        var poolStats = getPoolStats(join(projectDir, config.vaultPath || 'vault'));
+        var dreamStatus = getDreamStatus(join(projectDir, config.vaultPath || 'vault'));
+        json(res, 200, { pool: poolStats, dreams: dreamStatus });
+      } catch (err) {
+        json(res, 200, { pool: { total: 0, byAgent: {}, avgAgeDays: 0 }, dreams: { ephemeral_dreams: 0, policies: { pending: 0, approved: 0, rejected: 0 } }, error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/dreams/recent' && req.method === 'GET') {
+      try {
+        var { listRecentDreams } = await import('../dream-generator.js');
+        var vp = config.vaultPath || join(projectDir, 'vault');
+        var days = parseInt(url.searchParams.get('days')) || 7;
+        var dreams = listRecentDreams(vp, days);
+        json(res, 200, { dreams: dreams });
+      } catch (err) {
+        json(res, 200, { dreams: [], error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/dreams/policies' && req.method === 'GET') {
+      try {
+        var { listPolicies } = await import('../dream-interpreter.js');
+        var vp2 = config.vaultPath || join(projectDir, 'vault');
+        var status = url.searchParams.get('status') || null;
+        var policies = listPolicies(vp2, status);
+        json(res, 200, { policies: policies });
+      } catch (err) {
+        json(res, 200, { policies: [], error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/dreams/policies/approve' && req.method === 'POST') {
+      var apprBody = await readBody(req);
+      try {
+        var apprData = JSON.parse(apprBody);
+        var { approvePolicy: apprFn } = await import('../dream-interpreter.js');
+        var vp3 = config.vaultPath || join(projectDir, 'vault');
+        var result = apprFn(vp3, apprData.id);
+        json(res, 200, { policy: result });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/dreams/policies/reject' && req.method === 'POST') {
+      var rejBody = await readBody(req);
+      try {
+        var rejData = JSON.parse(rejBody);
+        var { rejectPolicy: rejFn } = await import('../dream-interpreter.js');
+        var vp4 = config.vaultPath || join(projectDir, 'vault');
+        var result2 = rejFn(vp4, rejData.id);
+        json(res, 200, { policy: result2 });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
     // --- API: Logs ---
     if (path === '/api/logs' && req.method === 'GET') {
       try {

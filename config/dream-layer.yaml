@@ -1,0 +1,44 @@
+# Vertex Nova — Dream Layer v2 Configuration
+# Based on: Cheung (2026) "Dreaming Is Not a Bug"
+
+dream_layer:
+  enabled: true
+
+  # Template extraction (ACU)
+  templates:
+    min_interaction_length: 3
+    abstraction_threshold: 0.90
+    max_pool_size: 200
+    template_ttl_days: 90
+
+  # Dream generation (controlled hallucination)
+  generator:
+    temperature: 1.4
+    max_dreams_per_night: 5
+    model: qwen3
+    refinement_temperature: 0.9
+    safety_tags:
+      prefix: "[DREAM]"
+      never_surface_live: true
+
+  # Policy updates
+  interpreter:
+    min_motif_frequency: 3
+    policy_approval: manual
+    max_policies_per_cycle: 2
+
+  # Ephemeral memory
+  ephemeral:
+    decay_half_life_days: 7
+    max_age_days: 14
+    max_stored_dreams: 50
+
+  # Edge case scenarios (Vertex Nova specific)
+  scenarios:
+    enabled: true
+    focus_areas:
+      - provider_failover
+      - presence_edge_cases
+      - security_anomalies
+      - energy_spikes
+      - multi_user_conflicts

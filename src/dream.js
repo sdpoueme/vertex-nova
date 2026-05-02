@@ -7,8 +7,13 @@
  *   3. Analyzes escalation patterns to reduce future Claude usage
  *   4. Pre-fetches likely morning info (weather, calendar)
  *   5. Writes a dream journal entry to vault
+ *   6. [v2] Extract Interaction Templates from agent logs → ACU
+ *   7. [v2] Generate Dream Narratives from ACU templates
+ *   8. [v2] Interpret dreams, extract motifs, propose policy updates
  *
  * Runs once per night, only if the system has been idle for 30+ minutes.
+ *
+ * v2 based on: Cheung (2026) "Dreaming Is Not a Bug"
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -189,6 +194,15 @@ function writeDreamJournal(vaultPath, phases) {
   if (phases.weekly) {
     entry += '## Résumé hebdomadaire\n\n' + phases.weekly + '\n\n';
   }
+  if (phases.templates) {
+    entry += '## [v2] Templates extraits\n\n' + phases.templates + '\n\n';
+  }
+  if (phases.dreams) {
+    entry += '## [v2] Rêves générés\n\n' + phases.dreams + '\n\n';
+  }
+  if (phases.policies) {
+    entry += '## [v2] Motifs et politiques\n\n' + phases.policies + '\n\n';
+  }
 
   var filePath = join(journalDir, date + '.md');
   writeFileSync(filePath, entry);
@@ -298,6 +312,176 @@ async function buildWeeklySummary(vaultPath) {
 }
 
 /**
+ * Check if Dream Layer v2 is enabled.
+ */
+function isDreamLayerEnabled() {
+  try {
+    var configPath = join(import.meta.dirname, '..', 'config', 'dream-layer.yaml');
+    if (!existsSync(configPath)) return false;
+    var text = readFileSync(configPath, 'utf8');
+    return !/enabled:\s*false/.test(text);
+  } catch { return false; }
+}
+
+/**
+ * Dream phase 6: Extract Interaction Templates from today's agent logs → ACU.
+ */
+async function extractTemplatesPhase(vaultPath) {
+  var { extractTemplate, submitToPool, prunePool } = await import('./dream-acu.js');
+
+  // Prune expired templates first
+  prunePool(vaultPath);
+
+  // Read today's daily log
+  var dailyPath = join(vaultPath, 'daily', todayStr() + '.md');
+  if (!existsSync(dailyPath)) return null;
+
+  var content = readFileSync(dailyPath, 'utf8');
+  if (content.length < 200) return null;
+
+  log.info('Dream v2: extracting interaction templates...');
+
+  // Split by agent markers if present, otherwise treat as one block
+  var agentBlocks = {};
+  var currentAgent = 'general';
+  for (var line of content.split('\n')) {
+    var agentMatch = line.match(/\[AGENT:(\w+)\]/i);
+    if (agentMatch) currentAgent = agentMatch[1];
+    if (!agentBlocks[currentAgent]) agentBlocks[currentAgent] = '';
+    agentBlocks[currentAgent] += line + '\n';
+  }
+
+  // If no agent markers found, use the whole content as 'general'
+  if (Object.keys(agentBlocks).length === 1 && agentBlocks.general) {
+    agentBlocks = { general: content };
+  }
+
+  var extracted = 0;
+  for (var agent in agentBlocks) {
+    var block = agentBlocks[agent];
+    if (block.length < 100) continue;
+
+    try {
+      var template = await extractTemplate(agent, block);
+      if (template) {
+        submitToPool(vaultPath, template);
+        extracted++;
+      }
+    } catch (err) {
+      log.warn('Template extraction failed for ' + agent + ': ' + err.message);
+    }
+  }
+
+  return extracted > 0 ? extracted + ' templates extracted' : null;
+}
+
+/**
+ * Dream phase 7: Generate Dream Narratives from ACU templates.
+ */
+async function generateDreamsPhase(vaultPath) {
+  var { sampleFromPool } = await import('./dream-acu.js');
+  var { generateDream, generateEdgeCaseScenario, saveDream } = await import('./dream-generator.js');
+
+  var templates = sampleFromPool(vaultPath, 3);
+  if (templates.length === 0) {
+    log.info('Dream v2: no templates in ACU pool, skipping dream generation');
+    return null;
+  }
+
+  log.info('Dream v2: generating dreams from ' + templates.length + ' templates...');
+  var generated = 0;
+
+  for (var template of templates) {
+    try {
+      var dream = await generateDream(template);
+      if (dream) {
+        saveDream(vaultPath, dream);
+        generated++;
+      }
+    } catch (err) {
+      log.warn('Dream generation failed: ' + err.message);
+    }
+  }
+
+  // Generate one edge case scenario
+  try {
+    var configPath = join(import.meta.dirname, '..', 'config', 'dream-layer.yaml');
+    var configText = readFileSync(configPath, 'utf8');
+    var scenariosEnabled = !/scenarios:\s*\n\s+enabled:\s*false/.test(configText);
+
+    if (scenariosEnabled) {
+      var focusMatch = configText.match(/focus_areas:\s*\n((?:\s+-\s+\S+\n)*)/);
+      var areas = [];
+      if (focusMatch) {
+        areas = focusMatch[1].match(/- (\S+)/g)?.map(function(m) { return m.slice(2); }) || [];
+      }
+      if (areas.length > 0) {
+        var randomArea = areas[Math.floor(Math.random() * areas.length)];
+        var scenario = await generateEdgeCaseScenario(randomArea);
+        if (scenario) {
+          saveDream(vaultPath, {
+            id: scenario.id,
+            template_id: null,
+            created_at: scenario.created_at,
+            expires_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+            tag: '[DREAM]',
+            narrative: scenario.dream_narrative,
+            extracted_motifs: [scenario.focus_area],
+            metadata: { type: 'edge_case', focus_area: scenario.focus_area },
+            scenario: scenario.scenario,
+            actionable_test: scenario.actionable_test,
+          });
+          generated++;
+        }
+      }
+    }
+  } catch (err) {
+    log.warn('Edge case scenario generation failed: ' + err.message);
+  }
+
+  return generated > 0 ? generated + ' dreams generated' : null;
+}
+
+/**
+ * Dream phase 8: Interpret dreams, extract motifs, propose policy updates.
+ */
+async function interpretDreamsPhase(vaultPath) {
+  var { listRecentDreams } = await import('./dream-generator.js');
+  var { extractMotifs, distillPolicies, savePolicy, cleanupEphemeral } = await import('./dream-interpreter.js');
+
+  // Cleanup expired dreams first
+  cleanupEphemeral(vaultPath);
+
+  var dreams = listRecentDreams(vaultPath, 7);
+  if (dreams.length < 3) {
+    log.info('Dream v2: not enough dreams for motif extraction (' + dreams.length + '/3 minimum)');
+    return null;
+  }
+
+  log.info('Dream v2: interpreting ' + dreams.length + ' dreams for motifs...');
+
+  try {
+    var motifs = await extractMotifs(dreams);
+    if (motifs.length === 0) {
+      log.info('Dream v2: no recurring motifs found');
+      return null;
+    }
+
+    log.info('Dream v2: found ' + motifs.length + ' motifs, distilling policies...');
+    var policies = await distillPolicies(motifs);
+
+    for (var policy of policies) {
+      savePolicy(vaultPath, policy);
+    }
+
+    return motifs.length + ' motifs, ' + policies.length + ' policies proposed';
+  } catch (err) {
+    log.warn('Dream interpretation failed: ' + err.message);
+    return null;
+  }
+}
+
+/**
  * Run the full dream cycle.
  */
 async function dream(vaultPath) {
@@ -337,8 +521,24 @@ async function dream(vaultPath) {
   // Phase 5: Weekly summary (Sundays only)
   phases.weekly = await buildWeeklySummary(vaultPath);
 
+  // Dream Layer v2 phases (if enabled)
+  if (isDreamLayerEnabled()) {
+    try {
+      // Phase 6: Extract Interaction Templates → ACU
+      phases.templates = await extractTemplatesPhase(vaultPath);
+
+      // Phase 7: Generate Dream Narratives
+      phases.dreams = await generateDreamsPhase(vaultPath);
+
+      // Phase 8: Interpret dreams, extract motifs, propose policies
+      phases.policies = await interpretDreamsPhase(vaultPath);
+    } catch (err) {
+      log.error('Dream v2 phases failed: ' + err.message);
+    }
+  }
+
   // Write journal
-  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly;
+  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly || phases.templates || phases.dreams || phases.policies;
   if (hasContent) {
     writeDreamJournal(vaultPath, phases);
     await applyLearnings(vaultPath, phases.review);
@@ -363,4 +563,42 @@ export function startDreamEngine(vaultPath) {
   }, 15 * 60 * 1000);
 
   return dreamTimer;
+}
+
+/**
+ * Force a dream cycle (bypasses quiet hour + idle checks).
+ */
+export async function forceDream(vaultPath) {
+  var resolvedPath = resolve(vaultPath);
+  log.info('💤 Forced dream cycle starting...');
+
+  // Temporarily bypass checks
+  var savedDate = lastDreamDate;
+  lastDreamDate = null;
+
+  var phases = {};
+  phases.review = await reviewConversations(resolvedPath);
+  phases.memory = await consolidateMemory(resolvedPath);
+  phases.escalations = await analyzeEscalations(resolvedPath);
+  phases.tomorrow = await prepareForTomorrow(resolvedPath);
+  phases.weekly = await buildWeeklySummary(resolvedPath);
+
+  if (isDreamLayerEnabled()) {
+    try {
+      phases.templates = await extractTemplatesPhase(resolvedPath);
+      phases.dreams = await generateDreamsPhase(resolvedPath);
+      phases.policies = await interpretDreamsPhase(resolvedPath);
+    } catch (err) {
+      log.error('Dream v2 phases failed: ' + err.message);
+    }
+  }
+
+  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly || phases.templates || phases.dreams || phases.policies;
+  if (hasContent) {
+    writeDreamJournal(resolvedPath, phases);
+    await applyLearnings(resolvedPath, phases.review);
+  }
+
+  lastDreamDate = savedDate;
+  return phases;
 }

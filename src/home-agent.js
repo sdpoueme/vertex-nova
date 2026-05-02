@@ -131,6 +131,100 @@ async function handleMessage(msg) {
     } catch {}
   }
 
+  // Dream commands
+  if (/^dream\s+status/i.test(text)) {
+    try {
+      var { getPoolStats } = await import('./dream-acu.js');
+      var { getDreamStatus } = await import('./dream-interpreter.js');
+      var vp = config.vaultPath || join(config.projectDir, 'vault');
+      var poolStats = getPoolStats(vp);
+      var dreamStatus = getDreamStatus(vp);
+      var statusMsg = '💤 Dream Layer Status\n\n' +
+        'ACU Pool: ' + poolStats.total + ' templates (' + Object.entries(poolStats.byAgent).map(function(e) { return e[0] + ': ' + e[1]; }).join(', ') + ')\n' +
+        'Avg template age: ' + poolStats.avgAgeDays + ' days\n' +
+        'Ephemeral dreams: ' + dreamStatus.ephemeral_dreams + '\n' +
+        'Policies: ' + dreamStatus.policies.pending + ' pending, ' + dreamStatus.policies.approved + ' approved, ' + dreamStatus.policies.rejected + ' rejected';
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, statusMsg);
+      else if (channel === 'whatsapp' && whatsappChannel) await whatsappChannel.sendText(replyTo, statusMsg);
+      return;
+    } catch (err) {
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Dream layer non initialisé: ' + err.message);
+      return;
+    }
+  }
+
+  if (/^dream\s+policies/i.test(text)) {
+    try {
+      var { listPolicies } = await import('./dream-interpreter.js');
+      var vp2 = config.vaultPath || join(config.projectDir, 'vault');
+      var pending = listPolicies(vp2, 'pending');
+      if (pending.length === 0) {
+        if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Aucune politique en attente.');
+      } else {
+        var msg = '💤 Politiques en attente:\n\n' + pending.map(function(p) {
+          return p.id + ' — ' + p.description + '\n  Cible: ' + p.target_agent + ' | Type: ' + p.update_type + '\n  Fichier: ' + p.change.file + '\n  Raison: ' + p.change.rationale;
+        }).join('\n\n');
+        if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, msg);
+        else if (channel === 'whatsapp' && whatsappChannel) await whatsappChannel.sendText(replyTo, msg);
+      }
+      return;
+    } catch (err) {
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Erreur: ' + err.message);
+      return;
+    }
+  }
+
+  var approveMatch = text.match(/^approve\s+policy\s+(pol-\S+)/i);
+  if (approveMatch) {
+    try {
+      var { approvePolicy } = await import('./dream-interpreter.js');
+      var vp3 = config.vaultPath || join(config.projectDir, 'vault');
+      var result = approvePolicy(vp3, approveMatch[1]);
+      var reply = result ? '✅ Politique ' + approveMatch[1] + ' approuvée.' : '❌ Politique non trouvée.';
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, reply);
+      return;
+    } catch (err) {
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Erreur: ' + err.message);
+      return;
+    }
+  }
+
+  var rejectMatch = text.match(/^reject\s+policy\s+(pol-\S+)/i);
+  if (rejectMatch) {
+    try {
+      var { rejectPolicy } = await import('./dream-interpreter.js');
+      var vp4 = config.vaultPath || join(config.projectDir, 'vault');
+      var result2 = rejectPolicy(vp4, rejectMatch[1]);
+      var reply2 = result2 ? '❌ Politique ' + rejectMatch[1] + ' rejetée.' : '❌ Politique non trouvée.';
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, reply2);
+      return;
+    } catch (err) {
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Erreur: ' + err.message);
+      return;
+    }
+  }
+
+  if (/^dream\s+now/i.test(text)) {
+    try {
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, '💤 Lancement du cycle de rêve forcé...');
+      var { forceDream } = await import('./dream.js');
+      var vp5 = config.vaultPath || join(config.projectDir, 'vault');
+      var phases = await forceDream(vp5);
+      var summary = '💤 Cycle de rêve terminé:\n' +
+        (phases.review ? '✅ Revue des conversations\n' : '') +
+        (phases.memory ? '✅ Consolidation mémoire\n' : '') +
+        (phases.templates ? '✅ ' + phases.templates + '\n' : '') +
+        (phases.dreams ? '✅ ' + phases.dreams + '\n' : '') +
+        (phases.policies ? '✅ ' + phases.policies + '\n' : '') +
+        (!phases.review && !phases.memory && !phases.templates ? 'Rien à traiter.' : '');
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, summary);
+      return;
+    } catch (err) {
+      if (channel === 'telegram' && telegramChannel) await telegramChannel.sendText(replyTo, 'Erreur dream: ' + err.message);
+      return;
+    }
+  }
+
   // Email reply workflow commands
   var replyMatch = text.match(/^(?:répondre|reply|repondre)\s+([a-zA-Z0-9]+)(?:\s+(.+))?$/i);
   var sendMatch = text.match(/^(?:envoyer|send|approuver|approve)\s+([a-zA-Z0-9]+)$/i);
@@ -589,6 +683,14 @@ async function main() {
 
   // Alexa Smart Home state monitor
   try {
+    // Auto-refresh Alexa cookies on startup
+    try {
+      var { refreshCookies, startPeriodicRefresh } = await import('./alexa-cookie-refresh.js');
+      await refreshCookies(vaultPath);
+      startPeriodicRefresh(vaultPath, 12 * 60 * 60 * 1000);
+    } catch (err) {
+      log.warn('Alexa cookie auto-refresh not available: ' + err.message);
+    }
     var { startAlexaMonitor } = await import('./alexa-monitor.js');
     await startAlexaMonitor(async function(alert) {
       try {
@@ -616,9 +718,24 @@ async function main() {
       } catch (err) {
         log.error('Alexa alert processing error: ' + err.message);
       }
-    }, vaultPath, 60000, function() {
+    }, vaultPath, 60000, async function() {
       // onCookieExpiry callback
-      sendTelegram('🔑 Les cookies Alexa ont expiré. Envoyez-moi les nouveaux cookies au format:\n\nALEXA_UBID_MAIN=xxx\nALEXA_AT_MAIN=xxx');
+      log.info('Alexa cookies expired — attempting auto-refresh...');
+      try {
+        var { refreshCookies: refreshOnExpiry } = await import('./alexa-cookie-refresh.js');
+        var tokens = await refreshOnExpiry(vaultPath);
+        if (tokens) {
+          sendTelegram('🔑 Cookies Alexa expirés — rafraîchis automatiquement ✅');
+          // Restart monitor with fresh cookies (it will pick up new env vars)
+          var { stopAlexaMonitor: stopMon, startAlexaMonitor: restartMon } = await import('./alexa-monitor.js');
+          stopMon();
+          // Monitor will restart on next poll cycle with updated env vars
+        } else {
+          sendTelegram('🔑 Les cookies Alexa ont expiré et le rafraîchissement automatique a échoué.\nLancez: npm run alexa:login');
+        }
+      } catch (err) {
+        sendTelegram('🔑 Les cookies Alexa ont expiré. Lancez: npm run alexa:login\n(' + err.message + ')');
+      }
     });
   } catch (err) {
     log.debug('Alexa monitor not started: ' + err.message);
