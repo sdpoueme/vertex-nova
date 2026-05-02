@@ -332,14 +332,36 @@ async function extractTemplatesPhase(vaultPath) {
   // Prune expired templates first
   prunePool(vaultPath);
 
-  // Read today's daily log
+  // Try daily log first, then fall back to interactions.json
+  var content = '';
   var dailyPath = join(vaultPath, 'daily', todayStr() + '.md');
-  if (!existsSync(dailyPath)) return null;
+  if (existsSync(dailyPath)) {
+    content = readFileSync(dailyPath, 'utf8');
+  }
 
-  var content = readFileSync(dailyPath, 'utf8');
+  // Fallback: read today's interactions from the session log
+  if (content.length < 200) {
+    try {
+      var projectDir = resolve(vaultPath, '..');
+      var interactionsPath = join(projectDir, '.sessions', 'interactions.json');
+      if (existsSync(interactionsPath)) {
+        var interactions = JSON.parse(readFileSync(interactionsPath, 'utf8'));
+        var todayPrefix = todayStr();
+        var todayInteractions = interactions.filter(function(i) {
+          return new Date(i.ts).toISOString().slice(0, 10) === todayPrefix;
+        });
+        if (todayInteractions.length > 0) {
+          content = todayInteractions.map(function(i) {
+            return '[' + i.channel + ' ' + i.direction + '] ' + (i.text || '');
+          }).join('\n');
+        }
+      }
+    } catch {}
+  }
+
   if (content.length < 200) return null;
 
-  log.info('Dream v2: extracting interaction templates...');
+  log.info('Dream v2: extracting interaction templates (' + content.length + ' chars)...');
 
   // Split by agent markers if present, otherwise treat as one block
   var agentBlocks = {};
