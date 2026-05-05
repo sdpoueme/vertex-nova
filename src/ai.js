@@ -949,6 +949,23 @@ async function withRetry(fn, maxRetries, delayMs) {
 async function chatOllama(message, sessionId, modelOverride, image) {
   var modelName = modelOverride || OLLAMA_MODEL;
 
+  // Bootstrap new sessions with cross-session context
+  var conv = getConversation(sessionId);
+  if (conv.messageCount === 0 && !conv.bootstrap && !sessionId.startsWith('dream-') && !sessionId.startsWith('welcome-')) {
+    try {
+      var { buildBootstrapContext } = await import('./session-bootstrap.js');
+      var userId = sessionId.split(':')[0] || '';
+      var bootstrap = buildBootstrapContext(userId, sessionId);
+      if (bootstrap) {
+        var { setBootstrapContext } = await import('./conversation.js');
+        setBootstrapContext(sessionId, bootstrap);
+        log.debug('Session bootstrap injected for ' + sessionId.slice(0, 12));
+      }
+    } catch (err) {
+      log.debug('Bootstrap failed: ' + err.message);
+    }
+  }
+
   addUserMessage(sessionId, message);
   var messages = buildMessages(sessionId);
 

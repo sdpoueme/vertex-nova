@@ -157,6 +157,16 @@ export function buildMessages(sessionId) {
       role: 'assistant',
       content: 'Compris, je me souviens du contexte précédent.'
     });
+  } else if (conv.bootstrap) {
+    // First message of a new session — inject bootstrap context
+    messages.push({
+      role: 'user',
+      content: conv.bootstrap
+    });
+    messages.push({
+      role: 'assistant',
+      content: 'Compris, je suis au courant du contexte.'
+    });
   }
 
   // Add recent messages
@@ -183,6 +193,17 @@ export function getSummarizationPrompt(sessionId) {
     'IMPORTANT: Préserve les informations spécifiques (titres de nouvelles, résultats de recherche, ' +
     'noms de fichiers, données chiffrées) car l\'utilisateur pourrait y faire référence. ' +
     'Garde les points clés, décisions, actions prises, et tout contenu factuel:\n\n' + text;
+}
+
+/**
+ * Set bootstrap context for a new session.
+ * Called once when the session is first created.
+ */
+export function setBootstrapContext(sessionId, context) {
+  var conv = getConversation(sessionId);
+  if (!conv.bootstrap && context) {
+    conv.bootstrap = context;
+  }
 }
 
 /**

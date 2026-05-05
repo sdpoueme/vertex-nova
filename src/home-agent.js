@@ -537,8 +537,21 @@ async function main() {
   await startKnowledgeBases(config.projectDir, vaultPath);
 
   // Identity layer — user profiles and fact extraction
-  var { seedUsers } = await import('./identity.js');
+  var { seedUsers, buildIdentityContext } = await import('./identity.js');
   seedUsers();
+
+  // Session bootstrap — wire up references for cross-session memory
+  try {
+    var { setIdentityRef, setPresenceRef } = await import('./session-bootstrap.js');
+    setIdentityRef(buildIdentityContext);
+    try {
+      var presenceMod = await import('./presence.js');
+      setPresenceRef(presenceMod);
+    } catch {}
+    log.info('Session bootstrap initialized');
+  } catch (err) {
+    log.debug('Session bootstrap init failed: ' + err.message);
+  }
 
   startReminders(vaultPath, async function(text, route) {
     try {
