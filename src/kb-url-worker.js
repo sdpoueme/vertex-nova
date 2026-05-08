@@ -8,6 +8,16 @@ import { join } from 'node:path';
 var MAX_PAGES_PER_SITE = 50;
 var FETCH_HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; VertexNova/1.0)' };
 
+// Skip non-content URLs (fonts, images, CSS, JS, media, downloads)
+var SKIP_EXTENSIONS = /\.(woff2?|ttf|eot|otf|css|js|png|jpe?g|gif|svg|ico|webp|mp[34]|avi|mov|pdf|zip|tar|gz|exe|dmg|apk|xml|json|rss|atom)(\?.*)?$/i;
+
+function isContentUrl(url) {
+  if (SKIP_EXTENSIONS.test(url)) return false;
+  // Skip common non-content paths
+  if (/\/(fonts|assets|static|media|images|img|css|js|build|dist|_next|wp-content\/uploads)\//i.test(url)) return false;
+  return true;
+}
+
 async function fetchPage(url) {
   try {
     var res = await fetch(url, { headers: FETCH_HEADERS, signal: AbortSignal.timeout(15000), redirect: 'follow' });
@@ -48,7 +58,7 @@ async function discoverSitePages(baseUrl) {
         var m;
         while ((m = locRegex.exec(content)) !== null && pages.size < MAX_PAGES_PER_SITE) {
           var loc = m[1].trim().replace(/&amp;/g, '&');
-          if (loc.startsWith(origin)) pages.add(loc);
+          if (loc.startsWith(origin) && isContentUrl(loc)) pages.add(loc);
         }
       }
       if (pages.size > 1) return Array.from(pages);
@@ -64,7 +74,7 @@ async function discoverSitePages(baseUrl) {
       while ((lm = linkRegex.exec(html)) !== null && pages.size < MAX_PAGES_PER_SITE) {
         var href = lm[1];
         if (href.startsWith('/')) href = origin + href;
-        if (href.startsWith(origin) && !href.match(/\.(jpg|png|gif|css|js|svg|pdf|zip|ico)(\?|$)/i)) {
+        if (href.startsWith(origin) && isContentUrl(href)) {
           pages.add(href.split('#')[0].split('?')[0]);
         }
       }
@@ -90,7 +100,7 @@ async function main() {
   var allPages = new Set();
   for (var baseUrl of urls) {
     var discovered = await discoverSitePages(baseUrl);
-    for (var p of discovered) allPages.add(p);
+    for (var p of discovered) { if (isContentUrl(p)) allPages.add(p); }
     console.log('Discovered ' + discovered.length + ' pages from ' + baseUrl);
   }
 
