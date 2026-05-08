@@ -111,7 +111,7 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md).
 | Identity Layer | Per-user profiles, automatic fact extraction, topic tracking |
 | Knowledge Bases | Git repos + URL crawling (sitemap discovery, link extraction, up to 50 pages/site) |
 | Image Queue | Failed vision requests saved to disk, auto-retried when Claude comes back online |
-| Dream Engine | Nightly self-improvement: conversation review, memory consolidation, weekly summaries |
+| Dream Engine | Nightly self-improvement: conversation review, memory consolidation, Dream Layer v2 (ACU, controlled hallucination, policy proposals), graph consolidation |
 | Movie Recommendations | TMDB + NYT, multi-language, scored by user genre preferences |
 | Proactive Actions | Scheduled news, weather, maintenance, movies — persistent across restarts |
 | Night Mode | Voice devices blocked 10 PM – 7 AM, auto-routes to Telegram |
@@ -207,6 +207,39 @@ Two types of knowledge bases, configurable from the dashboard:
 
 URL crawling runs in a child process to avoid blocking the main event loop.
 
+### Vault Graph Structure
+
+All vault content follows a connected graph schema with `vertex-nova` as the central node. Knowledge bases are grouped by category:
+
+| Category | KBs | Linked to |
+|----------|-----|-----------|
+| **Personal** | `serge-poueme`, `emmanuel-poueme` | Person nodes (`serge`, family) |
+| **Home** | `home-maintenance-seasonal`, `home-resources`, `home-safety-energy`, `House-homevalue`, `appliance-maintenance` | Home node |
+
+Each KB directory has an index note (`kb-<name>.md`) that connects it to the `knowledge-bases` super-node and the appropriate owner (person or home). Raw crawled pages don't need individual wikilinks — they're connected through their directory's index note.
+
+### Graph Consolidation
+
+A nightly process (during the dream cycle) scans the vault for orphan notes (files without any `[[wikilinks]]`) and automatically connects them to the graph based on their directory. This ensures the Obsidian graph view stays fully connected without manual intervention.
+
+```
+                    knowledge-bases
+                   /       |       \
+          personal/     home-KBs    \
+         /       \     /    |    \   \
+   kb-serge  kb-emmanuel  maintenance  safety  homevalue
+        \       /          \     |      /
+         serge              \    |     /
+           ↕                 \   |    /
+    vertex-nova ←————————————→ home
+       ↕    ↕                   ↕
+  stephanie  dreams          devices
+       ↕       ↕            /   |   \
+  presence  daily-logs   sonos echo smart-home
+               ↕
+         weekly-summaries
+```
+
 ## Email Agent
 
 ```mermaid
@@ -292,6 +325,45 @@ Everything runs locally without any cloud API:
 
 Claude is only used for escalation when the local model gives a weak response. On credit errors, it enters a 24-hour cooldown persisted to disk — no wasted API calls across restarts.
 
+## Dream Layer v2
+
+Nightly self-improvement system based on [Cheung (2026) "Dreaming Is Not a Bug"](https://arxiv.org/pdf/2601.06115). Runs during quiet hours (1-5 AM) when idle.
+
+| Phase | What it does |
+|-------|-------------|
+| 1-5 | Original: conversation review, memory consolidation, escalation analysis, tomorrow prep, weekly summary |
+| Graph | Consolidates the vault graph — connects orphan notes |
+| 6 | Extracts Interaction Templates from daily logs → ACU (Artificial Collective Unconscious) |
+| 7 | Generates Dream Narratives from templates (two-pass: divergent → refined) + edge case scenarios |
+| 8 | Interprets dreams for recurring motifs → proposes policy updates |
+
+**Safety:** All dream content tagged `[DREAM]`, blocked from live responses. Local model only (zero Claude spend). Ephemeral dreams auto-expire (14 days). Policy updates require manual approval.
+
+**Commands:** `dream status`, `dream policies`, `dream now`, `approve policy <id>`, `reject policy <id>`
+
+**Config:** `config/dream-layer.yaml`
+
+## Session Bootstrap
+
+Cross-session memory persistence. On each new session, the agent automatically loads:
+- Last session summary
+- Pending reminders and emails
+- Recent dream learnings
+- Identity facts (user preferences, patterns)
+- Current home state (presence, vacation mode)
+
+This solves the "blank slate every morning" problem — the agent remembers yesterday's context.
+
+## Do Not Disturb
+
+Mutes all proactive notifications and voice output while keeping the agent running.
+
+- **Telegram:** `mute` / `unmute`
+- **Dashboard:** toggle in the presence section
+- **API:** `PUT /api/dnd {"enabled": true}`
+
+Direct chat still works normally when muted.
+
 ## Configuration
 
 | File | Purpose |
@@ -303,6 +375,7 @@ Claude is only used for escalation when the local model gives a weak response. O
 | `config/knowledgebases.yaml` | Knowledge base git repos |
 | `config/devices.yaml` | Device alert rules |
 | `config/presence.yaml` | Per-person presence detection settings and thresholds |
+| `config/dream-layer.yaml` | Dream Layer v2 parameters (templates, generation, policies, scenarios) |
 
 ## Installation
 

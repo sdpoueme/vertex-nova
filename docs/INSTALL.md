@@ -258,7 +258,8 @@ Note: The temporary test token expires every 24 hours.
 - `config/proactive.yaml` — Scheduled proactive actions and notification routing
 - `config/knowledgebases.yaml` — Family knowledge base git repos for RAG
 - `config/devices.yaml` — Device alert rules (device_id, security level, AI context)
-- `config/presence.yaml` — Per-person presence detection: people (name, MAC, language, welcome style, welcome device, notification preference) and detection thresholds (poll interval, day/night away time, night hours, travel/vacation delays)
+- `config/presence.yaml` — Per-person presence detection: people (name, MAC, device, language, welcome style, welcome device, notification preference) and detection thresholds
+- `config/dream-layer.yaml` — Dream Layer v2: template extraction, dream generation, policy updates, edge case scenarios, ephemeral decay
 - `agent.md` — Agent persona, rules, and household info (not committed to git)
 
 ---
