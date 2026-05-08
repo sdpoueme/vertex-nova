@@ -285,6 +285,15 @@ async function runAction(action, notify) {
       return;
     }
 
+    // Do Not Disturb check — suppress all notifications when muted
+    try {
+      var { isDnd } = await import('./dnd.js');
+      if (isDnd()) {
+        log.debug('Action ' + action.name + ': suppressed (DND mode active)');
+        return;
+      }
+    } catch {}
+
     // Check throttle
     if (shouldThrottle(action.priority)) {
       log.debug('Action ' + action.name + ': throttled');

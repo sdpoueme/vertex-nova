@@ -57,6 +57,7 @@ function PresencePersonEditor({ api }) {
   const [dirty, setDirty] = useState({});
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [vacationMode, setVacationMode] = useState(false);
+  const [dndMode, setDndMode] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -65,11 +66,13 @@ function PresencePersonEditor({ api }) {
       fetch(api + '/api/sonos/rooms').then(r => r.json()).catch(() => ({ rooms: [] })),
       fetch(api + '/api/alexa/echo-devices').then(r => r.json()).catch(() => ({ devices: [] })),
       fetch(api + '/api/presence').then(r => r.json()).catch(() => ({ vacationMode: false })),
-    ]).then(([presData, sonosData, echoData, presState]) => {
+      fetch(api + '/api/dnd').then(r => r.json()).catch(() => ({ enabled: false })),
+    ]).then(([presData, sonosData, echoData, presState, dndState]) => {
       const loadedPeople = presData.people || [];
       setPeople(loadedPeople);
       setSettings(presData.settings || {});
       setVacationMode(!!presState.vacationMode);
+      setDndMode(!!dndState.enabled);
 
       // Build combined voice device list (same approach as ChatPanel)
       const devs = [];
@@ -152,6 +155,19 @@ function PresencePersonEditor({ api }) {
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
 
+  const toggleDnd = async (enabled) => {
+    setDndMode(enabled);
+    try {
+      const res = await fetch(api + '/api/dnd', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      const data = await res.json();
+      setDndMode(!!data.enabled);
+      setAlert({ type: 'success', text: enabled ? '🔇 Mode silencieux activé' : '🔔 Notifications réactivées' });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
   const langOptions = [
     { value: 'fr', label: 'Français' },
     { value: 'en', label: 'English' },
@@ -190,6 +206,9 @@ function PresencePersonEditor({ api }) {
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
       <Toggle checked={vacationMode} onChange={({ detail }) => toggleVacation(detail.checked)}>
         {vacationMode ? '🏖️ Mode vacances activé — surveillance renforcée' : 'Mode vacances désactivé'}
+      </Toggle>
+      <Toggle checked={dndMode} onChange={({ detail }) => toggleDnd(detail.checked)}>
+        {dndMode ? '🔇 Mode silencieux — toutes les notifications en pause' : '🔔 Notifications actives'}
       </Toggle>
       {people.map((person, idx) => {
         const deviceOpts = buildDeviceOptions(person.welcome_room);

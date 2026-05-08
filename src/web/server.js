@@ -575,6 +575,30 @@ export function startDashboard(config, port) {
       return;
     }
 
+    // --- API: Do Not Disturb ---
+    if (path === '/api/dnd' && req.method === 'GET') {
+      try {
+        var { isDnd } = await import('../dnd.js');
+        json(res, 200, { enabled: isDnd() });
+      } catch {
+        json(res, 200, { enabled: false });
+      }
+      return;
+    }
+
+    if (path === '/api/dnd' && req.method === 'PUT') {
+      var dndBody = await readBody(req);
+      try {
+        var dndData = JSON.parse(dndBody);
+        var { setDnd } = await import('../dnd.js');
+        var result = setDnd(!!dndData.enabled);
+        json(res, 200, { enabled: result });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
     // --- API: Dream Layer v2 ---
     if (path === '/api/dreams/status' && req.method === 'GET') {
       try {

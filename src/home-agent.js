@@ -131,6 +131,28 @@ async function handleMessage(msg) {
     } catch {}
   }
 
+  // Do Not Disturb commands
+  if (/^(mute|dnd\s+on|silence)$/i.test(text)) {
+    try {
+      var { setDnd } = await import('./dnd.js');
+      setDnd(true);
+      if (channel === 'telegram' && telegramChannel) {
+        await telegramChannel.sendText(replyTo, '🔇 Mode silencieux activé. Toutes les notifications sont en pause. Dis "unmute" pour réactiver.');
+      }
+      return;
+    } catch {}
+  }
+  if (/^(unmute|dnd\s+off|unsilence)$/i.test(text)) {
+    try {
+      var { setDnd: setDnd2 } = await import('./dnd.js');
+      setDnd2(false);
+      if (channel === 'telegram' && telegramChannel) {
+        await telegramChannel.sendText(replyTo, '🔔 Notifications réactivées.');
+      }
+      return;
+    } catch {}
+  }
+
   // Dream commands
   if (/^dream\s+status/i.test(text)) {
     try {
@@ -598,10 +620,14 @@ async function main() {
           personSettings = getPersonSettings(event.name);
         } catch {}
 
+        // Check DND — suppress all notifications if muted
+        var dndActive = false;
+        try { var { isDnd } = await import('./dnd.js'); dndActive = isDnd(); } catch {}
+
         var notifyPref = personSettings?.notifications || 'both';
 
         // Send Telegram notification (non-blocking — don't delay Sonos welcome)
-        if (notifyPref === 'both' || notifyPref === 'telegram') {
+        if (!dndActive && (notifyPref === 'both' || notifyPref === 'telegram')) {
           sendTelegram('🏠 ' + event.name + ' est arrivé(e) à la maison.').catch(function() {});
         }
 
@@ -657,7 +683,7 @@ async function main() {
             }
 
             // Use per-person welcome room, falling back to global config
-            var shouldSpeak = notifyPref === 'both' || notifyPref === 'voice';
+            var shouldSpeak = !dndActive && (notifyPref === 'both' || notifyPref === 'voice');
             if (shouldSpeak) {
               var { execFile: execW } = await import('node:child_process');
               var { join: joinW } = await import('node:path');
@@ -677,7 +703,9 @@ async function main() {
         var leftSettings = null;
         try { var { getPersonSettings: gpsLeft } = await import('./presence.js'); leftSettings = gpsLeft(event.name); } catch {}
         var leftNotif = leftSettings?.notifications || 'both';
-        if (leftNotif === 'both' || leftNotif === 'telegram') {
+        var leftDnd = false;
+        try { var { isDnd: isDndLeft } = await import('./dnd.js'); leftDnd = isDndLeft(); } catch {}
+        if (!leftDnd && (leftNotif === 'both' || leftNotif === 'telegram')) {
           await sendTelegram('👋 ' + event.name + ' a quitté la maison.');
         }
       } else if (event.event === 'night_no_return') {
