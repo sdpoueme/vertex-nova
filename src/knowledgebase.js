@@ -377,17 +377,32 @@ export async function startKnowledgeBases(projectDir, vaultPath) {
   kbConfigs = parseKbYaml(yamlText);
   log.info('Loaded ' + kbConfigs.length + ' knowledge base(s)');
 
+  // Initialize RAG vector index
+  try {
+    var { initRagIndex } = await import('./rag.js');
+    await initRagIndex(projectDir);
+    log.info('RAG vector index initialized');
+  } catch (err) {
+    log.warn('RAG init failed (falling back to keyword search): ' + err.message);
+  }
+
   // Initial sync + index
   for (var kb of kbConfigs) {
     if (!kb.enabled) continue;
     if (kb.type === 'urls') {
       // URL KBs run in background — don't block startup
       (function(kbRef) {
-        syncRepo(kbRef).then(function(ok) { if (ok) indexKb(kbRef); });
+        syncRepo(kbRef).then(function(ok) {
+          if (ok) {
+            indexKb(kbRef);
+            indexKbToRag(kbRef).catch(function() {});
+          }
+        });
       })(kb);
     } else {
       await syncRepo(kb);
       indexKb(kb);
+      indexKbToRag(kb).catch(function() {});
     }
   }
 
@@ -397,11 +412,47 @@ export async function startKnowledgeBases(projectDir, vaultPath) {
     (function(kb) {
       var timer = setInterval(async function() {
         var changed = await syncRepo(kb);
-        if (changed) indexKb(kb);
+        if (changed) {
+          indexKb(kb);
+          indexKbToRag(kb).catch(function() {});
+        }
       }, kb.sync_interval_hours * 60 * 60 * 1000);
       syncTimers.push(timer);
     })(kb2);
   }
+}
+
+/**
+ * Index a KB into the RAG vector store.
+ */
+async function indexKbToRag(kb) {
+  try {
+    var { indexKnowledgeBase, clearKbIndex } = await import('./rag.js');
+    var repoDir = join(kbDir, kb.name);
+    if (!existsSync(repoDir)) return;
+    await clearKbIndex(kb.name);
+    await indexKnowledgeBase(repoDir, kb.name, kb.file_types || ['.md', '.html', '.txt']);
+  } catch (err) {
+    log.warn('RAG indexing failed for ' + kb.name + ': ' + err.message);
+  }
+}
+
+/**
+ * Semantic search using RAG (embeddings + reranking).
+ * Falls back to keyword search if RAG is unavailable.
+ */
+export async function searchKbSemantic(query, maxResults) {
+  try {
+    var { ragSearch, buildRagContext } = await import('./rag.js');
+    var results = await ragSearch(query, { topN: maxResults || 5 });
+    if (results.length > 0) {
+      return results.map(function(r) {
+        return { kb: r.kb, file: r.file, score: r.score, text: r.text };
+      });
+    }
+  } catch {}
+  // Fallback to keyword search
+  return searchKb(query, maxResults);
 }
 
 // --- Force re-sync a specific KB ---

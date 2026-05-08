@@ -840,14 +840,26 @@ async function executeTool(name, input) {
 
   // Knowledge base tools
   if (name === 'kb_search') {
-    var { searchKb } = await import('./knowledgebase.js');
-    var results = searchKb(input.query, 8);
-    if (results.length === 0) return 'Aucun résultat dans les bases de connaissances pour: ' + input.query;
-    var output = 'RAPPEL: L\'utilisateur qui pose la question est Poueme Daouda Serge Donald (né 1983, Canada). Ne le confonds pas avec son père Emmanuel ou son grand-père.\n\n';
-    output += results.map(function(r, i) {
-      return (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + r.score + ')\n' + r.text.slice(0, 800);
-    }).join('\n\n---\n\n');
-    return output;
+    // Use semantic RAG search (embeddings + reranking), fallback to keyword
+    try {
+      var { searchKbSemantic } = await import('./knowledgebase.js');
+      var results = await searchKbSemantic(input.query, 5);
+      if (results.length === 0) return 'Aucun résultat dans les bases de connaissances pour: ' + input.query;
+      var output = 'RAPPEL: L\'utilisateur qui pose la question est Poueme Daouda Serge Donald (né 1983, Canada). Ne le confonds pas avec son père Emmanuel ou son grand-père.\n\n';
+      output += results.map(function(r, i) {
+        return (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + Math.round(r.score * 100) / 100 + ')\n' + r.text.slice(0, 800);
+      }).join('\n\n---\n\n');
+      return output;
+    } catch (err) {
+      // Fallback to keyword search
+      var { searchKb } = await import('./knowledgebase.js');
+      var results2 = searchKb(input.query, 8);
+      if (results2.length === 0) return 'Aucun résultat dans les bases de connaissances pour: ' + input.query;
+      var output2 = results2.map(function(r, i) {
+        return (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + r.score + ')\n' + r.text.slice(0, 800);
+      }).join('\n\n---\n\n');
+      return output2;
+    }
   }
 
   if (name === 'kb_list') {

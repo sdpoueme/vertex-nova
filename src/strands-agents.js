@@ -164,14 +164,14 @@ var vaultSearchTool = tool({
 // --- KB search tool ---
 var kbSearchTool = tool({
   name: 'kb_search',
-  description: 'Search family knowledge bases (genealogy, biographies).',
+  description: 'Search family knowledge bases (genealogy, biographies). Uses semantic search with embeddings.',
   inputSchema: z.object({ query: z.string().describe('Search query') }),
   callback: async (input) => {
     try {
-      var { searchKb } = await import('./knowledgebase.js');
-      var results = searchKb(input.query, 5);
+      var { searchKbSemantic } = await import('./knowledgebase.js');
+      var results = await searchKbSemantic(input.query, 5);
       if (results.length === 0) return 'Aucun résultat KB pour: ' + input.query;
-      return results.map((r, i) => (i + 1) + '. [' + r.kb + '] ' + r.text.slice(0, 400)).join('\n\n');
+      return results.map((r, i) => (i + 1) + '. [' + r.kb + '/' + r.file + '] (score: ' + Math.round(r.score * 100) / 100 + ')\n' + r.text.slice(0, 600)).join('\n\n---\n\n');
     } catch { return 'KB non disponible.'; }
   },
 });

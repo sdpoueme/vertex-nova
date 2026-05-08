@@ -9,11 +9,14 @@
     "dev": "node --watch src/home-agent.js",
     "dev:debug": "LOG_LEVEL=debug node --watch src/home-agent.js",
     "sonos:auth": "node scripts/sonos-auth.js",
+    "alexa:login": "node scripts/alexa-login.js",
     "build:web": "cd web && npm run build"
   },
   "dependencies": {
     "@strands-agents/sdk": "^1.0.0-rc.3",
+    "alexa-cookie2": "^4.0.0",
     "nodemailer": "^8.0.5",
-    "telegraf": "^4.16.3"
+    "telegraf": "^4.16.3",
+    "vectra": "^0.14.0"
   }
 }
