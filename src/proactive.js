@@ -265,6 +265,21 @@ async function runAction(action, notify) {
       return;
     }
 
+    // Weather hallucination filter: detect seasonal impossibilities
+    if (action.name === 'weather-alert' && shouldNotify) {
+      var month = new Date().getMonth(); // 0-11
+      var isSummer = month >= 4 && month <= 9; // May-October
+      var winterWords = /tempête (de neige|hivernale)|verglas|blizzard|neige abondante|froid extrême/i;
+      var summerWords = /canicule|chaleur extrême|vague de chaleur/i;
+      if (isSummer && winterWords.test(response)) {
+        log.warn('Weather hallucination detected: winter alert in summer month ' + (month + 1));
+        shouldNotify = false;
+      } else if (!isSummer && summerWords.test(response)) {
+        log.warn('Weather hallucination detected: summer alert in winter month ' + (month + 1));
+        shouldNotify = false;
+      }
+    }
+
     if (!shouldNotify) {
       log.debug('Action ' + action.name + ': skipped (no notification needed)');
       return;

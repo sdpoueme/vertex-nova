@@ -48,11 +48,11 @@ actions:
     interval_minutes: 120
     model: qwen3:8b
     prompt: >
-      Utilise web_search pour chercher "alertes météo Sainte-Julie Québec"
-      et "Environnement Canada avertissements Montérégie".
-      Ne rapporte QUE les avertissements sévères (tempête, verglas, froid/chaleur extrême).
-      IMPORTANT: Si météo normale sans avertissement sévère, tu DOIS répondre uniquement "SKIP".
-      Si alerte sévère, résume en français en 2-3 phrases claires.
+      Utilise web_search pour chercher "Environnement Canada alertes Montérégie".
+      Regarde UNIQUEMENT les résultats de la recherche.
+      Si les résultats ne contiennent PAS d'avertissement sévère actif (tempête, verglas, tornade, chaleur/froid extrême), réponds UNIQUEMENT le mot "SKIP".
+      IMPORTANT: La réponse par défaut est "SKIP". Ne génère un avertissement QUE si tu trouves une alerte RÉELLE dans les résultats de recherche avec une date d'aujourd'hui.
+      N'invente JAMAIS d'alerte météo. Si web_search échoue ou ne retourne rien, réponds "SKIP".
     notify_condition: not_skip
     priority: medium
 
