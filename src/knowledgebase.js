@@ -395,14 +395,18 @@ export async function startKnowledgeBases(projectDir, vaultPath) {
         syncRepo(kbRef).then(function(ok) {
           if (ok) {
             indexKb(kbRef);
-            indexKbToRag(kbRef).catch(function() {});
+            // Defer RAG indexing to avoid CPU spike on startup
+            setTimeout(function() { indexKbToRag(kbRef).catch(function() {}); }, 60000);
           }
         });
       })(kb);
     } else {
       await syncRepo(kb);
       indexKb(kb);
-      indexKbToRag(kb).catch(function() {});
+      // Defer RAG indexing — will run 60s after startup
+      (function(kbRef) {
+        setTimeout(function() { indexKbToRag(kbRef).catch(function() {}); }, 60000 + kbConfigs.indexOf(kbRef) * 30000);
+      })(kb);
     }
   }
 

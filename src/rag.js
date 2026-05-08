@@ -174,30 +174,29 @@ export async function indexDocument(filePath, kbName, metadata) {
   var chunks = chunkText(text);
   var indexed = 0;
 
-  // Process in batches of 5 to avoid overwhelming Ollama
-  for (var i = 0; i < chunks.length; i += 5) {
-    var batch = chunks.slice(i, i + 5);
-    var embeddings = await embed(batch);
-    if (!embeddings) continue;
+  // Process one chunk at a time to avoid CPU spikes
+  for (var i = 0; i < chunks.length; i++) {
+    var embeddings = await embed(chunks[i]);
+    if (!embeddings || !embeddings[0]) continue;
 
-    for (var j = 0; j < batch.length; j++) {
-      if (!embeddings[j]) continue;
-      try {
-        await vectorIndex.insertItem({
-          vector: embeddings[j],
-          metadata: {
-            kb: kbName,
-            file: metadata?.file || filePath,
-            chunk: i + j,
-            text: batch[j].slice(0, 2000), // Store text for retrieval
-            ...(metadata || {}),
-          },
-        });
-        indexed++;
-      } catch (err) {
-        log.debug('Index insert error: ' + err.message);
-      }
+    try {
+      await vectorIndex.insertItem({
+        vector: embeddings[0],
+        metadata: {
+          kb: kbName,
+          file: metadata?.file || filePath,
+          chunk: i,
+          text: chunks[i].slice(0, 2000),
+          ...(metadata || {}),
+        },
+      });
+      indexed++;
+    } catch (err) {
+      log.debug('Index insert error: ' + err.message);
     }
+
+    // Throttle: 200ms pause between embeddings to keep CPU reasonable
+    await new Promise(function(r) { setTimeout(r, 200); });
   }
 
   return indexed;
@@ -223,13 +222,15 @@ export async function indexKnowledgeBase(kbDir, kbName, fileTypes) {
   }
   walk(kbDir);
 
-  log.info('RAG: indexing ' + kbName + ' (' + files.length + ' files)...');
+  log.info('RAG: indexing ' + kbName + ' (' + files.length + ' files, throttled)...');
   var totalChunks = 0;
 
   for (var f of files) {
     var relPath = relative(kbDir, f);
     var chunks = await indexDocument(f, kbName, { file: relPath });
     totalChunks += chunks;
+    // 500ms pause between files to keep CPU manageable
+    await new Promise(function(r) { setTimeout(r, 500); });
   }
 
   log.info('RAG: indexed ' + kbName + ': ' + totalChunks + ' chunks from ' + files.length + ' files');
