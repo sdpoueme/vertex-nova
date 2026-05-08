@@ -109,7 +109,7 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md).
 | Task Orchestrator | Pre-fetches news/weather/movies for device requests (1 AI call instead of 3+) |
 | Async Thinker | Background agent reviews every response and saves learnings |
 | Identity Layer | Per-user profiles, automatic fact extraction, topic tracking |
-| Knowledge Bases | Git repos + URL crawling (sitemap discovery, link extraction, up to 50 pages/site) |
+| Knowledge Bases | Git repos + URL crawling, semantic RAG with local embeddings (Ollama + Vectra) |
 | Image Queue | Failed vision requests saved to disk, auto-retried when Claude comes back online |
 | Dream Engine | Nightly self-improvement: conversation review, memory consolidation, Dream Layer v2 (ACU, controlled hallucination, policy proposals), graph consolidation |
 | Movie Recommendations | TMDB + NYT, multi-language, scored by user genre preferences |
@@ -221,6 +221,20 @@ Each KB directory has an index note (`kb-<name>.md`) that connects it to the `kn
 ### Graph Consolidation
 
 A nightly process (during the dream cycle) scans the vault for orphan notes (files without any `[[wikilinks]]`) and automatically connects them to the graph based on their directory. This ensures the Obsidian graph view stays fully connected without manual intervention.
+
+### Semantic RAG Pipeline
+
+Knowledge base search uses a full RAG pipeline with local embeddings:
+
+| Stage | What it does | Technology |
+|-------|-------------|-----------|
+| Extract | Chunk documents (500 words, 50 overlap) | Custom chunker |
+| Embed | Generate 768-dim vectors | Ollama `nomic-embed-text` (274 MB, local) |
+| Store | Persist vectors to disk | Vectra (file-based vector DB) |
+| Retrieve | Semantic similarity search (top-10) | Cosine similarity |
+| Rerank | LLM relevance scoring (top-5) | Qwen3 8B |
+
+The index builds gradually in the background (throttled to avoid CPU spikes). Falls back to keyword search if RAG is unavailable.
 
 ```
                     knowledge-bases

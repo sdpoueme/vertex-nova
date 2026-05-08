@@ -11,6 +11,7 @@ import StatusIndicator from '@cloudscape-design/components/status-indicator';
 import Icon from '@cloudscape-design/components/icon';
 import Toggle from '@cloudscape-design/components/toggle';
 import Select from '@cloudscape-design/components/select';
+import DatePicker from '@cloudscape-design/components/date-picker';
 
 function timeAgo(ts) {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -20,8 +21,51 @@ function timeAgo(ts) {
   return Math.floor(s / 86400) + 'j';
 }
 
+// Session storage helpers
+const SESSIONS_KEY = 'vertex-nova-chat-sessions';
+const CURRENT_SESSION_KEY = 'vertex-nova-current-session';
+const MAX_MESSAGES_PER_SESSION = 100;
+const MAX_STORED_SESSIONS = 30;
+
+function loadSessions() {
+  try { return JSON.parse(localStorage.getItem(SESSIONS_KEY) || '[]'); } catch { return []; }
+}
+
+function saveSessions(sessions) {
+  // Keep only the last MAX_STORED_SESSIONS
+  const trimmed = sessions.slice(-MAX_STORED_SESSIONS);
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(trimmed));
+}
+
+function loadCurrentSession() {
+  try {
+    const data = JSON.parse(localStorage.getItem(CURRENT_SESSION_KEY) || 'null');
+    if (data && data.messages) return data;
+  } catch {}
+  return createNewSession();
+}
+
+function saveCurrentSession(session) {
+  localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(session));
+}
+
+function createNewSession() {
+  return {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    startedAt: Date.now(),
+    messages: [],
+    title: 'Nouvelle session',
+  };
+}
+
+function sessionTitle(session) {
+  if (!session.messages || session.messages.length === 0) return 'Session vide';
+  const firstUser = session.messages.find(m => m.role === 'user');
+  return firstUser ? firstUser.text.slice(0, 50) : 'Session';
+}
+
 export default function ChatPanel({ api }) {
-  const [messages, setMessages] = useState([]);
+  const [session, setSession] = useState(() => loadCurrentSession());
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [image, setImage] = useState(null);
@@ -30,10 +74,18 @@ export default function ChatPanel({ api }) {
   const [voiceMode, setVoiceMode] = useState(false);
   const [voiceDevice, setVoiceDevice] = useState(null);
   const [voiceDevices, setVoiceDevices] = useState([]);
+  const [showSessions, setShowSessions] = useState(false);
+  const [sessions, setSessions] = useState(() => loadSessions());
+  const [filterDate, setFilterDate] = useState('');
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const mediaRecRef = useRef(null);
   const chunksRef = useRef([]);
+
+  const messages = session.messages;
+
+  // Persist session on every change
+  useEffect(() => { saveCurrentSession(session); }, [session]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
@@ -59,20 +111,53 @@ export default function ChatPanel({ api }) {
   }, [api]);
   useEffect(() => { loadHistory(); const iv = setInterval(loadHistory, 10000); return () => clearInterval(iv); }, [loadHistory]);
 
+  // Archive current session and start a new one
+  const newSession = () => {
+    if (session.messages.length > 0) {
+      const archived = { ...session, title: sessionTitle(session), endedAt: Date.now() };
+      const updated = [...sessions, archived];
+      setSessions(updated);
+      saveSessions(updated);
+    }
+    const fresh = createNewSession();
+    setSession(fresh);
+  };
+
+  // Restore a previous session (read-only view)
+  const restoreSession = (s) => {
+    setSession(s);
+    setShowSessions(false);
+  };
+
+  const addMessage = (msg) => {
+    setSession(prev => {
+      const newMessages = [...prev.messages, msg];
+      // Auto-archive if session gets too long
+      if (newMessages.length >= MAX_MESSAGES_PER_SESSION) {
+        const archived = { ...prev, messages: newMessages, title: sessionTitle({ messages: newMessages }), endedAt: Date.now() };
+        const updated = [...sessions, archived];
+        setSessions(updated);
+        saveSessions(updated);
+        return createNewSession();
+      }
+      return { ...prev, messages: newMessages };
+    });
+  };
+
   const send = async () => {
     if (!input.trim() && !image) return;
     const text = input || (image ? "Décris cette image." : '');
 
-    // Warn if user mentions image but none is attached
     if (!image && /image|photo|plan|document|fichier|pièce jointe/i.test(text)) {
-      setMessages(m => [...m, { role: 'user', text }, { role: 'assistant', text: 'Aucune image jointe. Cliquez d\'abord sur 📷 pour sélectionner une image, puis envoyez votre message.' }]);
+      addMessage({ role: 'user', text, ts: Date.now() });
+      addMessage({ role: 'assistant', text: 'Aucune image jointe. Cliquez d\'abord sur 📷 pour sélectionner une image, puis envoyez votre message.', ts: Date.now() });
       return;
     }
 
     setInput('');
-    const msgObj = { role: 'user', text };
+    const msgObj = { role: 'user', text, ts: Date.now() };
     if (image) msgObj.imagePreview = true;
-    setMessages(m => [...m, msgObj]);
+    addMessage(msgObj);
     setLoading(true);
     try {
       const body = { message: text };
@@ -83,10 +168,10 @@ export default function ChatPanel({ api }) {
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      setMessages(m => [...m, { role: 'assistant', text: data.response || data.error }]);
+      addMessage({ role: 'assistant', text: data.response || data.error, ts: Date.now() });
       loadHistory();
     } catch (err) {
-      setMessages(m => [...m, { role: 'assistant', text: 'Erreur: ' + err.message }]);
+      addMessage({ role: 'assistant', text: 'Erreur: ' + err.message, ts: Date.now() });
     }
     setImage(null);
     setLoading(false);
@@ -104,7 +189,7 @@ export default function ChatPanel({ api }) {
 
   const startRecording = async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
-      alert('Le microphone nécessite HTTPS. Ouvrez http://localhost:3080 depuis ce Mac, ou dans Chrome: chrome://flags/#unsafely-treat-insecure-origin-as-secure → ajoutez http://192.168.2.153:3080');
+      alert('Le microphone nécessite HTTPS.');
       return;
     }
     try {
@@ -117,7 +202,7 @@ export default function ChatPanel({ api }) {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setRecording(false);
         setLoading(true);
-        setMessages(m => [...m, { role: 'user', text: '🎤 Message vocal...' }]);
+        addMessage({ role: 'user', text: '🎤 Message vocal...', ts: Date.now() });
         try {
           const reader = new FileReader();
           reader.onload = async () => {
@@ -127,42 +212,103 @@ export default function ChatPanel({ api }) {
             });
             const data = await res.json();
             if (data.text) {
-              setMessages(m => { const u = [...m]; const li = u.findLastIndex(msg => msg.role === 'user'); if (li >= 0) u[li] = { role: 'user', text: '🎤 ' + data.text }; return u; });
+              setSession(prev => {
+                const msgs = [...prev.messages];
+                const li = msgs.findLastIndex(m => m.role === 'user');
+                if (li >= 0) msgs[li] = { ...msgs[li], text: '🎤 ' + data.text };
+                return { ...prev, messages: msgs };
+              });
               const voiceBody = { message: '[Voice message] ' + data.text };
               if (voiceMode && voiceDevice) { voiceBody.voiceMode = true; voiceBody.voiceDevice = voiceDevice.value; }
               const aiRes = await fetch(api + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(voiceBody) });
               const aiData = await aiRes.json();
-              setMessages(m => [...m, { role: 'assistant', text: aiData.response || aiData.error }]);
+              addMessage({ role: 'assistant', text: aiData.response || aiData.error, ts: Date.now() });
               loadHistory();
             } else if (data.error) {
-              setMessages(m => { const u = [...m]; const li = u.findLastIndex(msg => msg.role === 'user'); if (li >= 0) u[li] = { role: 'user', text: '🎤 (aucune parole détectée)' }; return u; });
-              setMessages(m => [...m, { role: 'assistant', text: data.error }]);
-            } else {
-              setMessages(m => [...m, { role: 'assistant', text: 'Erreur transcription' }]);
+              setSession(prev => {
+                const msgs = [...prev.messages];
+                const li = msgs.findLastIndex(m => m.role === 'user');
+                if (li >= 0) msgs[li] = { ...msgs[li], text: '🎤 (aucune parole détectée)' };
+                return { ...prev, messages: msgs };
+              });
+              addMessage({ role: 'assistant', text: data.error, ts: Date.now() });
             }
             setLoading(false);
           };
           reader.readAsDataURL(blob);
-        } catch (err) { setMessages(m => [...m, { role: 'assistant', text: 'Erreur vocale: ' + err.message }]); setLoading(false); }
+        } catch (err) { addMessage({ role: 'assistant', text: 'Erreur vocale: ' + err.message, ts: Date.now() }); setLoading(false); }
       };
       mediaRecRef.current = mr;
       mr.start();
       setRecording(true);
     } catch (err) {
-      if (err.message?.includes('mediaDevices') || err.name === 'TypeError') {
-        alert('Le microphone nécessite HTTPS. Ouvrez http://localhost:3080 depuis ce Mac, ou dans Chrome: chrome://flags → unsafely-treat-insecure-origin-as-secure → ajoutez http://192.168.2.153:3080');
-      } else {
-        alert('Microphone non disponible: ' + err.message);
-      }
+      alert('Microphone non disponible: ' + err.message);
     }
   };
 
   const stopRecording = () => { if (mediaRecRef.current?.state === 'recording') mediaRecRef.current.stop(); };
 
-  const chatContent = (
-    <Container>
+  // Filter sessions by date
+  const filteredSessions = filterDate
+    ? sessions.filter(s => new Date(s.startedAt).toISOString().slice(0, 10) === filterDate)
+    : sessions;
+
+  // Session picker panel
+  const sessionPickerContent = (
+    <Container header={
+      <Header variant="h3" actions={
+        <Button onClick={() => setShowSessions(false)} iconName="close">Fermer</Button>
+      }>Sessions précédentes ({sessions.length})</Header>
+    }>
       <SpaceBetween size="m">
-        <div style={{ height: '65vh', overflowY: 'auto', padding: '8px' }}>
+        <DatePicker
+          value={filterDate}
+          onChange={({ detail }) => setFilterDate(detail.value)}
+          placeholder="Filtrer par date"
+          locale="fr-CA"
+        />
+        <div style={{ height: '60vh', overflowY: 'auto' }}>
+          {filteredSessions.length === 0 ? (
+            <Box textAlign="center" color="text-body-secondary" padding={{ top: 'l' }}>
+              {filterDate ? 'Aucune session ce jour' : 'Aucune session archivée'}
+            </Box>
+          ) : (
+            <SpaceBetween size="xs">
+              {[...filteredSessions].reverse().map((s, i) => (
+                <Container key={i} variant="stacked">
+                  <SpaceBetween direction="horizontal" size="xs" alignItems="center">
+                    <Button variant="link" onClick={() => restoreSession(s)}>
+                      {s.title || 'Session'}
+                    </Button>
+                    <Box variant="small" color="text-body-secondary">
+                      {new Date(s.startedAt).toLocaleDateString('fr-CA')} {new Date(s.startedAt).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}
+                      {' · '}{(s.messages || []).length} messages
+                    </Box>
+                  </SpaceBetween>
+                </Container>
+              ))}
+            </SpaceBetween>
+          )}
+        </div>
+      </SpaceBetween>
+    </Container>
+  );
+
+  if (showSessions) return sessionPickerContent;
+
+  const chatContent = (
+    <Container header={
+      <Header variant="h3" actions={
+        <SpaceBetween direction="horizontal" size="xs">
+          <Button onClick={() => setShowSessions(true)} iconName="calendar">Sessions ({sessions.length})</Button>
+          <Button onClick={newSession} iconName="add-plus">Nouvelle</Button>
+        </SpaceBetween>
+      }>
+        {session.messages.length > 0 ? sessionTitle(session).slice(0, 40) : 'Nouvelle conversation'}
+      </Header>
+    }>
+      <SpaceBetween size="m">
+        <div style={{ height: '60vh', overflowY: 'auto', padding: '8px' }}>
           {messages.length === 0 && (
             <Box textAlign="center" color="text-body-secondary" padding={{ top: 'xxl' }}>
               <Box variant="p" fontSize="heading-m">Vertex Nova</Box>
@@ -173,6 +319,7 @@ export default function ChatPanel({ api }) {
             <div key={i} style={{ textAlign: m.role === 'user' ? 'right' : 'left', marginBottom: '12px' }}>
               <Box variant="span" color={m.role === 'user' ? 'text-status-info' : 'text-body-secondary'} fontSize="body-s">
                 {m.role === 'user' ? 'Vous' : 'Vertex Nova'}
+                {m.ts && <span style={{ marginLeft: '8px', opacity: 0.6 }}>{new Date(m.ts).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}</span>}
               </Box>
               {m.imagePreview && (
                 <div style={{ marginBottom: '4px' }}>
