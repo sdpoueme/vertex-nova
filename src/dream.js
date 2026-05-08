@@ -203,6 +203,9 @@ function writeDreamJournal(vaultPath, phases) {
   if (phases.policies) {
     entry += '## [v2] Motifs et politiques\n\n' + phases.policies + '\n\n';
   }
+  if (phases.graph) {
+    entry += '## Consolidation du graphe\n\n' + phases.graph + '\n\n';
+  }
 
   var filePath = join(journalDir, date + '.md');
   writeFileSync(filePath, entry);
@@ -321,6 +324,79 @@ function isDreamLayerEnabled() {
     var text = readFileSync(configPath, 'utf8');
     return !/enabled:\s*false/.test(text);
   } catch { return false; }
+}
+
+/**
+ * Graph Consolidation — finds orphan vault notes and connects them.
+ * Runs during dream phase to keep the Obsidian graph fully connected.
+ */
+async function consolidateGraph(vaultPath) {
+  var orphans = [];
+  var dirs = ['daily', 'dreams', 'weekly', 'home/events', 'home/complaints', 'home/tasks', 'home/patterns', 'movies', 'emails', 'memories', 'people', 'legal'];
+
+  for (var dir of dirs) {
+    var fullDir = join(vaultPath, dir);
+    if (!existsSync(fullDir)) continue;
+
+    var files;
+    try {
+      files = readdirSync(fullDir, { recursive: true }).filter(function(f) { return f.endsWith('.md'); });
+    } catch { continue; }
+
+    for (var f of files) {
+      var filePath = join(fullDir, f);
+      try {
+        var content = readFileSync(filePath, 'utf8');
+        if (!content.includes('[[')) {
+          orphans.push({ path: filePath, dir: dir, name: f });
+        }
+      } catch {}
+    }
+  }
+
+  if (orphans.length === 0) return null;
+
+  log.info('Graph consolidation: found ' + orphans.length + ' orphan notes, connecting...');
+  var connected = 0;
+
+  for (var orphan of orphans) {
+    var link = '';
+    // Determine the appropriate link based on directory
+    if (orphan.dir === 'daily') {
+      link = '\n\n---\nGénéré par [[vertex-nova]] | [[daily-logs]]\n';
+    } else if (orphan.dir === 'dreams') {
+      link = '\n\n---\nGénéré par [[vertex-nova]] | [[dreams-index]]\n';
+    } else if (orphan.dir === 'weekly') {
+      link = '\n\n---\nGénéré par [[vertex-nova]] | [[weekly-summaries]]\n';
+    } else if (orphan.dir === 'home/events') {
+      link = '\n\n---\nAlerte détectée par [[vertex-nova]] dans la [[home|maison]]\n';
+    } else if (orphan.dir === 'home/complaints' || orphan.dir === 'legal') {
+      link = '\n\n---\nDossier de [[serge]] concernant la [[home|maison]]\n';
+    } else if (orphan.dir === 'home/tasks') {
+      link = '\n\n---\nRappel créé par [[vertex-nova]] pour [[serge]]\n';
+    } else if (orphan.dir === 'home/patterns') {
+      link = '\n\n---\nPattern détecté par [[vertex-nova]] | [[arrival_departure]]\n';
+    } else if (orphan.dir === 'movies') {
+      link = '\n\n---\nRecommandé par [[vertex-nova]] pour [[serge]]\n';
+    } else if (orphan.dir === 'emails') {
+      link = '\n\n---\nEmail de [[serge]] — archivé par [[vertex-nova]]\n';
+    } else if (orphan.dir === 'memories') {
+      link = '\n\n---\nGénéré par [[vertex-nova]]\n';
+    } else if (orphan.dir === 'people') {
+      link = '\n\n---\nProfil géré par [[vertex-nova]] | [[home|maison]]\n';
+    } else {
+      link = '\n\n---\nLié à [[vertex-nova]]\n';
+    }
+
+    try {
+      var existing = readFileSync(orphan.path, 'utf8');
+      writeFileSync(orphan.path, existing + link);
+      connected++;
+    } catch {}
+  }
+
+  log.info('Graph consolidation: connected ' + connected + '/' + orphans.length + ' orphan notes');
+  return connected + ' orphan notes connected to the graph';
 }
 
 /**
@@ -543,6 +619,9 @@ async function dream(vaultPath) {
   // Phase 5: Weekly summary (Sundays only)
   phases.weekly = await buildWeeklySummary(vaultPath);
 
+  // Graph consolidation — connect orphan notes
+  phases.graph = await consolidateGraph(vaultPath);
+
   // Dream Layer v2 phases (if enabled)
   if (isDreamLayerEnabled()) {
     try {
@@ -560,7 +639,7 @@ async function dream(vaultPath) {
   }
 
   // Write journal
-  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly || phases.templates || phases.dreams || phases.policies;
+  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly || phases.templates || phases.dreams || phases.policies || phases.graph;
   if (hasContent) {
     writeDreamJournal(vaultPath, phases);
     await applyLearnings(vaultPath, phases.review);
@@ -605,6 +684,9 @@ export async function forceDream(vaultPath) {
   phases.tomorrow = await prepareForTomorrow(resolvedPath);
   phases.weekly = await buildWeeklySummary(resolvedPath);
 
+  // Graph consolidation
+  phases.graph = await consolidateGraph(resolvedPath);
+
   if (isDreamLayerEnabled()) {
     try {
       phases.templates = await extractTemplatesPhase(resolvedPath);
@@ -615,7 +697,7 @@ export async function forceDream(vaultPath) {
     }
   }
 
-  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly || phases.templates || phases.dreams || phases.policies;
+  var hasContent = phases.review || phases.memory || phases.escalations || phases.tomorrow || phases.weekly || phases.templates || phases.dreams || phases.policies || phases.graph;
   if (hasContent) {
     writeDreamJournal(resolvedPath, phases);
     await applyLearnings(resolvedPath, phases.review);
