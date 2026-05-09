@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react()],
@@ -11,5 +12,11 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rolldownOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        guest: resolve(__dirname, 'guest-app.html'),
+      },
+    },
   },
 });

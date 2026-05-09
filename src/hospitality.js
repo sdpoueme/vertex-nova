@@ -124,6 +124,7 @@ export function setMode(newMode) {
   if (newMode === 'residence') {
     stopGuestServer();
   } else {
+    stopGuestServer(); // Stop old server first (might be on different port)
     startGuestServer();
   }
 
@@ -245,6 +246,18 @@ function startGuestServer() {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
+    // Serve static assets (JS, CSS) from web/dist
+    if (path.match(/\.(js|css|svg|png|ico|woff|woff2)$/)) {
+      var assetPath = join(import.meta.dirname, '..', 'web', 'dist', path);
+      if (existsSync(assetPath)) {
+        var types = { '.js': 'application/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
+        var ext = path.match(/\.[^.]+$/)[0];
+        res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
+        res.end(readFileSync(assetPath));
+        return;
+      }
+    }
+
     // Guest API: validate code
     if (path === '/api/auth' && req.method === 'POST') {
       var body = '';
@@ -298,14 +311,18 @@ function startGuestServer() {
       return;
     }
 
-    // Default: serve guest frontend
+    // Default: serve guest frontend (built React/Cloudscape app)
+    var guestDistPath = join(import.meta.dirname, '..', 'web', 'dist', 'guest-app.html');
     var guestHtmlPath = join(import.meta.dirname, '..', 'web', 'guest.html');
-    if (existsSync(guestHtmlPath)) {
+    if (existsSync(guestDistPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(readFileSync(guestDistPath, 'utf8'));
+    } else if (existsSync(guestHtmlPath)) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(readFileSync(guestHtmlPath, 'utf8'));
     } else {
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end('<html><body><h1>Vertex Nova — Guest Portal</h1><p>Mode: ' + config.mode + '</p></body></html>');
+      res.end('<html><body><h1>Guest Portal — run: cd web && npm run build</h1></body></html>');
     }
   };
 
