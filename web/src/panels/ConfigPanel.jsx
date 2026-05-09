@@ -570,11 +570,14 @@ function ModelsPanel({ api }) {
     { value: 'qwen3:8b', label: 'Qwen3 8B — rapide, bon français, outils' },
     { value: 'qwen3:4b', label: 'Qwen3 4B — très rapide, qualité OK' },
     { value: 'qwen3:14b', label: 'Qwen3 14B — meilleur raisonnement, lent' },
+    { value: 'phi4-mini', label: 'Phi-4 Mini — instruction following, proactif' },
+    { value: 'nemotron-mini', label: 'Nemotron Mini (NVIDIA) — rapide, résumés' },
     { value: 'qwen2.5vl:7b', label: 'Qwen2.5-VL 7B — vision, multimodal' },
     { value: 'gemma4:e2b', label: 'Gemma 4 E2B — vision (ancien)' },
     { value: 'gemma4', label: 'Gemma 4 12B — bon raisonnement, lent' },
     { value: 'mistral', label: 'Mistral 7B — léger, français moyen' },
     { value: 'llama3.1:8b', label: 'Llama 3.1 8B — polyvalent' },
+    { value: 'deepseek-r1:8b', label: 'DeepSeek R1 8B — raisonnement profond' },
   ];
   const ollamaOptions = knownOllamaModels.map(m => ({
     value: m.value,

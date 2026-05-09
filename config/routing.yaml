@@ -20,3 +20,9 @@ routes:
 
 default:
   model: qwen3:8b
+
+# Model roles:
+# qwen3:8b — general chat, tool use, French (primary)
+# phi4-mini — proactive routines, strict instruction following, SKIP logic
+# nemotron-mini — fast responses, simple tasks, summaries
+# gemma4:e2b — vision/image analysis

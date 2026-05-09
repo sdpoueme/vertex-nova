@@ -46,7 +46,7 @@ actions:
   - name: weather-alert
     description: "Severe weather warnings"
     interval_minutes: 120
-    model: qwen3:8b
+    model: phi4-mini
     prompt: >
       Utilise web_search pour chercher "Environnement Canada alertes Montérégie".
       Regarde UNIQUEMENT les résultats de la recherche.
@@ -58,8 +58,8 @@ actions:
 
   - name: home-maintenance-check
     description: "Seasonal home maintenance"
-    interval_minutes: 720
-    model: qwen3:8b
+    interval_minutes: 360
+    model: phi4-mini
     prompt: >
       Basé sur la date et la saison, quelles tâches d'entretien sont dues pour
       une maison à Sainte-Julie, Québec? Filtres HVAC, gouttières, déneigement,
@@ -74,7 +74,7 @@ actions:
   - name: email-digest
     description: "Device alert summary"
     interval_minutes: 120
-    model: qwen3:8b
+    model: phi4-mini
     prompt: >
       Vérifie le vault pour les alertes d'appareils récentes aujourd'hui.
       Résume ce qui est notable.
