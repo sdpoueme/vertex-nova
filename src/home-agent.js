@@ -322,6 +322,16 @@ async function handleMessage(msg) {
       if (identityCtx) userContext = identityCtx + '\n';
     } catch {}
 
+    // Family-aware personalization
+    try {
+      var { getMemberByChannel, buildPersonalizedContext } = await import('./family.js');
+      var familyMember = getMemberByChannel(channel, userId);
+      if (familyMember) {
+        var personalCtx = buildPersonalizedContext(familyMember.name);
+        if (personalCtx) userContext += personalCtx + '\n';
+      }
+    } catch {}
+
     var stamped = '[Current time: ' + localTimestamp() + '] [Channel: ' + channel + '] ' + userContext + '\n' + text;
 
     log.info('[' + channel + '] Message from ' + userId + ': ' + text.slice(0, 100));
@@ -642,6 +652,18 @@ async function main() {
                 var { whoIsHome: wih } = await import('./presence.js');
                 var pres = wih();
                 var othersHome = pres.home.filter(function(n) { return n !== event.name; });
+
+                // Get family member style for personalized welcome
+                var welcomeTone = 'chaleureux';
+                try {
+                  var { getMemberByName: gmbw } = await import('./family.js');
+                  var fmWelcome = gmbw(event.name);
+                  if (fmWelcome) {
+                    if (fmWelcome.style.tone === 'concise') welcomeTone = 'bref et direct';
+                    else if (fmWelcome.style.tone === 'formal') welcomeTone = 'formel';
+                  }
+                } catch {}
+
                 var langInstruction = welcomeLang === 'en' ? 'Generate a warm vocal welcome message in English' : 'Génère un message de bienvenue vocal en français québécois naturel';
                 var prompt = langInstruction + ' pour ' + event.name + ' qui rentre à la maison.\n' +
                   'Heure: ' + hour + 'h. ' + (othersHome.length > 0 ? 'Déjà à la maison: ' + othersHome.join(', ') + '.' : event.name + ' est le premier à rentrer.') + '\n';
@@ -669,7 +691,7 @@ async function main() {
                   if (ea) { var pe = ea.listPending(); if (pe.length > 0) prompt += pe.length + ' emails en attente.\n'; }
                 } catch {}
 
-                prompt += '\n2-3 phrases max, chaleureux et naturel. Pas de formatage markdown. Commence par "Bienvenue ' + event.name + '". IMPORTANT: le message est pour ' + event.name + ' et personne d\'autre.';
+                prompt += '\n2-3 phrases max, ' + welcomeTone + ' et naturel. Pas de formatage markdown. Commence par "Bienvenue ' + event.name + '". IMPORTANT: le message est pour ' + event.name + ' et personne d\'autre.';
                 var resp = await chat(prompt, 'welcome-' + Date.now().toString(36));
                 if (resp && resp.length > 20 && !resp.includes('difficultés')) {
                   welcomeText = resp.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '').trim();

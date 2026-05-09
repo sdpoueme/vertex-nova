@@ -1,0 +1,62 @@
+# Vertex Nova — Family Identity Configuration
+# Maps each family member to their identity profile and behavioral preferences.
+# The agent uses this to adapt notifications, briefings, and recommendations per person.
+
+family:
+  - name: Serge
+    identity_id: "787677377"          # Telegram user ID (links to vault/identities/)
+    presence_name: Serge              # Must match config/presence.yaml
+    channels:
+      telegram: "787677377"
+      web: true
+    style:
+      tone: warm_detailed             # warm_detailed, concise, formal
+      briefing: full                  # full, summary, minimal
+      proactive_level: high           # high, medium, low
+      humor: occasional               # occasional, never, frequent
+    schedule:
+      morning: "07:00"
+      work_start: "09:00"
+      work_end: "17:00"
+      evening: "19:00"
+      sleep: "23:00"
+    interests:
+      - technology
+      - formula_1
+      - cameroun
+      - films
+      - home_automation
+      - genealogy
+    notification_rules:
+      news: always                    # always, important_only, never
+      weather: severe_only            # always, severe_only, never
+      home_maintenance: when_due      # when_due, weekly_digest, never
+      movies: friday_evening          # friday_evening, on_request, never
+      email: immediate                # immediate, digest, never
+
+  - name: Stéphanie
+    identity_id: stephanie            # Links to vault/identities/stephanie.json
+    presence_name: Stéphanie          # Must match config/presence.yaml
+    channels:
+      voice: true                     # Sonos/Echo only
+    style:
+      tone: concise                   # warm_detailed, concise, formal
+      briefing: minimal               # full, summary, minimal
+      proactive_level: low            # high, medium, low
+      humor: never
+    schedule:
+      morning: "06:30"
+      work_start: "08:30"
+      work_end: "17:00"
+      evening: "18:00"
+      sleep: "22:30"
+    interests:
+      - family
+      - cooking
+      - cameroun
+    notification_rules:
+      news: never
+      weather: severe_only
+      home_maintenance: never
+      movies: never
+      email: never

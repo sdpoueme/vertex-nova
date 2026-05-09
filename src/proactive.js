@@ -302,6 +302,16 @@ async function runAction(action, notify) {
 
     // Get notification channel
     var route = getNotificationChannel();
+
+    // Family-aware filtering: check if the primary user wants this notification
+    try {
+      var { shouldNotifyMember } = await import('./family.js');
+      if (!shouldNotifyMember('Serge', action.name)) {
+        log.debug('Action ' + action.name + ': skipped (family notification rules)');
+        return;
+      }
+    } catch {}
+
     log.info('Notifying via ' + route.channel + (route.device ? ':' + route.device : '') + (route.room ? ':' + route.room : ''));
 
     recordNotification();
