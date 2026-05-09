@@ -990,6 +990,7 @@ async function chatOllama(message, sessionId, modelOverride, image) {
     "- Écris en texte simple et lisible, comme si tu parlais\n" +
     "- Tu PEUX envoyer des emails avec email_compose et email_draft/email_send\n" +
     "- Tu PEUX parler sur les appareils Echo et Sonos\n" +
+    "- IMPORTANT: N'utilise echo_speak ou sonos_speak QUE si l'utilisateur demande EXPLICITEMENT de parler/annoncer sur un appareil. Pour les questions simples (température, météo, infos), réponds par TEXTE uniquement.\n" +
     "- Ne demande PAS les IDs d'appareils, utilise les valeurs par défaut\n" +
     "- Quand on demande de parler sur Echo/Sonos, utilise directement l'outil\n" +
     "- Ne RÉPÈTE PAS une réponse précédente quand on te demande de la lire sur un appareil\n" +

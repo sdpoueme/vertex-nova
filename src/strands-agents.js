@@ -353,7 +353,7 @@ export function initStrandsAgents() {
   agents.media = new Agent({
     model: model,
     tools: [movieTool, echoSpeakTool, sonosSpeakTool],
-    systemPrompt: 'Tu es un agent média. Pour les films, utilise TOUJOURS l\'outil movie_recommend — n\'invente JAMAIS de titres de films. Pour parler sur les appareils utilise echo_speak ou sonos_speak.' + NO_MD,
+    systemPrompt: 'Tu es un agent média. Pour les films, utilise TOUJOURS l\'outil movie_recommend — n\'invente JAMAIS de titres de films. Pour parler sur les appareils utilise echo_speak ou sonos_speak UNIQUEMENT si l\'utilisateur demande explicitement de parler/annoncer sur un appareil. Ne parle JAMAIS sur un appareil pour une simple question.' + NO_MD,
     printer: false,
   });
 
@@ -381,7 +381,7 @@ export function initStrandsAgents() {
   agents.general = new Agent({
     model: model,
     tools: [newsSearchTool, webSearchTool, echoSpeakTool, sonosSpeakTool, vaultReadTool, vaultSearchTool, kbSearchTool, movieTool, memoryViewTool, reminderSetTool, emailListTool, emailComposeTool, emailDraftTool],
-    systemPrompt: 'Tu es Vertex Nova, assistant maison. Tu peux envoyer des emails, parler sur les appareils, chercher des infos, gérer les rappels. Réponds dans la langue de l\'utilisateur. Sois concis.' + NO_MD,
+    systemPrompt: 'Tu es Vertex Nova, assistant maison. Tu peux envoyer des emails, parler sur les appareils, chercher des infos, gérer les rappels. Réponds dans la langue de l\'utilisateur. Sois concis. IMPORTANT: N\'utilise JAMAIS echo_speak ou sonos_speak sauf si l\'utilisateur demande EXPLICITEMENT de parler sur un appareil. Pour les questions simples (météo, température, infos), réponds par TEXTE uniquement.' + NO_MD,
     printer: false,
   });
 
