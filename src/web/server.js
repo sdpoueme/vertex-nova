@@ -235,7 +235,7 @@ export function startDashboard(config, port) {
     // --- API: Get config file ---
     if (path === '/api/config' && req.method === 'GET') {
       var file = url.searchParams.get('file');
-      var allowed = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'agent.md'];
+      var allowed = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'config/family.yaml', 'agent.md'];
       if (!allowed.includes(file)) { json(res, 400, { error: 'File not allowed' }); return; }
       try {
         var content = readFileSync(join(projectDir, file), 'utf8');
@@ -251,7 +251,7 @@ export function startDashboard(config, port) {
       var body2 = await readBody(req);
       try {
         var data2 = JSON.parse(body2);
-        var allowed2 = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'agent.md'];
+        var allowed2 = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'config/family.yaml', 'agent.md'];
         if (!allowed2.includes(data2.file)) { json(res, 400, { error: 'File not allowed' }); return; }
         writeFileSync(join(projectDir, data2.file), data2.content);
         json(res, 200, { saved: true, file: data2.file });

@@ -1012,6 +1012,92 @@ function AgentPromptPanel({ api }) {
   );
 }
 
+function FamilyPanel({ api }) {
+  const [yaml, setYaml] = useState('');
+  const [alert, setAlert] = useState(null);
+  const [members, setMembers] = useState([]);
+
+  useEffect(() => {
+    fetch(api + '/api/config?file=config/family.yaml').then(r => r.json()).then(d => {
+      setYaml(d.content || '');
+      // Parse members for visual display
+      const blocks = (d.content || '').split(/^\s+-\s+name:/m);
+      const parsed = [];
+      for (let i = 1; i < blocks.length; i++) {
+        const block = '  - name:' + blocks[i];
+        const name = (block.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+        const tone = (block.match(/tone:\s*(\S+)/) || [])[1] || '';
+        const briefing = (block.match(/briefing:\s*(\S+)/) || [])[1] || '';
+        const proactive = (block.match(/proactive_level:\s*(\S+)/) || [])[1] || '';
+        const interests = (block.match(/interests:\s*\n((?:\s+-\s+\S+\n)*)/)?.[1] || '').match(/-\s+(\S+)/g)?.map(m => m.slice(2)) || [];
+        parsed.push({ name, tone, briefing, proactive, interests });
+      }
+      setMembers(parsed);
+    }).catch(() => {});
+  }, [api]);
+
+  const save = async () => {
+    try {
+      const res = await fetch(api + '/api/config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file: 'config/family.yaml', content: yaml }),
+      });
+      const data = await res.json();
+      setAlert({ type: data.saved ? 'success' : 'error', text: data.saved ? 'Configuration famille sauvegardée' : data.error });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  const toneLabels = { warm_detailed: '🌟 Chaleureux et détaillé', concise: '⚡ Concis et direct', formal: '👔 Formel' };
+  const briefingLabels = { full: '📋 Complet', summary: '📝 Résumé', minimal: '💬 Minimal' };
+  const proactiveLabels = { high: '🔔 Élevé', medium: '🔕 Moyen', low: '🔇 Bas' };
+
+  return (
+    <SpaceBetween size="l">
+      {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
+
+      <Container header={<Header variant="h3">Membres de la famille</Header>}>
+        <SpaceBetween size="m">
+          <Alert type="info">
+            L'agent adapte son comportement (ton, notifications, recommandations) selon la personne à qui il parle.
+          </Alert>
+          {members.map((m, i) => (
+            <Container key={i} header={<Header variant="h4">{m.name}</Header>}>
+              <ColumnLayout columns={3}>
+                <Box>
+                  <Box variant="awsui-key-label">Style</Box>
+                  <Box>{toneLabels[m.tone] || m.tone}</Box>
+                </Box>
+                <Box>
+                  <Box variant="awsui-key-label">Briefing</Box>
+                  <Box>{briefingLabels[m.briefing] || m.briefing}</Box>
+                </Box>
+                <Box>
+                  <Box variant="awsui-key-label">Proactif</Box>
+                  <Box>{proactiveLabels[m.proactive] || m.proactive}</Box>
+                </Box>
+              </ColumnLayout>
+              {m.interests.length > 0 && (
+                <Box margin={{ top: 's' }}>
+                  <Box variant="awsui-key-label">Intérêts</Box>
+                  <Box>{m.interests.join(', ')}</Box>
+                </Box>
+              )}
+            </Container>
+          ))}
+        </SpaceBetween>
+      </Container>
+
+      <Container header={
+        <Header variant="h3" actions={<Button variant="primary" onClick={save}>Sauvegarder</Button>}>
+          Configuration YAML
+        </Header>
+      }>
+        <Textarea value={yaml} onChange={({ detail }) => setYaml(detail.value)} rows={30} />
+      </Container>
+    </SpaceBetween>
+  );
+}
+
 // ============================================================
 // Main ConfigPanel with tabs
 // ============================================================
@@ -1020,6 +1106,7 @@ export default function ConfigPanel({ api }) {
   return (
     <Tabs tabs={[
       { id: 'models', label: 'Modèles & Appareils', content: <ModelsPanel api={api} /> },
+      { id: 'family', label: 'Famille', content: <FamilyPanel api={api} /> },
       { id: 'routing', label: 'Routage', content: <RoutingPanel api={api} /> },
       { id: 'proactive', label: 'Actions proactives', content: <ProactivePanel api={api} /> },
       { id: 'prompt', label: 'Prompt agent', content: <AgentPromptPanel api={api} /> },
