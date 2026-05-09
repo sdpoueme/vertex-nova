@@ -309,9 +309,26 @@ function startGuestServer() {
     }
   };
 
-  guestServer = createServer(handler);
+  // Use HTTPS if certs are available (same as admin dashboard)
+  var certDir = join(projectDir, '.sessions');
+  var keyPath = join(certDir, 'server.key');
+  var certPath = join(certDir, 'server.crt');
+
+  if (existsSync(keyPath) && existsSync(certPath)) {
+    try {
+      guestServer = createHttpsServer({
+        key: readFileSync(keyPath),
+        cert: readFileSync(certPath),
+      }, handler);
+    } catch {
+      guestServer = createServer(handler);
+    }
+  } else {
+    guestServer = createServer(handler);
+  }
+
   guestServer.listen(port, function() {
-    log.info('Guest portal started on port ' + port + ' (mode: ' + config.mode + ')');
+    log.info('Guest portal started on port ' + port + ' (mode: ' + config.mode + ', ' + (existsSync(keyPath) ? 'HTTPS' : 'HTTP') + ')');
   });
 }
 
