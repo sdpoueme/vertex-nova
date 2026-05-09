@@ -15,20 +15,26 @@ const API = '';
 export default function App() {
   const [activePanel, setActivePanel] = useState('dashboard');
   const [status, setStatus] = useState({});
+  const [hospitalityMode, setHospitalityMode] = useState('residence');
 
   useEffect(() => {
-    const load = () => fetch(API + '/api/status').then(r => r.json()).then(setStatus).catch(() => {});
+    const load = () => {
+      fetch(API + '/api/status').then(r => r.json()).then(setStatus).catch(() => {});
+      fetch(API + '/api/hospitality').then(r => r.json()).then(d => setHospitalityMode(d.mode || 'residence')).catch(() => {});
+    };
     load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  const modeLabels = { residence: '🏠 Résidence', airbnb: '🏡 Airbnb', hotel: '🏨 Hôtel' };
 
   return (
     <div>
       <TopNavigation
         identity={{ title: 'Vertex Nova', href: '#' }}
         utilities={[
-          { type: 'button', text: status.model || '...', iconName: 'settings' },
+          { type: 'button', text: modeLabels[hospitalityMode] || '🏠 Résidence', iconName: 'settings' },
           { type: 'button', text: status.memory || '...', iconName: 'status-info' },
         ]}
       />
