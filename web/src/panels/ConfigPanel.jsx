@@ -406,6 +406,83 @@ function buildProactiveYaml(data) {
   return yaml;
 }
 
+// --- Family YAML helpers ---
+function parseFamilyYaml(text) {
+  const members = [];
+  const blocks = text.split(/^\s+-\s+name:/m);
+  for (let i = 1; i < blocks.length; i++) {
+    const block = '  - name:' + blocks[i];
+    const name = (block.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
+    const identityId = (block.match(/identity_id:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+    const presenceName = (block.match(/presence_name:\s*(.+)/) || [])[1]?.trim() || name;
+    const telegram = (block.match(/telegram:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+    const hasWeb = /web:\s*true/i.test(block);
+    const hasVoice = /voice:\s*true/i.test(block);
+    const tone = (block.match(/tone:\s*(\S+)/) || [])[1] || 'concise';
+    const briefing = (block.match(/briefing:\s*(\S+)/) || [])[1] || 'summary';
+    const proactiveLevel = (block.match(/proactive_level:\s*(\S+)/) || [])[1] || 'medium';
+    const humor = (block.match(/humor:\s*(\S+)/) || [])[1] || 'never';
+    const morning = (block.match(/morning:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '07:00';
+    const workStart = (block.match(/work_start:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '09:00';
+    const workEnd = (block.match(/work_end:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '17:00';
+    const evening = (block.match(/evening:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '19:00';
+    const sleep = (block.match(/sleep:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '23:00';
+    const interests = (block.match(/interests:\s*\n((?:\s+-\s+\S+\n)*)/)?.[1] || '').match(/-\s+(\S+)/g)?.map(m => m.slice(2)) || [];
+    const notifRules = {};
+    const notifMatch = block.match(/notification_rules:\s*\n((?:\s+\w+:.*\n)*)/);
+    if (notifMatch) {
+      for (const line of notifMatch[1].split('\n')) {
+        const kv = line.match(/(\w+):\s*(\S+)/);
+        if (kv) notifRules[kv[1]] = kv[2];
+      }
+    }
+    members.push({
+      name, identityId, presenceName,
+      channels: { telegram, web: hasWeb, voice: hasVoice },
+      style: { tone, briefing, proactiveLevel, humor },
+      schedule: { morning, workStart, workEnd, evening, sleep },
+      interests, notificationRules: notifRules,
+    });
+  }
+  return members;
+}
+
+function buildFamilyYaml(members) {
+  let yaml = '# Vertex Nova — Family Identity Configuration\n\nfamily:\n';
+  for (const m of members) {
+    yaml += `  - name: ${m.name}\n`;
+    yaml += `    identity_id: "${m.identityId}"\n`;
+    yaml += `    presence_name: ${m.presenceName || m.name}\n`;
+    yaml += `    channels:\n`;
+    if (m.channels?.telegram) yaml += `      telegram: "${m.channels.telegram}"\n`;
+    if (m.channels?.web) yaml += `      web: true\n`;
+    if (m.channels?.voice) yaml += `      voice: true\n`;
+    yaml += `    style:\n`;
+    yaml += `      tone: ${m.style?.tone || 'concise'}\n`;
+    yaml += `      briefing: ${m.style?.briefing || 'summary'}\n`;
+    yaml += `      proactive_level: ${m.style?.proactiveLevel || 'medium'}\n`;
+    yaml += `      humor: ${m.style?.humor || 'never'}\n`;
+    yaml += `    schedule:\n`;
+    yaml += `      morning: "${m.schedule?.morning || '07:00'}"\n`;
+    yaml += `      work_start: "${m.schedule?.workStart || '09:00'}"\n`;
+    yaml += `      work_end: "${m.schedule?.workEnd || '17:00'}"\n`;
+    yaml += `      evening: "${m.schedule?.evening || '19:00'}"\n`;
+    yaml += `      sleep: "${m.schedule?.sleep || '23:00'}"\n`;
+    if (m.interests?.length > 0) {
+      yaml += `    interests:\n`;
+      for (const interest of m.interests) yaml += `      - ${interest}\n`;
+    }
+    if (m.notificationRules && Object.keys(m.notificationRules).length > 0) {
+      yaml += `    notification_rules:\n`;
+      for (const [key, val] of Object.entries(m.notificationRules)) {
+        yaml += `      ${key}: ${val}\n`;
+      }
+    }
+    yaml += '\n';
+  }
+  return yaml;
+}
+
 // Alexa cookie editor — paste both cookies then save with one button
 function AlexaCookieEditor({ api, configured, onSaved }) {
   const [ubid, setUbid] = useState('');
@@ -1013,31 +1090,32 @@ function AgentPromptPanel({ api }) {
 }
 
 function FamilyPanel({ api }) {
-  const [yaml, setYaml] = useState('');
-  const [alert, setAlert] = useState(null);
   const [members, setMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState(null);
+  const [expanded, setExpanded] = useState({});
+  const [dirty, setDirty] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     fetch(api + '/api/config?file=config/family.yaml').then(r => r.json()).then(d => {
-      setYaml(d.content || '');
-      // Parse members for visual display
-      const blocks = (d.content || '').split(/^\s+-\s+name:/m);
-      const parsed = [];
-      for (let i = 1; i < blocks.length; i++) {
-        const block = '  - name:' + blocks[i];
-        const name = (block.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
-        const tone = (block.match(/tone:\s*(\S+)/) || [])[1] || '';
-        const briefing = (block.match(/briefing:\s*(\S+)/) || [])[1] || '';
-        const proactive = (block.match(/proactive_level:\s*(\S+)/) || [])[1] || '';
-        const interests = (block.match(/interests:\s*\n((?:\s+-\s+\S+\n)*)/)?.[1] || '').match(/-\s+(\S+)/g)?.map(m => m.slice(2)) || [];
-        parsed.push({ name, tone, briefing, proactive, interests });
-      }
+      const parsed = parseFamilyYaml(d.content || '');
       setMembers(parsed);
-    }).catch(() => {});
+      const exp = {};
+      parsed.forEach((_, i) => { exp[i] = true; });
+      setExpanded(exp);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, [api]);
 
-  const save = async () => {
+  useEffect(() => { load(); }, [load]);
+
+  const save = async (newMembers) => {
+    const m = newMembers || members;
+    setMembers(m);
+    setDirty(false);
     try {
+      const yaml = buildFamilyYaml(m);
       const res = await fetch(api + '/api/config', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ file: 'config/family.yaml', content: yaml }),
@@ -1047,53 +1125,218 @@ function FamilyPanel({ api }) {
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
 
-  const toneLabels = { warm_detailed: '🌟 Chaleureux et détaillé', concise: '⚡ Concis et direct', formal: '👔 Formel' };
-  const briefingLabels = { full: '📋 Complet', summary: '📝 Résumé', minimal: '💬 Minimal' };
-  const proactiveLabels = { high: '🔔 Élevé', medium: '🔕 Moyen', low: '🔇 Bas' };
+  const updateMember = (idx, field, value) => {
+    const m = [...members];
+    if (field.includes('.')) {
+      const [parent, child] = field.split('.');
+      m[idx] = { ...m[idx], [parent]: { ...m[idx][parent], [child]: value } };
+    } else {
+      m[idx] = { ...m[idx], [field]: value };
+    }
+    setMembers(m);
+    setDirty(true);
+  };
+
+  const updateInterest = (idx, interests) => {
+    const m = [...members];
+    m[idx] = { ...m[idx], interests };
+    setMembers(m);
+    setDirty(true);
+  };
+
+  const updateNotifRule = (idx, rule, value) => {
+    const m = [...members];
+    m[idx] = { ...m[idx], notificationRules: { ...m[idx].notificationRules, [rule]: value } };
+    setMembers(m);
+    setDirty(true);
+  };
+
+  const addMember = () => {
+    const m = [...members, {
+      name: '', identityId: '', presenceName: '',
+      channels: { telegram: '', web: false, voice: false },
+      style: { tone: 'concise', briefing: 'summary', proactiveLevel: 'medium', humor: 'never' },
+      schedule: { morning: '07:00', workStart: '09:00', workEnd: '17:00', evening: '19:00', sleep: '23:00' },
+      interests: [],
+      notificationRules: { news: 'always', weather: 'severe_only', home_maintenance: 'when_due', movies: 'friday_evening', email: 'immediate' },
+    }];
+    setMembers(m);
+    setExpanded({ ...expanded, [m.length - 1]: true });
+    setDirty(true);
+  };
+
+  const removeMember = (idx) => {
+    const m = members.filter((_, i) => i !== idx);
+    save(m);
+  };
+
+  const toneOptions = [
+    { value: 'warm_detailed', label: '🌟 Chaleureux et détaillé' },
+    { value: 'concise', label: '⚡ Concis et direct' },
+    { value: 'formal', label: '👔 Formel' },
+  ];
+  const briefingOptions = [
+    { value: 'full', label: '📋 Complet — tout le contexte' },
+    { value: 'summary', label: '📝 Résumé — points clés' },
+    { value: 'minimal', label: '💬 Minimal — essentiel seulement' },
+  ];
+  const proactiveOptions = [
+    { value: 'high', label: '🔔 Élevé — toutes les notifications' },
+    { value: 'medium', label: '🔕 Moyen — importantes seulement' },
+    { value: 'low', label: '🔇 Bas — urgences seulement' },
+  ];
+  const humorOptions = [
+    { value: 'never', label: 'Jamais' },
+    { value: 'occasional', label: 'Occasionnel' },
+    { value: 'frequent', label: 'Fréquent' },
+  ];
+  const notifOptions = [
+    { value: 'always', label: 'Toujours' },
+    { value: 'important_only', label: 'Importantes seulement' },
+    { value: 'severe_only', label: 'Sévères seulement' },
+    { value: 'when_due', label: 'Quand dû' },
+    { value: 'friday_evening', label: 'Vendredi soir' },
+    { value: 'immediate', label: 'Immédiat' },
+    { value: 'digest', label: 'Digest' },
+    { value: 'never', label: 'Jamais' },
+  ];
+
+  const pick = (options, value) => options.find(o => o.value === value) || (value ? { value, label: value } : null);
+
+  if (loading) return <Spinner size="large" />;
 
   return (
     <SpaceBetween size="l">
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
+      <Alert type="info">
+        L'agent adapte son comportement (ton, notifications, recommandations) selon la personne à qui il parle.
+        Modifiez les préférences de chaque membre de la famille ici.
+      </Alert>
 
-      <Container header={<Header variant="h3">Membres de la famille</Header>}>
-        <SpaceBetween size="m">
-          <Alert type="info">
-            L'agent adapte son comportement (ton, notifications, recommandations) selon la personne à qui il parle.
-          </Alert>
-          {members.map((m, i) => (
-            <Container key={i} header={<Header variant="h4">{m.name}</Header>}>
-              <ColumnLayout columns={3}>
-                <Box>
-                  <Box variant="awsui-key-label">Style</Box>
-                  <Box>{toneLabels[m.tone] || m.tone}</Box>
-                </Box>
-                <Box>
-                  <Box variant="awsui-key-label">Briefing</Box>
-                  <Box>{briefingLabels[m.briefing] || m.briefing}</Box>
-                </Box>
-                <Box>
-                  <Box variant="awsui-key-label">Proactif</Box>
-                  <Box>{proactiveLabels[m.proactive] || m.proactive}</Box>
-                </Box>
-              </ColumnLayout>
-              {m.interests.length > 0 && (
-                <Box margin={{ top: 's' }}>
-                  <Box variant="awsui-key-label">Intérêts</Box>
-                  <Box>{m.interests.join(', ')}</Box>
-                </Box>
-              )}
-            </Container>
-          ))}
-        </SpaceBetween>
-      </Container>
+      {members.map((member, idx) => (
+        <Container key={idx} header={
+          <Header variant="h3" actions={
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button variant="icon" iconName={expanded[idx] ? 'angle-up' : 'angle-down'} onClick={() => setExpanded({ ...expanded, [idx]: !expanded[idx] })} />
+              <Button variant="icon" iconName="close" onClick={() => removeMember(idx)} />
+            </SpaceBetween>
+          }>
+            {member.name || '(nouveau membre)'}
+          </Header>
+        }>
+          {expanded[idx] && (
+            <SpaceBetween size="m">
+              {/* Identity */}
+              <Container header={<Header variant="h4">Identité</Header>}>
+                <ColumnLayout columns={3}>
+                  <FormField label="Nom">
+                    <Input value={member.name} onChange={({ detail }) => updateMember(idx, 'name', detail.value)} placeholder="Serge" />
+                  </FormField>
+                  <FormField label="ID identité" description="Telegram ID ou nom interne">
+                    <Input value={member.identityId} onChange={({ detail }) => updateMember(idx, 'identityId', detail.value)} placeholder="787677377" />
+                  </FormField>
+                  <FormField label="Nom présence" description="Doit correspondre à presence.yaml">
+                    <Input value={member.presenceName} onChange={({ detail }) => updateMember(idx, 'presenceName', detail.value)} placeholder="Serge" />
+                  </FormField>
+                </ColumnLayout>
+              </Container>
 
-      <Container header={
-        <Header variant="h3" actions={<Button variant="primary" onClick={save}>Sauvegarder</Button>}>
-          Configuration YAML
-        </Header>
-      }>
-        <Textarea value={yaml} onChange={({ detail }) => setYaml(detail.value)} rows={30} />
-      </Container>
+              {/* Channels */}
+              <Container header={<Header variant="h4">Canaux</Header>}>
+                <ColumnLayout columns={3}>
+                  <FormField label="Telegram ID">
+                    <Input value={member.channels?.telegram || ''} onChange={({ detail }) => updateMember(idx, 'channels.telegram', detail.value)} placeholder="787677377" />
+                  </FormField>
+                  <FormField label="Web dashboard">
+                    <Toggle checked={!!member.channels?.web} onChange={({ detail }) => updateMember(idx, 'channels.web', detail.checked)}>
+                      {member.channels?.web ? 'Activé' : 'Désactivé'}
+                    </Toggle>
+                  </FormField>
+                  <FormField label="Voix (Sonos/Echo)">
+                    <Toggle checked={!!member.channels?.voice} onChange={({ detail }) => updateMember(idx, 'channels.voice', detail.checked)}>
+                      {member.channels?.voice ? 'Activé' : 'Désactivé'}
+                    </Toggle>
+                  </FormField>
+                </ColumnLayout>
+              </Container>
+
+              {/* Style */}
+              <Container header={<Header variant="h4">Style de communication</Header>}>
+                <ColumnLayout columns={2}>
+                  <FormField label="Ton">
+                    <Select selectedOption={pick(toneOptions, member.style?.tone)} onChange={({ detail }) => updateMember(idx, 'style.tone', detail.selectedOption.value)} options={toneOptions} />
+                  </FormField>
+                  <FormField label="Profondeur des briefings">
+                    <Select selectedOption={pick(briefingOptions, member.style?.briefing)} onChange={({ detail }) => updateMember(idx, 'style.briefing', detail.selectedOption.value)} options={briefingOptions} />
+                  </FormField>
+                  <FormField label="Niveau proactif">
+                    <Select selectedOption={pick(proactiveOptions, member.style?.proactiveLevel)} onChange={({ detail }) => updateMember(idx, 'style.proactiveLevel', detail.selectedOption.value)} options={proactiveOptions} />
+                  </FormField>
+                  <FormField label="Humour">
+                    <Select selectedOption={pick(humorOptions, member.style?.humor)} onChange={({ detail }) => updateMember(idx, 'style.humor', detail.selectedOption.value)} options={humorOptions} />
+                  </FormField>
+                </ColumnLayout>
+              </Container>
+
+              {/* Schedule */}
+              <Container header={<Header variant="h4">Horaires</Header>}>
+                <ColumnLayout columns={5}>
+                  <FormField label="Matin">
+                    <Input value={member.schedule?.morning || ''} onChange={({ detail }) => updateMember(idx, 'schedule.morning', detail.value)} placeholder="07:00" />
+                  </FormField>
+                  <FormField label="Début travail">
+                    <Input value={member.schedule?.workStart || ''} onChange={({ detail }) => updateMember(idx, 'schedule.workStart', detail.value)} placeholder="09:00" />
+                  </FormField>
+                  <FormField label="Fin travail">
+                    <Input value={member.schedule?.workEnd || ''} onChange={({ detail }) => updateMember(idx, 'schedule.workEnd', detail.value)} placeholder="17:00" />
+                  </FormField>
+                  <FormField label="Soirée">
+                    <Input value={member.schedule?.evening || ''} onChange={({ detail }) => updateMember(idx, 'schedule.evening', detail.value)} placeholder="19:00" />
+                  </FormField>
+                  <FormField label="Coucher">
+                    <Input value={member.schedule?.sleep || ''} onChange={({ detail }) => updateMember(idx, 'schedule.sleep', detail.value)} placeholder="23:00" />
+                  </FormField>
+                </ColumnLayout>
+              </Container>
+
+              {/* Interests */}
+              <Container header={<Header variant="h4">Intérêts</Header>}>
+                <TagListEditor
+                  items={member.interests || []}
+                  onChange={(items) => updateInterest(idx, items)}
+                  placeholder="technologie, films, cameroun..."
+                />
+              </Container>
+
+              {/* Notification rules */}
+              <Container header={<Header variant="h4">Règles de notification</Header>}>
+                <ColumnLayout columns={3}>
+                  {[
+                    { key: 'news', label: 'Actualités' },
+                    { key: 'weather', label: 'Météo' },
+                    { key: 'home_maintenance', label: 'Entretien maison' },
+                    { key: 'movies', label: 'Films' },
+                    { key: 'email', label: 'Emails' },
+                  ].map(({ key, label }) => (
+                    <FormField key={key} label={label}>
+                      <Select
+                        selectedOption={pick(notifOptions, member.notificationRules?.[key])}
+                        onChange={({ detail }) => updateNotifRule(idx, key, detail.selectedOption.value)}
+                        options={notifOptions}
+                      />
+                    </FormField>
+                  ))}
+                </ColumnLayout>
+              </Container>
+            </SpaceBetween>
+          )}
+        </Container>
+      ))}
+
+      <SpaceBetween direction="horizontal" size="xs">
+        <Button onClick={addMember} iconName="add-plus">Ajouter un membre</Button>
+        {dirty && <Button variant="primary" onClick={() => save()}>Sauvegarder les changements</Button>}
+      </SpaceBetween>
     </SpaceBetween>
   );
 }
