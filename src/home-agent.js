@@ -738,6 +738,35 @@ async function main() {
         await sendTelegram('🏖️ Mode vacances activé — tous les résidents sont absents depuis 24h. Surveillance renforcée des appareils de sécurité.');
       } else if (event.event === 'vacation_end') {
         await sendTelegram('🏠 Mode vacances désactivé — ' + event.name + ' est de retour.');
+      } else if (event.event === 'guest_arrived') {
+        // Guest detected — welcome them on Sonos and notify owners
+        var guestHour = new Date().getHours();
+        await sendTelegram('👋 Un invité vient de se connecter au WiFi (MAC: ' + event.mac + ')');
+
+        // Sonos welcome for the guest (daytime only, not in DND)
+        var guestDnd = false;
+        try { var { isDnd: isDndGuest } = await import('./dnd.js'); guestDnd = isDndGuest(); } catch {}
+        if (!guestDnd && guestHour >= 8 && guestHour < 22) {
+          try {
+            var guestPrompt = 'Génère un court message de bienvenue vocal (2 phrases max) en français pour un invité qui arrive chez Serge et Stéphanie à Sainte-Julie. ' +
+              'Dis bienvenue, mentionne que le WiFi est disponible, et que s\'ils ont besoin de quoi que ce soit ils peuvent demander. ' +
+              'Ton chaleureux et accueillant. Pas de formatage markdown.';
+            var guestWelcome = await chat(guestPrompt, 'guest-welcome-' + Date.now().toString(36));
+            if (guestWelcome && guestWelcome.length > 20 && !guestWelcome.includes('difficultés')) {
+              guestWelcome = guestWelcome.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/_([^_]+)_/g, '$1').replace(/#{1,6}\s+/g, '').trim();
+              var { execFile: execGuest } = await import('node:child_process');
+              var { join: joinGuest } = await import('node:path');
+              var guestCli = joinGuest(config.projectDir, 'scripts/sonos-cli.js');
+              var guestRoom = config.sonosDayRoom || config.sonosDefaultRoom || '';
+              if (guestRoom) {
+                execGuest('node', [guestCli, 'speak', guestWelcome.slice(0, 500), guestRoom], { timeout: 45000 }, function(err) {
+                  if (err) log.error('Guest welcome Sonos failed: ' + err.message);
+                  else log.info('Guest welcome Sonos OK');
+                });
+              }
+            }
+          } catch (err) { log.warn('Guest welcome failed: ' + err.message); }
+        }
       }
     }, vaultPath);
   } catch (err) {

@@ -323,6 +323,7 @@ export function startPresenceMonitor(onEvent, vaultPath) {
   var lastPollTime = Date.now();
   var WAKE_GRACE_POLLS = 3; // Skip this many polls after detecting a system wake
   var wakeGraceRemaining = 0;
+  var guestsSeen = new Set(); // Track guest MACs seen this session (reset on restart)
 
   async function poll() {
     try {
@@ -442,6 +443,26 @@ export function startPresenceMonitor(onEvent, vaultPath) {
         vacationMode = true;
         log.info('Vacation mode enabled — all residents away for 24h+');
         try { await onEvent({ name: 'all', event: 'vacation_start', mac: '' }); } catch {}
+      }
+
+      // Guest detection: find MACs on the network that don't belong to any known device
+      var knownMacs = new Set(devices.map(function(d) { return normalizeMac(d.mac); }));
+      var guestMacs = arpMacs.filter(function(m) { return !knownMacs.has(m); });
+      // Only detect guests if at least one family member is home (avoids IoT noise when nobody's home)
+      var anyoneHome = devices.some(function(d) { return presenceState[d.name] && presenceState[d.name].home; });
+      if (anyoneHome) {
+        for (var gm of guestMacs) {
+          if (!guestsSeen.has(gm)) {
+            guestsSeen.add(gm);
+            // Only notify during daytime, after initial boot (pollCount > 5), and cap at 5 guests
+            var guestHour = new Date().getHours();
+            var guestCount = Array.from(guestsSeen).filter(function(m) { return !knownMacs.has(m); }).length;
+            if (guestHour >= 8 && guestHour < 22 && pollCount > 5 && guestCount <= 5) {
+              log.info('Guest detected: MAC ' + gm);
+              try { await onEvent({ name: 'guest', event: 'guest_arrived', mac: gm }); } catch {}
+            }
+          }
+        }
       }
 
       saveState();
