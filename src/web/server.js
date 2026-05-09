@@ -686,6 +686,52 @@ export function startDashboard(config, port) {
       return;
     }
 
+    // --- API: Hospitality Mode ---
+    if (path === '/api/hospitality' && req.method === 'GET') {
+      try {
+        var { getHospitalityStatus } = await import('../hospitality.js');
+        json(res, 200, getHospitalityStatus());
+      } catch (err) {
+        json(res, 200, { mode: 'residence' });
+      }
+      return;
+    }
+
+    if (path === '/api/hospitality/mode' && req.method === 'PUT') {
+      var hospBody = await readBody(req);
+      try {
+        var hospData = JSON.parse(hospBody);
+        var { setMode } = await import('../hospitality.js');
+        var ok = setMode(hospData.mode);
+        json(res, 200, { success: ok, mode: hospData.mode });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/hospitality/guest-code' && req.method === 'POST') {
+      try {
+        var { generateGuestCode } = await import('../hospitality.js');
+        var code = generateGuestCode();
+        json(res, 200, { code: code });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/hospitality/revoke' && req.method === 'POST') {
+      try {
+        var { revokeGuestAccess } = await import('../hospitality.js');
+        revokeGuestAccess();
+        json(res, 200, { revoked: true });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
     // --- API: Family members (for profile selector) ---
     if (path === '/api/family/members' && req.method === 'GET') {
       try {

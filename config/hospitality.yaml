@@ -1,0 +1,116 @@
+# Vertex Nova — Hospitality Mode Configuration
+# Modes: residence (default), airbnb, hotel
+# Only one hospitality mode can be active at a time.
+# Dream engine is disabled in hospitality modes.
+
+mode: residence  # residence | airbnb | hotel
+
+# --- Airbnb Mode (port 3081) ---
+airbnb:
+  port: 3081
+  listing_type: entire_home  # entire_home | private_room
+  email:
+    address: ""              # Gmail address for sending codes
+    password: ""             # Gmail app password
+  guest:
+    name: ""
+    email: ""
+    language: auto           # auto | fr | en | es | ja | zh | de | pt | ar
+    check_in: ""             # YYYY-MM-DD
+    check_out: ""            # YYYY-MM-DD
+    code: ""                 # Generated access code
+    preferences:
+      temperature: moderate  # cool | moderate | warm
+      wake_time: "08:00"
+      interests: []
+      dietary: ""
+      communication_style: friendly  # friendly | formal | minimal
+  assigned_spaces:
+    - ground-floor
+    - upper-floor
+  assigned_devices:
+    - Sonos Rez de Chaussee
+    - Front Door Socket
+  hidden_devices:
+    - 714JS Ring
+    - 714JS-Backyard
+  info:
+    wifi_name: ""
+    wifi_password: ""
+    rules: |
+      - Pas de fête
+      - Silence après 22h
+      - Recyclage dans le bac bleu
+    emergency_contacts: |
+      Urgences: 911
+      Hôte: 514-xxx-xxxx
+    local_info: |
+      Restaurants, transport, activités à proximité.
+    checkout_time: "11:00"
+
+# --- Hotel Mode (port 3082) ---
+hotel:
+  port: 3082
+  name: "Maison Poueme"
+  rooms:
+    - id: chambre-2
+      name: "Chambre Bleue"
+      floor: upper
+      devices:
+        - Echo Bedroom 2
+      amenities:
+        - WiFi
+        - Serviettes
+        - Climatisation
+      guest:
+        name: ""
+        language: auto
+        check_in: ""
+        check_out: ""
+        preferences: {}
+
+    - id: chambre-3
+      name: "Chambre Verte"
+      floor: upper
+      devices:
+        - Echo Bedroom 3
+      amenities:
+        - WiFi
+        - Serviettes
+        - Vue jardin
+      guest:
+        name: ""
+        language: auto
+        check_in: ""
+        check_out: ""
+        preferences: {}
+
+  common_spaces:
+    - kitchen
+    - living-room
+    - basement-family-room
+  common_devices:
+    - Sonos Rez de Chaussee
+  info:
+    wifi_name: ""
+    wifi_password: ""
+    rules: ""
+    emergency_contacts: ""
+    local_info: ""
+    breakfast_hours: "07:00-09:00"
+
+# --- IoT Presence Sensors ---
+sensors:
+  protocol: matter  # matter | wifi | both
+  devices: []       # Will be populated when sensors are connected
+  # Example:
+  # - id: door-sensor-chambre-2
+  #   type: door_contact
+  #   room: chambre-2
+  #   webhook: true
+
+# --- Admin Notifications ---
+notifications:
+  guest_entered: email       # email | telegram | both
+  guest_checkout: email
+  issues: telegram

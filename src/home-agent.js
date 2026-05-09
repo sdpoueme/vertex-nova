@@ -896,9 +896,24 @@ async function main() {
     config.whatsappEnabled ? 'WhatsApp' : null,
   ].filter(Boolean).join(', '));
 
+  // Hospitality mode — guest portal
+  try {
+    var { initHospitality, isHospitalityMode } = await import('./hospitality.js');
+    initHospitality();
+  } catch (err) {
+    log.debug('Hospitality init: ' + err.message);
+  }
+
   // Dream engine — background self-improvement during quiet hours
-  var { startDreamEngine } = await import('./dream.js');
-  startDreamEngine(vaultPath);
+  // DISABLED in hospitality modes (airbnb/hotel)
+  var hospitalityActive = false;
+  try { var { isHospitalityMode: ihm } = await import('./hospitality.js'); hospitalityActive = ihm(); } catch {}
+  if (!hospitalityActive) {
+    var { startDreamEngine } = await import('./dream.js');
+    startDreamEngine(vaultPath);
+  } else {
+    log.info('Dream engine disabled (hospitality mode active)');
+  }
 
   // Check for completed image analysis results (queued when Claude was unavailable)
   setInterval(async function() {
