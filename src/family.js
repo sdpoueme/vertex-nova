@@ -27,7 +27,7 @@ function parseFamilyYaml(text) {
   for (var i = 1; i < blocks.length; i++) {
     var block = '  - name:' + blocks[i];
     var name = (block.match(/name:\s*(.+)/) || [])[1]?.trim() || '';
-    var identityId = (block.match(/identity_id:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+    var identityId = (block.match(/identity_id:\s*"?([^"\n#]+)"?/) || [])[1]?.trim() || '';
     var presenceName = (block.match(/presence_name:\s*(.+)/) || [])[1]?.trim() || name;
 
     // Parse style

@@ -77,6 +77,8 @@ export default function ChatPanel({ api }) {
   const [showSessions, setShowSessions] = useState(false);
   const [sessions, setSessions] = useState(() => loadSessions());
   const [filterDate, setFilterDate] = useState('');
+  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('vertex-nova-user') || '');
+  const [familyMembers, setFamilyMembers] = useState([]);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const mediaRecRef = useRef(null);
@@ -86,8 +88,25 @@ export default function ChatPanel({ api }) {
 
   // Persist session on every change
   useEffect(() => { saveCurrentSession(session); }, [session]);
+  // Persist user selection
+  useEffect(() => { if (currentUser) localStorage.setItem('vertex-nova-user', currentUser); }, [currentUser]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Load family members + presence for profile selector
+  useEffect(() => {
+    fetch(api + '/api/family/members').then(r => r.json()).then(data => {
+      const members = data.members || [];
+      setFamilyMembers(members);
+      // Auto-select if only one person is home and no user is set
+      if (!currentUser) {
+        const homeMembers = members.filter(m => m.isHome);
+        if (homeMembers.length === 1) {
+          setCurrentUser(homeMembers[0].name);
+        }
+      }
+    }).catch(() => {});
+  }, [api]);
 
   // Load available voice devices (Echo + Sonos)
   useEffect(() => {
@@ -161,6 +180,7 @@ export default function ChatPanel({ api }) {
     setLoading(true);
     try {
       const body = { message: text };
+      if (currentUser) body.userId = currentUser;
       if (image) body.image = { base64: image.base64, mediaType: image.mediaType };
       if (voiceMode && voiceDevice) { body.voiceMode = true; body.voiceDevice = voiceDevice.value; }
       const res = await fetch(api + '/api/chat', {
@@ -219,6 +239,7 @@ export default function ChatPanel({ api }) {
                 return { ...prev, messages: msgs };
               });
               const voiceBody = { message: '[Voice message] ' + data.text };
+              if (currentUser) voiceBody.userId = currentUser;
               if (voiceMode && voiceDevice) { voiceBody.voiceMode = true; voiceBody.voiceDevice = voiceDevice.value; }
               const aiRes = await fetch(api + '/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(voiceBody) });
               const aiData = await aiRes.json();
@@ -404,9 +425,24 @@ export default function ChatPanel({ api }) {
 
   return (
     <SpaceBetween size="s">
-      {voiceDevices.length > 0 && (
-        <SpaceBetween direction="horizontal" size="m">
-          <Toggle checked={voiceMode} onChange={({ detail }) => setVoiceMode(detail.checked)}>
+      <SpaceBetween direction="horizontal" size="m" alignItems="center">
+        {familyMembers.length > 1 && (
+          <Select
+            selectedOption={currentUser ? { value: currentUser, label: '👤 ' + currentUser } : null}
+            onChange={({ detail }) => setCurrentUser(detail.selectedOption.value)}
+            options={familyMembers.map(m => ({
+              value: m.name,
+              label: (m.isHome ? '🟢 ' : '⚫ ') + m.name,
+            }))}
+            placeholder="Qui parle?"
+          />
+        )}
+        {familyMembers.length <= 1 && currentUser && (
+          <Box variant="small" color="text-body-secondary">👤 {currentUser}</Box>
+        )}
+        {voiceDevices.length > 0 && (
+          <>
+            <Toggle checked={voiceMode} onChange={({ detail }) => setVoiceMode(detail.checked)}>
             {voiceMode ? '🔊 Voix activée' : '🔇 Voix désactivée'}
           </Toggle>
           {voiceMode && (
@@ -417,8 +453,9 @@ export default function ChatPanel({ api }) {
               placeholder="Appareil"
             />
           )}
-        </SpaceBetween>
-      )}
+          </>
+        )}
+      </SpaceBetween>
       <Tabs tabs={[
         { id: 'chat', label: 'Chat', content: chatContent },
         { id: 'history', label: 'Interactions (' + history.length + ')', content: historyContent },

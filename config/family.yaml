@@ -35,8 +35,8 @@ family:
       email: immediate                # immediate, digest, never
 
   - name: Stéphanie
-    identity_id: stephanie            # Links to vault/identities/stephanie.json
-    presence_name: Stéphanie          # Must match config/presence.yaml
+    identity_id: stephanie
+    presence_name: Stéphanie
     channels:
       voice: true                     # Sonos/Echo only
     style:

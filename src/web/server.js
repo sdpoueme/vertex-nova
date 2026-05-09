@@ -198,11 +198,27 @@ export function startDashboard(config, port) {
       var body = await readBody(req);
       try {
         var data = JSON.parse(body);
-        var sessionId = 'web-dashboard-' + new Date().toISOString().slice(0, 10);
+        // Use userId from the profile selector, or default to 'web-dashboard'
+        var webUserId = data.userId || 'web-dashboard';
+        var sessionId = webUserId + ':' + new Date().toISOString().slice(0, 10);
         logInteraction('web', 'in', data.message, !!data.image);
-        var timeoutMs = data.image ? 200000 : 90000; // 200s for images, 90s for text
+
+        // Prepend user identity context if a specific user is selected
+        var userPrefix = '';
+        if (data.userId && data.userId !== 'web-dashboard') {
+          try {
+            var { getMemberByName: gmbChat } = await import('../family.js');
+            var member = gmbChat(data.userId);
+            if (member) {
+              userPrefix = '[Channel: web] [User: ' + member.name + '] ';
+            }
+          } catch {}
+        }
+
+        var timeoutMs = data.image ? 200000 : 90000;
         var chatTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, timeoutMs); });
-        var chatPromise = chat(data.message, sessionId, data.image || null);
+        var chatMessage = userPrefix ? userPrefix + data.message : data.message;
+        var chatPromise = chat(chatMessage, sessionId, data.image || null);
         var response = await Promise.race([chatPromise, chatTimeout]);
         logInteraction('web', 'out', response);
 
@@ -571,6 +587,33 @@ export function startDashboard(config, port) {
           var devList = existsSync(devFile2) ? JSON.parse(readFileSync(devFile2, 'utf8')) : [];
           json(res, 200, { devices: devList, configured: !!(process.env.ALEXA_AT_MAIN && process.env.ALEXA_UBID_MAIN) });
         } catch { json(res, 200, { devices: [], configured: false }); }
+      }
+      return;
+    }
+
+    // --- API: Family members (for profile selector) ---
+    if (path === '/api/family/members' && req.method === 'GET') {
+      try {
+        var { getAllMembers } = await import('../family.js');
+        var members = getAllMembers();
+        // Get presence info to know who's home
+        var homeNames = [];
+        try {
+          var { whoIsHome: wihFam } = await import('../presence.js');
+          var pres = wihFam();
+          homeNames = pres.home || [];
+        } catch {}
+        var result = members.map(function(m) {
+          return {
+            name: m.name,
+            identityId: m.identityId,
+            isHome: homeNames.some(function(h) { return h.toLowerCase() === m.presenceName.toLowerCase(); }),
+            channels: m.channels,
+          };
+        });
+        json(res, 200, { members: result });
+      } catch (err) {
+        json(res, 200, { members: [] });
       }
       return;
     }
