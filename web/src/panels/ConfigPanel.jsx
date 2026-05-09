@@ -14,6 +14,7 @@ import Alert from '@cloudscape-design/components/alert';
 import Box from '@cloudscape-design/components/box';
 import Spinner from '@cloudscape-design/components/spinner';
 import TokenGroup from '@cloudscape-design/components/token-group';
+import StatusIndicator from '@cloudscape-design/components/status-indicator';
 
 // Reusable tag list editor: type in the input, press Enter to add, click X to remove
 function TagListEditor({ items, onChange, placeholder }) {

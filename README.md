@@ -19,6 +19,7 @@ graph TB
         TG[Telegram]
         WA[WhatsApp]
         WEB[Web Dashboard]
+        GUEST[Guest Portal<br/>Airbnb / Hotel]
         EMAIL_IN[Gmail Inbox]
     end
 
@@ -33,10 +34,11 @@ graph TB
             EMAIL[Email Agent<br/>3 tools]
             GEN[General Agent<br/>27 tools]
         end
-        OLLAMA[Qwen3 8B<br/>local · free]
+        OLLAMA[Qwen3 8B + Phi-4 Mini<br/>local · free]
         CLAUDE[Claude 4.6<br/>escalation · 24h cooldown]
         THINKER[Async Thinker<br/>background review]
-        IDENTITY[Identity Layer<br/>user profiles]
+        IDENTITY[Family Identity<br/>per-person adaptation]
+        BOOTSTRAP[Session Bootstrap<br/>cross-session memory]
     end
 
     subgraph Output["Output & Actions"]
@@ -48,21 +50,30 @@ graph TB
 
     subgraph Monitor["Monitoring"]
         ALEXA_API[Alexa Smart Home API<br/>state polling · 60s]
-        DISCOVER[Device Discovery<br/>every 6h]
+        DISCOVER[Device Discovery<br/>every 24h]
         RULES[Alert Rules<br/>devices.yaml]
         PRESENCE[Presence Detection<br/>ARP + ping sweep]
+        DND[Do Not Disturb]
     end
 
     subgraph Knowledge["Knowledge & Memory"]
-        VAULT[Obsidian Vault]
-        KB[Knowledge Bases<br/>Git + URL crawling]
-        DREAM[Dream Engine<br/>1-5 AM]
+        VAULT[Obsidian Vault<br/>connected graph]
+        KB[Knowledge Bases<br/>Semantic RAG · Vectra]
+        DREAM[Dream Engine v2<br/>ACU · policies]
         MEMORIES[Learned Facts<br/>Preferences]
+    end
+
+    subgraph Hospitality["Hospitality Mode"]
+        AIRBNB[Airbnb Portal<br/>port 3081]
+        HOTEL[Hotel Portal<br/>port 3082]
+        GUESTAUTH[Guest Auth<br/>code / name+room]
     end
 
     TG --> ORCH
     WA --> ORCH
     WEB --> ORCH
+    GUEST --> GUESTAUTH
+    GUESTAUTH --> Core
     EMAIL_IN --> Core
 
     ORCH --> ROUTER
@@ -71,6 +82,7 @@ graph TB
     OLLAMA -.->|weak response| CLAUDE
     OLLAMA --> THINKER
     IDENTITY --> Agents
+    BOOTSTRAP --> Agents
 
     GEN --> ECHO & SONOS & TG_OUT & EMAIL_OUT
     MEDIA --> ECHO & SONOS
@@ -78,11 +90,15 @@ graph TB
     ALEXA_API --> RULES
     DISCOVER --> ALEXA_API
     RULES -->|alert| Core
-    PRESENCE -->|arrived/left| Core
+    PRESENCE -->|arrived/left/guest| Core
+    DND -->|mute| Output
 
     DREAM --> VAULT & MEMORIES
     KB --> VAULT
     THINKER --> MEMORIES
+
+    AIRBNB --> Hospitality
+    HOTEL --> Hospitality
 ```
 
 ## Quick Start
@@ -190,11 +206,11 @@ settings:
   night_end: 7
 
 people:
-  - name: Serge
-    mac: 6c:3a:ff:8a:06:ed
+  - name: Alice
+    mac: aa:bb:cc:dd:ee:ff
     language: fr
     welcome_style: briefing        # simple, briefing, activity_summary
-    welcome_room: Rez de Chaussee  # Sonos room or echo:Device Name
+    welcome_room: Living Room      # Sonos room or echo:Device Name
     notifications: both            # telegram, voice, both
 ```
 Get MAC addresses from `arp -a` or your router admin page. For phones using randomized MACs (iOS/Android), use the WiFi-specific MAC shown in the phone's WiFi settings.
@@ -218,7 +234,7 @@ All vault content follows a connected graph schema with `vertex-nova` as the cen
 
 | Category | KBs | Linked to |
 |----------|-----|-----------|
-| **Personal** | `serge-poueme`, `emmanuel-poueme` | Person nodes (`serge`, family) |
+| **Personal** | `owner-profile`, `family-member` | Person nodes (`owner`, family) |
 | **Home** | `home-maintenance-seasonal`, `home-resources`, `home-safety-energy`, `House-homevalue`, `appliance-maintenance` | Home node |
 
 Each KB directory has an index note (`kb-<name>.md`) that connects it to the `knowledge-bases` super-node and the appropriate owner (person or home). Raw crawled pages don't need individual wikilinks — they're connected through their directory's index note.
@@ -246,13 +262,13 @@ The index builds gradually in the background (throttled to avoid CPU spikes). Fa
                    /       |       \
           personal/     home-KBs    \
          /       \     /    |    \   \
-   kb-serge  kb-emmanuel  maintenance  safety  homevalue
+   kb-owner  kb-family  maintenance  safety  homevalue
         \       /          \     |      /
-         serge              \    |     /
+         owner              \    |     /
            ↕                 \   |    /
     vertex-nova ←————————————→ home
        ↕    ↕                   ↕
-  stephanie  dreams          devices
+  family    dreams          devices
        ↕       ↕            /   |   \
   presence  daily-logs   sonos echo smart-home
                ↕
