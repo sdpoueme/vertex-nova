@@ -298,9 +298,15 @@ function startGuestServer() {
       return;
     }
 
-    // Default: serve guest frontend (placeholder for now)
-    res.writeHead(200, { 'Content-Type': 'text/html' });
-    res.end('<html><body><h1>Vertex Nova — Guest Portal</h1><p>Mode: ' + config.mode + '</p></body></html>');
+    // Default: serve guest frontend
+    var guestHtmlPath = join(import.meta.dirname, '..', 'web', 'guest.html');
+    if (existsSync(guestHtmlPath)) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(readFileSync(guestHtmlPath, 'utf8'));
+    } else {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html><body><h1>Vertex Nova — Guest Portal</h1><p>Mode: ' + config.mode + '</p></body></html>');
+    }
   };
 
   guestServer = createServer(handler);
@@ -348,4 +354,88 @@ export function getHospitalityStatus() {
       name: config.hotel.name,
     } : null,
   };
+}
+
+/**
+ * Send the access code to the guest via email.
+ */
+export async function sendGuestCodeEmail() {
+  if (!config) loadConfig();
+  var guest = config.airbnb?.guest;
+  if (!guest?.email || !guest?.code) {
+    log.warn('Cannot send code: missing guest email or code');
+    return false;
+  }
+
+  // Read email config from hospitality.yaml
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return false; }
+
+  var emailAddress = (text.match(/airbnb:\s*\n\s+port:.*\n\s+listing_type:.*\n\s+email:\s*\n\s+address:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+  var emailPassword = (text.match(/password:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+
+  if (!emailAddress || !emailPassword) {
+    // Fallback to main email config
+    emailAddress = process.env.EMAIL_MONITOR_ADDRESS || '';
+    emailPassword = process.env.EMAIL_MONITOR_PASSWORD || '';
+  }
+
+  if (!emailAddress || !emailPassword) {
+    log.warn('Cannot send code: no email configured');
+    return false;
+  }
+
+  try {
+    var nodemailer = await import('nodemailer');
+    var transporter = nodemailer.default.createTransport({
+      service: 'gmail',
+      auth: { user: emailAddress, pass: emailPassword },
+    });
+
+    var guestLang = guest.language || 'en';
+    var subject = guestLang === 'fr' ? 'Votre code d\'accès — Bienvenue!' : 'Your access code — Welcome!';
+    var body = guestLang === 'fr'
+      ? 'Bonjour ' + guest.name + ',\n\nVotre code d\'accès au portail guest est: ' + guest.code + '\n\nUtilisez-le sur le portail pour accéder aux informations de votre séjour.\n\nBon séjour!'
+      : 'Hello ' + guest.name + ',\n\nYour guest portal access code is: ' + guest.code + '\n\nUse it on the guest portal to access your stay information.\n\nEnjoy your stay!';
+
+    await transporter.sendMail({
+      from: emailAddress,
+      to: guest.email,
+      subject: subject,
+      text: body,
+    });
+
+    log.info('Guest code sent to: ' + guest.email);
+    return true;
+  } catch (err) {
+    log.error('Failed to send guest code email: ' + err.message);
+    return false;
+  }
+}
+
+/**
+ * Log a guest stay to history (privacy-preserving).
+ */
+export function logGuestStay(guestData) {
+  var historyDir = join(projectDir, 'vault', 'hospitality', 'history');
+  mkdirSync(historyDir, { recursive: true });
+
+  var date = new Date().toISOString().slice(0, 10);
+  var entry = {
+    date: date,
+    mode: config?.mode || 'unknown',
+    checkIn: guestData.checkIn || date,
+    checkOut: guestData.checkOut || '',
+    language: guestData.language || 'unknown',
+    // Privacy: only store first name initial + last name
+    guestInitial: guestData.name ? guestData.name.charAt(0) + '.' : 'G.',
+    space: guestData.space || 'entire',
+  };
+
+  var filename = date + '_guest.json';
+  try {
+    writeFileSync(join(historyDir, filename), JSON.stringify(entry, null, 2));
+    log.info('Guest stay logged: ' + filename);
+  } catch {}
 }

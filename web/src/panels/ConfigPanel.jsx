@@ -1171,6 +1171,120 @@ function AgentPromptPanel({ api }) {
   );
 }
 
+function HospitalityPanel({ api }) {
+  const [status, setStatus] = useState(null);
+  const [alert, setAlert] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(() => {
+    fetch(api + '/api/hospitality').then(r => r.json()).then(d => { setStatus(d); setLoading(false); }).catch(() => setLoading(false));
+  }, [api]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const setMode = async (mode) => {
+    try {
+      const res = await fetch(api + '/api/hospitality/mode', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAlert({ type: 'success', text: 'Mode changé: ' + mode });
+        load();
+      } else setAlert({ type: 'error', text: 'Erreur' });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  const generateCode = async () => {
+    try {
+      const res = await fetch(api + '/api/hospitality/guest-code', { method: 'POST' });
+      const data = await res.json();
+      setAlert({ type: 'success', text: 'Code généré: ' + data.code + ' — à envoyer au guest' });
+      load();
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  const revoke = async () => {
+    try {
+      await fetch(api + '/api/hospitality/revoke', { method: 'POST' });
+      setAlert({ type: 'success', text: 'Accès guest révoqué' });
+      load();
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  if (loading) return <Spinner size="large" />;
+
+  const modeOptions = [
+    { value: 'residence', label: '🏠 Résidence — mode famille (défaut)' },
+    { value: 'airbnb', label: '🏡 Airbnb — location courte durée' },
+    { value: 'hotel', label: '🏨 Hôtel — chambres individuelles' },
+  ];
+
+  return (
+    <SpaceBetween size="l">
+      {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
+
+      <Container header={<Header variant="h3">Mode d'exploitation</Header>}>
+        <SpaceBetween size="m">
+          <Alert type="info">
+            Change le mode de fonctionnement de Vertex Nova. En mode Airbnb ou Hôtel, un portail guest séparé est activé sur un port dédié. Le Dream Engine est désactivé en mode hospitalité.
+          </Alert>
+          <Select
+            selectedOption={modeOptions.find(o => o.value === (status?.mode || 'residence'))}
+            onChange={({ detail }) => setMode(detail.selectedOption.value)}
+            options={modeOptions}
+          />
+          {status?.mode === 'airbnb' && (
+            <Box>
+              <Box variant="awsui-key-label">Portail guest</Box>
+              <Box>Port 3081 — <a href={'https://' + window.location.hostname + ':3081'} target="_blank" rel="noreferrer">Ouvrir</a></Box>
+            </Box>
+          )}
+          {status?.mode === 'hotel' && (
+            <Box>
+              <Box variant="awsui-key-label">Portail guest</Box>
+              <Box>Port 3082 — <a href={'https://' + window.location.hostname + ':3082'} target="_blank" rel="noreferrer">Ouvrir</a></Box>
+            </Box>
+          )}
+        </SpaceBetween>
+      </Container>
+
+      {status?.mode === 'airbnb' && (
+        <Container header={<Header variant="h3">Guest Airbnb</Header>}>
+          <SpaceBetween size="m">
+            <ColumnLayout columns={2}>
+              <Box>
+                <Box variant="awsui-key-label">Guest actuel</Box>
+                <Box>{status.airbnb?.guest?.name || '(non configuré)'}</Box>
+              </Box>
+              <Box>
+                <Box variant="awsui-key-label">Code d'accès</Box>
+                <Box>{status.airbnb?.hasCode ? '✅ Actif' : '❌ Aucun code'}</Box>
+              </Box>
+            </ColumnLayout>
+            <SpaceBetween direction="horizontal" size="xs">
+              <Button onClick={generateCode} iconName="key">Générer un code</Button>
+              {status.airbnb?.hasCode && <Button onClick={revoke} variant="link">Révoquer l'accès</Button>}
+            </SpaceBetween>
+            <Alert type="info">
+              Configurez les détails du guest (nom, email, dates, espace, préférences) dans config/hospitality.yaml. Le panneau visuel complet arrive bientôt.
+            </Alert>
+          </SpaceBetween>
+        </Container>
+      )}
+
+      {status?.mode === 'hotel' && (
+        <Container header={<Header variant="h3">Chambres</Header>}>
+          <Alert type="info">
+            Configurez les chambres et guests dans config/hospitality.yaml. Le panneau visuel avec les cartes de chambres arrive bientôt.
+          </Alert>
+        </Container>
+      )}
+    </SpaceBetween>
+  );
+}
+
 function FamilyPanel({ api }) {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1432,6 +1546,7 @@ export default function ConfigPanel({ api }) {
     <Tabs tabs={[
       { id: 'models', label: 'Modèles & Appareils', content: <ModelsPanel api={api} /> },
       { id: 'family', label: 'Famille', content: <FamilyPanel api={api} /> },
+      { id: 'hospitality', label: 'Hospitalité', content: <HospitalityPanel api={api} /> },
       { id: 'routing', label: 'Routage', content: <RoutingPanel api={api} /> },
       { id: 'proactive', label: 'Actions proactives', content: <ProactivePanel api={api} /> },
       { id: 'prompt', label: 'Prompt agent', content: <AgentPromptPanel api={api} /> },
