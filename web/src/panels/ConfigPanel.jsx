@@ -1292,15 +1292,26 @@ function FamilyPanel({ api }) {
   const [alert, setAlert] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [dirty, setDirty] = useState(false);
+  const [availableChannels, setAvailableChannels] = useState({ telegram: false, whatsapp: false, sonos: false, echo: false });
 
   const load = useCallback(() => {
     setLoading(true);
-    fetch(api + '/api/config?file=config/family.yaml').then(r => r.json()).then(d => {
-      const parsed = parseFamilyYaml(d.content || '');
+    Promise.all([
+      fetch(api + '/api/config?file=config/family.yaml').then(r => r.json()),
+      fetch(api + '/api/models').then(r => r.json()).catch(() => ({})),
+    ]).then(([familyData, models]) => {
+      const parsed = parseFamilyYaml(familyData.content || '');
       setMembers(parsed);
       const exp = {};
       parsed.forEach((_, i) => { exp[i] = true; });
       setExpanded(exp);
+      // Determine which channels are actually configured
+      setAvailableChannels({
+        telegram: models.telegram_enabled === true,
+        whatsapp: models.whatsapp_enabled === true,
+        sonos: !!models.sonos_default_room,
+        echo: models.alexa_configured === true,
+      });
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [api]);
@@ -1439,21 +1450,26 @@ function FamilyPanel({ api }) {
               </Container>
 
               {/* Channels */}
+              {/* Channels — only show configured ones */}
               <Container header={<Header variant="h4">Canaux</Header>}>
                 <ColumnLayout columns={3}>
-                  <FormField label="Telegram ID">
-                    <Input value={member.channels?.telegram || ''} onChange={({ detail }) => updateMember(idx, 'channels.telegram', detail.value)} placeholder="787677377" />
-                  </FormField>
+                  {availableChannels.telegram && (
+                    <FormField label="Telegram ID">
+                      <Input value={member.channels?.telegram || ''} onChange={({ detail }) => updateMember(idx, 'channels.telegram', detail.value)} placeholder="123456789" />
+                    </FormField>
+                  )}
                   <FormField label="Web dashboard">
                     <Toggle checked={!!member.channels?.web} onChange={({ detail }) => updateMember(idx, 'channels.web', detail.checked)}>
                       {member.channels?.web ? 'Activé' : 'Désactivé'}
                     </Toggle>
                   </FormField>
-                  <FormField label="Voix (Sonos/Echo)">
-                    <Toggle checked={!!member.channels?.voice} onChange={({ detail }) => updateMember(idx, 'channels.voice', detail.checked)}>
-                      {member.channels?.voice ? 'Activé' : 'Désactivé'}
-                    </Toggle>
-                  </FormField>
+                  {(availableChannels.sonos || availableChannels.echo) && (
+                    <FormField label="Voix (Sonos/Echo)">
+                      <Toggle checked={!!member.channels?.voice} onChange={({ detail }) => updateMember(idx, 'channels.voice', detail.checked)}>
+                        {member.channels?.voice ? 'Activé' : 'Désactivé'}
+                      </Toggle>
+                    </FormField>
+                  )}
                 </ColumnLayout>
               </Container>
 

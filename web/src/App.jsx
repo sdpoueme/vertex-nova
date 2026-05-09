@@ -34,7 +34,7 @@ export default function App() {
       <TopNavigation
         identity={{ title: 'Vertex Nova', href: '#' }}
         utilities={[
-          { type: 'button', text: modeLabels[hospitalityMode] || '🏠 Résidence', iconName: 'settings' },
+          { type: 'button', text: modeLabels[hospitalityMode] || '🏠 Résidence', iconName: 'settings', onClick: () => setActivePanel('config') },
           { type: 'button', text: status.memory || '...', iconName: 'status-info' },
         ]}
       />
