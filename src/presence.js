@@ -454,11 +454,19 @@ export function startPresenceMonitor(onEvent, vaultPath) {
         for (var gm of guestMacs) {
           if (!guestsSeen.has(gm)) {
             guestsSeen.add(gm);
+            // Filter: only notify for likely phones/tablets (not IoT devices)
+            // Phones use randomized MACs with the "locally administered" bit set
+            // (2nd hex char of first octet is 2, 6, A, or E)
+            var firstOctet = gm.split(':')[0];
+            var secondChar = firstOctet.charAt(1).toLowerCase();
+            var isRandomizedMac = secondChar === '2' || secondChar === '6' || secondChar === 'a' || secondChar === 'e';
+            if (!isRandomizedMac) continue; // Skip — likely an IoT device with a hardware MAC
+
             // Only notify during daytime, after initial boot (pollCount > 5), and cap at 5 guests
             var guestHour = new Date().getHours();
-            var guestCount = Array.from(guestsSeen).filter(function(m) { return !knownMacs.has(m); }).length;
+            var guestCount = Array.from(guestsSeen).length;
             if (guestHour >= 8 && guestHour < 22 && pollCount > 5 && guestCount <= 5) {
-              log.info('Guest detected: MAC ' + gm);
+              log.info('Guest phone/tablet detected: MAC ' + gm);
               try { await onEvent({ name: 'guest', event: 'guest_arrived', mac: gm }); } catch {}
             }
           }
