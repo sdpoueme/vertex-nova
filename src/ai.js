@@ -336,6 +336,16 @@ var tools = [
     name: 'who_is_home',
     description: 'Vérifie qui est à la maison en ce moment (détection par réseau WiFi). Utilise quand on demande qui est là, si quelqu\'un est rentré, ou pour vérifier la présence.',
     input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'device_state',
+    description: 'Lit l\'état actuel d\'un appareil connecté (thermostat, prise, laveuse, etc.). Utilise pour: température actuelle, état on/off, niveau de batterie. Retourne les dernières données collectées par le monitoring Alexa.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        device: { type: 'string', description: 'Nom de l\'appareil (ex: "714JS", "S&S Fridge", "WashTower Washer") ou vide pour tous les appareils' }
+      }
+    }
   }
 ];
 
@@ -927,6 +937,58 @@ async function executeTool(name, input) {
       if (presence.vacationMode) parts.push('Mode vacances: ACTIF');
       return parts.join('\n');
     } catch (err) { return 'Erreur: ' + err.message; }
+  }
+
+  if (name === 'device_state') {
+    try {
+      var { getAlexaStates, getDiscoveredDevices } = await import('./alexa-monitor.js');
+      var states = getAlexaStates();
+      var discovered = getDiscoveredDevices();
+
+      if (discovered.length === 0) return 'Monitoring des appareils non configuré (cookies Alexa manquants ou expirés).';
+
+      var deviceFilter = (input.device || '').toLowerCase();
+      var results = [];
+
+      for (var dev of discovered) {
+        var devState = states[dev.entityId] || {};
+        var caps = devState.capabilities || {};
+
+        // Filter by device name if specified
+        if (deviceFilter && !dev.friendlyName.toLowerCase().includes(deviceFilter)) continue;
+
+        var info = dev.friendlyName;
+        var stateDetails = [];
+
+        // Extract meaningful state info
+        if (caps.temperature !== undefined) stateDetails.push('Température: ' + caps.temperature + '°C');
+        if (caps.targetTemperature !== undefined) stateDetails.push('Cible: ' + caps.targetTemperature + '°C');
+        if (caps.thermostatMode) stateDetails.push('Mode: ' + caps.thermostatMode);
+        if (caps.powerState) stateDetails.push('État: ' + caps.powerState);
+        if (caps.connectivity) stateDetails.push('Connectivité: ' + caps.connectivity);
+        if (caps.lockState) stateDetails.push('Verrou: ' + caps.lockState);
+        if (caps.brightness !== undefined) stateDetails.push('Luminosité: ' + caps.brightness + '%');
+
+        // If no specific capabilities, show raw state
+        if (stateDetails.length === 0 && Object.keys(caps).length > 0) {
+          for (var key in caps) {
+            stateDetails.push(key + ': ' + JSON.stringify(caps[key]));
+          }
+        }
+
+        if (stateDetails.length > 0) {
+          results.push(info + '\n  ' + stateDetails.join('\n  '));
+        } else {
+          results.push(info + ' — pas de données récentes');
+        }
+      }
+
+      if (results.length === 0) {
+        return deviceFilter ? 'Appareil "' + input.device + '" non trouvé.' : 'Aucun appareil avec des données d\'état.';
+      }
+
+      return results.join('\n\n');
+    } catch (err) { return 'Erreur lecture appareils: ' + err.message; }
   }
 
   return 'Unknown tool: ' + name;
