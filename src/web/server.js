@@ -732,6 +732,31 @@ export function startDashboard(config, port) {
       return;
     }
 
+    // --- API: Generate local info for guest via AI ---
+    if (path === '/api/hospitality/generate-local-info' && req.method === 'POST') {
+      try {
+        var location = process.env.HOME_LOCATION || 'the local area';
+        var guestLangGen = 'fr';
+        try {
+          var hospYaml = readFileSync(join(projectDir, 'config/hospitality.yaml'), 'utf8');
+          var langMatch = hospYaml.match(/language:\s*(\S+)/);
+          if (langMatch && langMatch[1] !== 'auto') guestLangGen = langMatch[1];
+        } catch {}
+
+        var prompt = 'Utilise web_search pour chercher "restaurants activités transport ' + location + '".\n' +
+          'Avec les résultats, génère un guide local concis pour un visiteur.\n' +
+          'Sections: 🍽️ Restaurants (3-5), 🚌 Transport, 🎯 Activités (3-5), 🏪 Services utiles.\n' +
+          'Format texte simple, pas de markdown. ' +
+          (guestLangGen !== 'fr' ? 'Écris en ' + guestLangGen + '.' : 'Écris en français.');
+
+        var response = await chat(prompt, 'generate-local-info-' + Date.now().toString(36));
+        json(res, 200, { localInfo: response });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
     // --- API: Family members (for profile selector) ---
     if (path === '/api/family/members' && req.method === 'GET') {
       try {

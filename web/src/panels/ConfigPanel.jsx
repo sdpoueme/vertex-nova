@@ -1322,8 +1322,19 @@ function HospitalityPanel({ api }) {
             <FormField label="Contacts d'urgence">
               <Textarea value={emergency} onChange={({ detail }) => setEmergency(detail.value)} rows={2} placeholder="Urgences: 911&#10;Hôte: 514-xxx-xxxx" />
             </FormField>
-            <FormField label="Infos locales">
-              <Textarea value={localInfo} onChange={({ detail }) => setLocalInfo(detail.value)} rows={3} placeholder="Restaurants, transport, activités..." />
+            <FormField label="Infos locales" description="Restaurants, transport, activités — ou cliquez Générer pour auto-remplir via l'IA">
+              <SpaceBetween size="xs">
+                <Textarea value={localInfo} onChange={({ detail }) => setLocalInfo(detail.value)} rows={3} placeholder="Restaurants, transport, activités..." />
+                <Button onClick={async () => {
+                  setAlert({ type: 'info', text: 'Génération des infos locales en cours...' });
+                  try {
+                    const res = await fetch(api + '/api/hospitality/generate-local-info', { method: 'POST' });
+                    const data = await res.json();
+                    if (data.localInfo) { setLocalInfo(data.localInfo); setAlert({ type: 'success', text: 'Infos locales générées!' }); }
+                    else setAlert({ type: 'error', text: data.error || 'Erreur' });
+                  } catch (err) { setAlert({ type: 'error', text: err.message }); }
+                }} iconName="gen-ai">Générer via IA</Button>
+              </SpaceBetween>
             </FormField>
             <ColumnLayout columns={2}>
               <Box>
