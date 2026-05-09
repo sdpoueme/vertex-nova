@@ -100,21 +100,26 @@ Full guide: [docs/INSTALL.md](docs/INSTALL.md).
 |---------|-------------|
 | Multi-Agent System | 7 specialist agents (news, home, media, memory, email, weather, general) via Strands SDK |
 | Telegram & WhatsApp | Text, voice (whisper.cpp with hallucination filtering), images (two-stage vision pipeline) |
-| Web Dashboard | HTTPS, multimodal chat with voice mode toggle + device selector, config editor |
+| Web Dashboard | HTTPS, multimodal chat with voice mode, persistent sessions, profile selector, config editor |
+| Hospitality Mode | Airbnb + Hotel guest portals on dedicated ports, guest auth, multi-language concierge |
+| Family Identity | Per-person agent conscience — adapts tone, notifications, recommendations per family member |
 | Echo Devices | Native Alexa Behavior API — speak directly on any Echo, auto-discovered |
 | Sonos TTS | Piper TTS (offline FR/EN), auto token refresh, time-based room routing |
 | Email Agent | Inbox monitoring, Telegram notifications, AI-drafted replies, compose new emails, SMTP |
 | Smart Home Monitor | Alexa API device discovery + state polling, context-driven alert rules per device |
-| Presence Detection | Per-person WiFi tracking via ARP + ping sweep, configurable thresholds, vacation mode toggle |
+| Presence Detection | Per-person WiFi tracking via ARP + ping sweep, configurable thresholds, vacation mode, DND |
+| Guest Detection | Welcomes unknown phones/tablets on WiFi with Sonos greeting |
 | Task Orchestrator | Pre-fetches news/weather/movies for device requests (1 AI call instead of 3+) |
 | Async Thinker | Background agent reviews every response and saves learnings |
-| Identity Layer | Per-user profiles, automatic fact extraction, topic tracking |
+| Session Bootstrap | Cross-session memory — agent remembers yesterday's context automatically |
 | Knowledge Bases | Git repos + URL crawling, semantic RAG with local embeddings (Ollama + Vectra) |
 | Image Queue | Failed vision requests saved to disk, auto-retried when Claude comes back online |
-| Dream Engine | Nightly self-improvement: conversation review, memory consolidation, Dream Layer v2 (ACU, controlled hallucination, policy proposals), graph consolidation |
+| Dream Engine | Nightly self-improvement: Dream Layer v2 (ACU, controlled hallucination, policy proposals), graph consolidation |
+| Model Manager | Pull, delete, hot-swap AI models from the dashboard without restart |
 | Movie Recommendations | TMDB + NYT, multi-language, scored by user genre preferences |
-| Proactive Actions | Scheduled news, weather, maintenance, movies — persistent across restarts |
+| Proactive Actions | Scheduled news, weather, maintenance, movies — multi-model (Phi-4 for SKIP logic) |
 | Night Mode | Voice devices blocked 10 PM – 7 AM, auto-routes to Telegram |
+| Do Not Disturb | Mute all notifications via Telegram, dashboard, or API |
 | Claude Cooldown | 24h cooldown on credit errors, persisted to disk across restarts |
 
 ## Smart Home Monitoring
@@ -318,10 +323,10 @@ Served over HTTPS (auto-generated self-signed cert). Access: `https://<your-ip>:
 | Panel | Features |
 |-------|----------|
 | Accueil | Live device status, presence widget, channels, KBs, recent interactions |
-| Chat | Text, image upload, voice recording, voice mode toggle + device selector, interaction history |
-| Configuration | AI models, Sonos/Echo routing (auto-discovered devices), per-person presence (welcome style, device, language, notifications, detection thresholds, vacation toggle), home location, news, movies, Alexa cookies, Telegram multi-user |
-| Appareils | Alexa device discovery with capabilities, alert rule editor with device picker from discovered list |
-| Connaissances | Git repos + URL collections, sitemap crawling, sync per KB |
+| Chat | Text, image, voice, persistent sessions with history picker, profile selector, voice mode |
+| Configuration | AI models + model manager (pull/delete/swap), Sonos/Echo routing, per-person presence, family identity, hospitality modes, home location, news, movies, Alexa cookies, Telegram |
+| Appareils | Alexa device discovery with capabilities, alert rule editor with device picker |
+| Connaissances | Git repos + URL collections, semantic RAG, sitemap crawling, sync per KB |
 | Logs | Live tail of agent logs |
 
 ## Offline Capability
@@ -378,17 +383,59 @@ Mutes all proactive notifications and voice output while keeping the agent runni
 
 Direct chat still works normally when muted.
 
+## Hospitality Mode
+
+Transforms Vertex Nova into a guest concierge for short-term rentals.
+
+| Mode | Port | Auth | Use case |
+|------|------|------|----------|
+| Résidence | 3080 | — | Normal family mode (default) |
+| Airbnb | 3081 | 6-char code (emailed) | Entire home or private room rental |
+| Hôtel | 3082 | Name + room number | Multi-room with individual guests |
+
+**Features:**
+- Separate guest portal on dedicated port (isolated from admin)
+- Guest sees only: WiFi info, house rules, emergency contacts, local info, limited chat
+- Guest does NOT see: family data, emails, security, configuration, logs
+- Multi-language: agent auto-detects guest language and responds accordingly
+- Access code auto-expires at checkout, admin can revoke anytime
+- Guest history preserved with privacy (anonymized after 30 days)
+- Dream engine disabled in hospitality modes
+- IoT presence detection via Matter + WiFi sensors (planned)
+- Guest can control audio and lights only (planned)
+
+**Admin workflow:**
+1. Switch to Airbnb/Hotel mode in dashboard (Configuration → Hospitalité)
+2. Configure guest details in `config/hospitality.yaml`
+3. Generate access code → sent to guest by email
+4. Guest accesses portal on dedicated port, enters code
+5. At checkout, code expires automatically
+
+## Family Identity
+
+Per-person agent conscience — adapts all interactions based on who's talking.
+
+Configure in dashboard (Configuration → Famille) or `config/family.yaml`:
+- Communication style (warm/concise/formal)
+- Briefing depth (full/summary/minimal)
+- Proactive notification level and rules per category
+- Daily schedule (morning, work, evening, sleep hours)
+- Interests (for recommendation filtering)
+- Channel preferences
+
 ## Configuration
 
 | File | Purpose |
 |------|---------|
 | `.env` | All credentials and settings |
-| `agent.md` | Agent persona, rules, household info |
+| `agent.md` | Agent persona, rules, capabilities, household info |
 | `config/routing.yaml` | Model routing rules |
-| `config/proactive.yaml` | Scheduled proactive actions |
-| `config/knowledgebases.yaml` | Knowledge base git repos |
+| `config/proactive.yaml` | Scheduled proactive actions (multi-model) |
+| `config/knowledgebases.yaml` | Knowledge base git repos and URLs |
 | `config/devices.yaml` | Device alert rules |
 | `config/presence.yaml` | Per-person presence detection settings and thresholds |
+| `config/family.yaml` | Family identity — per-person style, schedule, notifications |
+| `config/hospitality.yaml` | Hospitality modes (Airbnb/Hotel), guest config, rooms |
 | `config/dream-layer.yaml` | Dream Layer v2 parameters (templates, generation, policies, scenarios) |
 
 ## Installation

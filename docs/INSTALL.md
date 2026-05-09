@@ -254,13 +254,15 @@ Note: The temporary test token expires every 24 hours.
 
 ### Config Files
 
-- `config/routing.yaml` — Model routing rules
-- `config/proactive.yaml` — Scheduled proactive actions and notification routing
-- `config/knowledgebases.yaml` — Family knowledge base git repos for RAG
+- `config/routing.yaml` — Model routing rules (vision → gemma4, news → qwen3, default → qwen3)
+- `config/proactive.yaml` — Scheduled proactive actions with multi-model support (phi4-mini for SKIP logic)
+- `config/knowledgebases.yaml` — Knowledge base git repos and URL collections for semantic RAG
 - `config/devices.yaml` — Device alert rules (device_id, security level, AI context)
 - `config/presence.yaml` — Per-person presence detection: people (name, MAC, device, language, welcome style, welcome device, notification preference) and detection thresholds
+- `config/family.yaml` — Family identity: per-person communication style, schedule, interests, notification rules
+- `config/hospitality.yaml` — Hospitality modes (Airbnb port 3081, Hotel port 3082), guest config, rooms, IoT sensors
 - `config/dream-layer.yaml` — Dream Layer v2: template extraction, dream generation, policy updates, edge case scenarios, ephemeral decay
-- `agent.md` — Agent persona, rules, and household info (not committed to git)
+- `agent.md` — Agent persona, rules, capabilities, and household info (not committed to git)
 
 ---
 
