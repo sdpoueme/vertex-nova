@@ -1176,9 +1176,43 @@ function HospitalityPanel({ api }) {
   const [status, setStatus] = useState(null);
   const [alert, setAlert] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [yaml, setYaml] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [guestLang, setGuestLang] = useState('auto');
+  const [checkIn, setCheckIn] = useState('');
+  const [checkOut, setCheckOut] = useState('');
+  const [wifiName, setWifiName] = useState('');
+  const [wifiPass, setWifiPass] = useState('');
+  const [rules, setRules] = useState('');
+  const [emergency, setEmergency] = useState('');
+  const [localInfo, setLocalInfo] = useState('');
 
   const load = useCallback(() => {
-    fetch(api + '/api/hospitality').then(r => r.json()).then(d => { setStatus(d); setLoading(false); }).catch(() => setLoading(false));
+    setLoading(true);
+    Promise.all([
+      fetch(api + '/api/hospitality').then(r => r.json()),
+      fetch(api + '/api/config?file=config/hospitality.yaml').then(r => r.json()).catch(() => ({ content: '' })),
+    ]).then(([hospData, yamlData]) => {
+      setStatus(hospData);
+      setYaml(yamlData.content || '');
+      // Parse guest details from YAML
+      const text = yamlData.content || '';
+      setGuestName((text.match(/guest:\s*\n\s+name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      setGuestEmail((text.match(/email:\s*"?([^"\n]*@[^"\n]*)"?/) || [])[1]?.trim() || '');
+      setGuestLang((text.match(/language:\s*(\S+)/) || [])[1] || 'auto');
+      setCheckIn((text.match(/check_in:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      setCheckOut((text.match(/check_out:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      setWifiName((text.match(/wifi_name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      setWifiPass((text.match(/wifi_password:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      const rulesMatch = text.match(/rules:\s*\|\s*\n((?:\s+.*\n)*)/);
+      if (rulesMatch) setRules(rulesMatch[1].replace(/^\s{4,}/gm, '').trim());
+      const emergMatch = text.match(/emergency_contacts:\s*\|\s*\n((?:\s+.*\n)*)/);
+      if (emergMatch) setEmergency(emergMatch[1].replace(/^\s{4,}/gm, '').trim());
+      const localMatch = text.match(/local_info:\s*\|\s*\n((?:\s+.*\n)*)/);
+      if (localMatch) setLocalInfo(localMatch[1].replace(/^\s{4,}/gm, '').trim());
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
@@ -1254,23 +1288,53 @@ function HospitalityPanel({ api }) {
       {status?.mode === 'airbnb' && (
         <Container header={<Header variant="h3">Guest Airbnb</Header>}>
           <SpaceBetween size="m">
+            <ColumnLayout columns={3}>
+              <FormField label="Nom du guest">
+                <Input value={guestName} onChange={({ detail }) => setGuestName(detail.value)} placeholder="John Smith" />
+              </FormField>
+              <FormField label="Email">
+                <Input value={guestEmail} onChange={({ detail }) => setGuestEmail(detail.value)} placeholder="guest@email.com" />
+              </FormField>
+              <FormField label="Langue">
+                <Select selectedOption={{ value: guestLang, label: guestLang }} onChange={({ detail }) => setGuestLang(detail.selectedOption.value)}
+                  options={[{ value: 'auto', label: 'Auto-détection' }, { value: 'fr', label: 'Français' }, { value: 'en', label: 'English' }, { value: 'es', label: 'Español' }, { value: 'de', label: 'Deutsch' }, { value: 'ja', label: '日本語' }, { value: 'zh', label: '中文' }, { value: 'pt', label: 'Português' }, { value: 'ar', label: 'العربية' }]} />
+              </FormField>
+            </ColumnLayout>
             <ColumnLayout columns={2}>
-              <Box>
-                <Box variant="awsui-key-label">Guest actuel</Box>
-                <Box>{status.airbnb?.guest?.name || '(non configuré)'}</Box>
-              </Box>
+              <FormField label="Check-in">
+                <Input type="date" value={checkIn} onChange={({ detail }) => setCheckIn(detail.value)} />
+              </FormField>
+              <FormField label="Check-out">
+                <Input type="date" value={checkOut} onChange={({ detail }) => setCheckOut(detail.value)} />
+              </FormField>
+            </ColumnLayout>
+            <ColumnLayout columns={2}>
+              <FormField label="WiFi — Nom du réseau">
+                <Input value={wifiName} onChange={({ detail }) => setWifiName(detail.value)} placeholder="MonWiFi" />
+              </FormField>
+              <FormField label="WiFi — Mot de passe">
+                <Input value={wifiPass} onChange={({ detail }) => setWifiPass(detail.value)} placeholder="MotDePasse123" />
+              </FormField>
+            </ColumnLayout>
+            <FormField label="Règles de la maison">
+              <Textarea value={rules} onChange={({ detail }) => setRules(detail.value)} rows={3} placeholder="- Pas de fête&#10;- Silence après 22h" />
+            </FormField>
+            <FormField label="Contacts d'urgence">
+              <Textarea value={emergency} onChange={({ detail }) => setEmergency(detail.value)} rows={2} placeholder="Urgences: 911&#10;Hôte: 514-xxx-xxxx" />
+            </FormField>
+            <FormField label="Infos locales">
+              <Textarea value={localInfo} onChange={({ detail }) => setLocalInfo(detail.value)} rows={3} placeholder="Restaurants, transport, activités..." />
+            </FormField>
+            <ColumnLayout columns={2}>
               <Box>
                 <Box variant="awsui-key-label">Code d'accès</Box>
                 <Box>{status.airbnb?.hasCode ? '✅ Actif' : '❌ Aucun code'}</Box>
               </Box>
+              <SpaceBetween direction="horizontal" size="xs">
+                <Button onClick={generateCode} iconName="key">Générer un code</Button>
+                {status.airbnb?.hasCode && <Button onClick={revoke} variant="link">Révoquer</Button>}
+              </SpaceBetween>
             </ColumnLayout>
-            <SpaceBetween direction="horizontal" size="xs">
-              <Button onClick={generateCode} iconName="key">Générer un code</Button>
-              {status.airbnb?.hasCode && <Button onClick={revoke} variant="link">Révoquer l'accès</Button>}
-            </SpaceBetween>
-            <Alert type="info">
-              Configurez les détails du guest (nom, email, dates, espace, préférences) dans config/hospitality.yaml. Le panneau visuel complet arrive bientôt.
-            </Alert>
           </SpaceBetween>
         </Container>
       )}
