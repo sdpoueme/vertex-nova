@@ -539,16 +539,59 @@ function AlexaCookieEditor({ api, configured, onSaved }) {
 function ModelsPanel({ api }) {
   const [models, setModels] = useState(null);
   const [ollamaModels, setOllamaModels] = useState([]);
+  const [usedModels, setUsedModels] = useState([]);
   const [echoDevices, setEchoDevices] = useState([]);
   const [alert, setAlert] = useState(null);
+  const [pullModel, setPullModel] = useState('');
+  const [pulling, setPulling] = useState(false);
 
   const load = useCallback(() => {
     fetch(api + '/api/models').then(r => r.json()).then(setModels).catch(() => {});
-    fetch(api + '/api/ollama-models').then(r => r.json()).then(d => setOllamaModels(d.models || [])).catch(() => {});
+    fetch(api + '/api/ollama-models').then(r => r.json()).then(d => { setOllamaModels(d.models || []); setUsedModels(d.usedModels || []); }).catch(() => {});
     fetch(api + '/api/alexa/echo-devices').then(r => r.json()).then(d => setEchoDevices(d.devices || [])).catch(() => {});
   }, [api]);
 
   useEffect(() => { load(); }, [load]);
+
+  const pullNewModel = async () => {
+    if (!pullModel.trim()) return;
+    setPulling(true);
+    try {
+      await fetch(api + '/api/ollama-models/pull', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: pullModel.trim() }),
+      });
+      setAlert({ type: 'success', text: 'Téléchargement de ' + pullModel + ' lancé en arrière-plan...' });
+      setPullModel('');
+      // Reload after a delay to show the new model
+      setTimeout(load, 5000);
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+    setPulling(false);
+  };
+
+  const deleteModel = async (name) => {
+    try {
+      const res = await fetch(api + '/api/ollama-models/delete', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: name }),
+      });
+      const data = await res.json();
+      if (data.deleted) { setAlert({ type: 'success', text: name + ' supprimé' }); load(); }
+      else setAlert({ type: 'error', text: data.error || 'Erreur' });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  const hotSwap = async (name) => {
+    try {
+      const res = await fetch(api + '/api/ollama-models/swap', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: name }),
+      });
+      const data = await res.json();
+      if (data.swapped) { setAlert({ type: 'success', text: 'Modèle principal changé à ' + name + ' (sans redémarrage)' }); load(); }
+      else setAlert({ type: 'error', text: data.error || 'Erreur' });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
 
   const save = async (key, val) => {
     try {
@@ -633,6 +676,42 @@ function ModelsPanel({ api }) {
           <Box variant="small" color="text-body-secondary">
             Clé API Claude: {models.has_claude_key ? '✅ Configurée' : '❌ Non configurée (modifier dans .env)'}
           </Box>
+        </SpaceBetween>
+      </Container>
+
+      <Container header={<Header variant="h3">Gestionnaire de modèles</Header>}>
+        <SpaceBetween size="m">
+          <Box variant="small" color="text-body-secondary">
+            Modèles installés localement via Ollama. Les modèles marqués "En usage" sont référencés dans la configuration.
+          </Box>
+          {ollamaModels.length > 0 && (
+            <SpaceBetween size="xs">
+              {ollamaModels.map((m, i) => (
+                <Container key={i} variant="stacked">
+                  <SpaceBetween direction="horizontal" size="m" alignItems="center">
+                    <Box variant="strong">{m.name}</Box>
+                    <Box variant="small" color="text-body-secondary">{Math.round((m.size || 0) / 1e9 * 10) / 10} GB</Box>
+                    {m.inUse ? (
+                      <StatusIndicator type="success">En usage</StatusIndicator>
+                    ) : (
+                      <StatusIndicator type="stopped">Inutilisé</StatusIndicator>
+                    )}
+                    <Button variant="link" onClick={() => hotSwap(m.name)}>Activer</Button>
+                    {!m.inUse && <Button variant="link" onClick={() => deleteModel(m.name)}>Supprimer</Button>}
+                  </SpaceBetween>
+                </Container>
+              ))}
+            </SpaceBetween>
+          )}
+          <ColumnLayout columns={2}>
+            <FormField label="Télécharger un nouveau modèle" description="Nom Ollama (ex: deepseek-r1:8b, llama3.1:8b, mistral-nemo)">
+              <Input value={pullModel} onChange={({ detail }) => setPullModel(detail.value)} placeholder="nom-du-modele"
+                onKeyDown={({ detail }) => { if (detail.key === 'Enter') pullNewModel(); }} />
+            </FormField>
+            <FormField label=" ">
+              <Button onClick={pullNewModel} loading={pulling} iconName="download">Télécharger</Button>
+            </FormField>
+          </ColumnLayout>
         </SpaceBetween>
       </Container>
 

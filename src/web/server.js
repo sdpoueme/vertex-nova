@@ -385,13 +385,108 @@ export function startDashboard(config, port) {
         var ollamaRes2 = await fetch((process.env.OLLAMA_URL || 'http://localhost:11434') + '/api/tags');
         if (ollamaRes2.ok) {
           var ollamaData = await ollamaRes2.json();
-          var models = (ollamaData.models || []).map(function(m) { return { name: m.name, size: m.size }; });
-          json(res, 200, { models: models });
+          var models = (ollamaData.models || []).map(function(m) { return { name: m.name, size: m.size, modified: m.modified_at }; });
+          // Mark which models are actively used
+          var usedModels = new Set();
+          usedModels.add(process.env.OLLAMA_MODEL || 'qwen3:8b');
+          usedModels.add(process.env.RAG_EMBED_MODEL || 'nomic-embed-text'); // RAG embeddings
+          try {
+            var routingText = readFileSync(join(projectDir, 'config/routing.yaml'), 'utf8');
+            var routingModels = routingText.match(/model:\s*(\S+)/g) || [];
+            routingModels.forEach(function(m) { usedModels.add(m.replace('model:', '').trim()); });
+          } catch {}
+          try {
+            var proactiveText = readFileSync(join(projectDir, 'config/proactive.yaml'), 'utf8');
+            var proactiveModels = proactiveText.match(/model:\s*(\S+)/g) || [];
+            proactiveModels.forEach(function(m) { usedModels.add(m.replace('model:', '').trim()); });
+          } catch {}
+          models = models.map(function(m) {
+            // Match with or without :latest tag
+            var baseName = m.name.replace(/:latest$/, '');
+            var isUsed = usedModels.has(m.name) || usedModels.has(baseName);
+            return { ...m, inUse: isUsed };
+          });
+          json(res, 200, { models: models, usedModels: Array.from(usedModels) });
         } else {
-          json(res, 200, { models: [] });
+          json(res, 200, { models: [], usedModels: [] });
         }
       } catch {
-        json(res, 200, { models: [] });
+        json(res, 200, { models: [], usedModels: [] });
+      }
+      return;
+    }
+
+    // --- API: Pull a new Ollama model ---
+    if (path === '/api/ollama-models/pull' && req.method === 'POST') {
+      var pullBody = await readBody(req);
+      try {
+        var pullData = JSON.parse(pullBody);
+        var modelName = pullData.model;
+        if (!modelName) { json(res, 400, { error: 'Missing model name' }); return; }
+        log.info('Pulling Ollama model: ' + modelName);
+        // Start pull (non-blocking — returns immediately, pull happens in background)
+        fetch((process.env.OLLAMA_URL || 'http://localhost:11434') + '/api/pull', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: modelName, stream: false }),
+        }).then(function(r) {
+          if (r.ok) log.info('Model pulled successfully: ' + modelName);
+          else log.error('Model pull failed: ' + modelName);
+        }).catch(function(err) { log.error('Model pull error: ' + err.message); });
+        json(res, 200, { status: 'pulling', model: modelName });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Delete an Ollama model ---
+    if (path === '/api/ollama-models/delete' && req.method === 'POST') {
+      var delBody = await readBody(req);
+      try {
+        var delData = JSON.parse(delBody);
+        var delModel = delData.model;
+        if (!delModel) { json(res, 400, { error: 'Missing model name' }); return; }
+        var delRes = await fetch((process.env.OLLAMA_URL || 'http://localhost:11434') + '/api/delete', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: delModel }),
+        });
+        if (delRes.ok) {
+          log.info('Model deleted: ' + delModel);
+          json(res, 200, { deleted: true, model: delModel });
+        } else {
+          json(res, 500, { error: 'Delete failed: ' + delRes.status });
+        }
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Hot-swap active model (no restart needed) ---
+    if (path === '/api/ollama-models/swap' && req.method === 'POST') {
+      var swapBody = await readBody(req);
+      try {
+        var swapData = JSON.parse(swapBody);
+        var newModel = swapData.model;
+        if (!newModel) { json(res, 400, { error: 'Missing model name' }); return; }
+        process.env.OLLAMA_MODEL = newModel;
+        // Persist to .env
+        try {
+          var envPath = join(projectDir, '.env');
+          var envContent = readFileSync(envPath, 'utf8');
+          if (/^OLLAMA_MODEL=.*/m.test(envContent)) {
+            envContent = envContent.replace(/^OLLAMA_MODEL=.*/m, 'OLLAMA_MODEL=' + newModel);
+          } else {
+            envContent += '\nOLLAMA_MODEL=' + newModel;
+          }
+          writeFileSync(envPath, envContent);
+        } catch {}
+        log.info('Hot-swapped model to: ' + newModel);
+        json(res, 200, { swapped: true, model: newModel });
+      } catch (err) {
+        json(res, 500, { error: err.message });
       }
       return;
     }
