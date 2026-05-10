@@ -74,7 +74,7 @@ actions:
   - name: email-digest
     description: "Device alert summary"
     interval_minutes: 120
-    model: phi4-mini
+    model: nemotron-mini
     prompt: >
       Vérifie le vault pour les alertes d'appareils récentes aujourd'hui.
       Résume ce qui est notable.

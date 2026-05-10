@@ -35,11 +35,28 @@ function loadLastRun() {
 }
 
 function loadConfig() {
-  var configPath = join(import.meta.dirname, '..', 'config', 'proactive.yaml');
+  var baseDir = join(import.meta.dirname, '..', 'config');
+  var configFile = 'proactive.yaml';
+
+  // Check hospitality mode — use hospitality-specific proactive actions
+  try {
+    var hospText = readFileSync(join(baseDir, 'hospitality.yaml'), 'utf8');
+    var modeMatch = hospText.match(/^mode:\s*(\S+)/m);
+    var mode = modeMatch ? modeMatch[1] : 'residence';
+    if (mode !== 'residence') {
+      try {
+        readFileSync(join(baseDir, 'proactive-hospitality.yaml'));
+        configFile = 'proactive-hospitality.yaml';
+        log.info('Hospitality mode (' + mode + ') → using ' + configFile);
+      } catch {}
+    }
+  } catch {}
+
+  var configPath = join(baseDir, configFile);
   try {
     var text = readFileSync(configPath, 'utf8');
     config = parseYaml(text);
-    log.info('Loaded ' + (config.actions || []).length + ' proactive actions');
+    log.info('Loaded ' + (config.actions || []).length + ' proactive actions from ' + configFile);
   } catch (err) {
     log.warn('Could not load proactive config: ' + err.message);
     config = { actions: [], routing: {}, behavior: {} };

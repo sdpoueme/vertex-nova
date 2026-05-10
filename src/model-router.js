@@ -13,12 +13,31 @@ var config = null;
 var compiledRoutes = null;
 
 function loadConfig() {
-  var configPath = join(import.meta.dirname, '..', 'config', 'routing.yaml');
+  var baseDir = join(import.meta.dirname, '..', 'config');
+  var configFile = 'routing.yaml';
+
+  // Check hospitality mode synchronously via the YAML file
+  try {
+    var hospPath = join(baseDir, 'hospitality.yaml');
+    var hospText = readFileSync(hospPath, 'utf8');
+    var modeMatch = hospText.match(/^mode:\s*(\S+)/m);
+    var mode = modeMatch ? modeMatch[1] : 'residence';
+    if (mode !== 'residence') {
+      var hospRoutingPath = join(baseDir, 'routing-hospitality.yaml');
+      try {
+        readFileSync(hospRoutingPath); // Check it exists
+        configFile = 'routing-hospitality.yaml';
+        log.info('Hospitality mode (' + mode + ') → using ' + configFile);
+      } catch {}
+    }
+  } catch {}
+
+  var configPath = join(baseDir, configFile);
   try {
     var text = readFileSync(configPath, 'utf8');
     config = parseYaml(text);
     compiledRoutes = compileRoutes(config.routes || []);
-    log.info('Loaded ' + compiledRoutes.length + ' routing rules, default: ' + (config.default?.model || 'claude'));
+    log.info('Loaded ' + compiledRoutes.length + ' routing rules from ' + configFile + ', default: ' + (config.default?.model || 'claude'));
   } catch (err) {
     log.warn('Could not load routing config: ' + err.message + '. Using Claude for everything.');
     config = { routes: [], default: { model: 'claude' } };

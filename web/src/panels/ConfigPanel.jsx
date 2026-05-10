@@ -15,6 +15,8 @@ import Box from '@cloudscape-design/components/box';
 import Spinner from '@cloudscape-design/components/spinner';
 import TokenGroup from '@cloudscape-design/components/token-group';
 import StatusIndicator from '@cloudscape-design/components/status-indicator';
+import Icon from '@cloudscape-design/components/icon';
+
 
 // Reusable tag list editor: type in the input, press Enter to add, click X to remove
 function TagListEditor({ items, onChange, placeholder }) {
@@ -611,17 +613,13 @@ function ModelsPanel({ api }) {
   // Build Ollama model options
   const installedNames = new Set(ollamaModels.map(m => m.name));
   const knownOllamaModels = [
-    { value: 'qwen3:8b', label: 'Qwen3 8B — rapide, bon français, outils' },
-    { value: 'qwen3:4b', label: 'Qwen3 4B — très rapide, qualité OK' },
-    { value: 'qwen3:14b', label: 'Qwen3 14B — meilleur raisonnement, lent' },
-    { value: 'phi4-mini', label: 'Phi-4 Mini — instruction following, proactif' },
-    { value: 'nemotron-mini', label: 'Nemotron Mini (NVIDIA) — rapide, résumés' },
+    { value: 'qwen3:8b', label: 'Qwen3 8B — principal, outils, français' },
+    { value: 'phi4-mini', label: 'Phi-4 Mini — proactif, SKIP logic' },
+    { value: 'nemotron-mini', label: 'Nemotron Mini — résumés rapides' },
     { value: 'qwen2.5vl:7b', label: 'Qwen2.5-VL 7B — vision, multimodal' },
-    { value: 'gemma4:e2b', label: 'Gemma 4 E2B — vision (ancien)' },
-    { value: 'gemma4', label: 'Gemma 4 12B — bon raisonnement, lent' },
-    { value: 'mistral', label: 'Mistral 7B — léger, français moyen' },
-    { value: 'llama3.1:8b', label: 'Llama 3.1 8B — polyvalent' },
-    { value: 'deepseek-r1:8b', label: 'DeepSeek R1 8B — raisonnement profond' },
+    { value: 'gemma4:e2b', label: 'Gemma 4 E2B — vision' },
+    { value: 'qwen3', label: 'Qwen3 (sans tag) — dream engine' },
+    { value: 'nomic-embed-text', label: 'Nomic Embed Text — embeddings RAG' },
   ];
   const ollamaOptions = knownOllamaModels.map(m => ({
     value: m.value,
@@ -887,31 +885,31 @@ function ModelsPanel({ api }) {
   );
 }
 
-function RoutingPanel({ api }) {
+function RoutingPanel({ api, configFile }) {
   const [yaml, setYaml] = useState('');
   const [parsed, setParsed] = useState({ routes: [], defaultModel: 'qwen3:8b' });
   const [alert, setAlert] = useState(null);
 
   const modelOptions = [
-    { value: 'qwen3:8b', label: 'Qwen3 8B (local, rapide)' },
-    { value: 'qwen3:4b', label: 'Qwen3 4B (très rapide)' },
-    { value: 'qwen3:14b', label: 'Qwen3 14B (meilleur raisonnement)' },
-    { value: 'claude', label: 'Claude (API, escalation)' },
+    { value: 'qwen3:8b', label: 'Qwen3 8B (principal, outils, français)' },
+    { value: 'phi4-mini', label: 'Phi-4 Mini (proactif, SKIP logic)' },
+    { value: 'nemotron-mini', label: 'Nemotron Mini (résumés rapides)' },
     { value: 'qwen2.5vl:7b', label: 'Qwen2.5-VL 7B (vision)' },
-    { value: 'gemma4:e2b', label: 'Gemma 4 E2B (vision ancien)' },
-    { value: 'gemma4', label: 'Gemma 4 12B' },
-    { value: 'mistral', label: 'Mistral 7B' },
+    { value: 'gemma4:e2b', label: 'Gemma 4 E2B (vision)' },
+    { value: 'claude', label: 'Claude (escalation API)' },
   ];
   const findModel = (val) => modelOptions.find(o => o.value === val) || { value: val, label: val };
 
+  const file = configFile || 'config/routing.yaml';
+
   const load = useCallback(async () => {
     try {
-      const res = await fetch(api + '/api/config?file=config/routing.yaml');
+      const res = await fetch(api + '/api/config?file=' + file);
       const data = await res.json();
       setYaml(data.content || '');
       setParsed(parseRoutingYaml(data.content || ''));
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
-  }, [api]);
+  }, [api, file]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -935,12 +933,14 @@ function RoutingPanel({ api }) {
     try {
       const res = await fetch(api + '/api/config', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file: 'config/routing.yaml', content: yaml }),
+        body: JSON.stringify({ file: file, content: yaml }),
       });
       const data = await res.json();
       if (data.saved) {
         await fetch(api + '/api/reload', { method: 'POST' });
-        setAlert({ type: 'success', text: 'Routing sauvegardé et rechargé' });
+        setAlert({ type: 'success', text: 'Routage sauvegardé et rechargé (' + file.split('/').pop() + ')' });
+      } else {
+        setAlert({ type: 'error', text: data.error || 'Erreur' });
       }
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
@@ -1008,19 +1008,21 @@ function RoutingPanel({ api }) {
   );
 }
 
-function ProactivePanel({ api }) {
+function ProactivePanel({ api, configFile }) {
   const [yaml, setYaml] = useState('');
   const [parsed, setParsed] = useState({ routing: {}, actions: [], behavior: { max_notifications_per_hour: 4, min_interval_minutes: 10 } });
   const [alert, setAlert] = useState(null);
 
+  const file = configFile || 'config/proactive.yaml';
+
   const load = useCallback(async () => {
     try {
-      const res = await fetch(api + '/api/config?file=config/proactive.yaml');
+      const res = await fetch(api + '/api/config?file=' + file);
       const data = await res.json();
       setYaml(data.content || '');
       setParsed(parseProactiveYaml(data.content || ''));
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
-  }, [api]);
+  }, [api, file]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -1038,10 +1040,10 @@ function ProactivePanel({ api }) {
     try {
       const res = await fetch(api + '/api/config', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ file: 'config/proactive.yaml', content: yaml }),
+        body: JSON.stringify({ file: file, content: yaml }),
       });
       const data = await res.json();
-      setAlert({ type: data.saved ? 'success' : 'error', text: data.saved ? 'Actions proactives sauvegardées' : data.error });
+      setAlert({ type: data.saved ? 'success' : 'error', text: data.saved ? 'Actions proactives sauvegardées (' + file.split('/').pop() + ')' : data.error });
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
 
@@ -1055,12 +1057,28 @@ function ProactivePanel({ api }) {
     updateFromForm({ ...parsed, actions: parsed.actions.filter((_, i) => i !== idx) });
   };
 
+  const addAction = () => {
+    const newAction = {
+      name: 'new-action-' + (parsed.actions.length + 1),
+      description: '',
+      interval_minutes: 60,
+      model: 'qwen3:8b',
+      priority: 'medium',
+      day_of_week: '',
+      active_hours: [],
+      notify_condition: 'not_skip',
+      prompt: '',
+      enabled: true,
+    };
+    updateFromForm({ ...parsed, actions: [...parsed.actions, newAction] });
+  };
+
   const ICONS = { 'breaking-news': '🌍', 'weather-alert': '🌪️', 'home-maintenance-check': '🔧', 'email-digest': '📬', 'friday-movies': '🎬', 'weekend-activities': '🎯' };
   const proactiveModelOptions = [
-    { value: 'qwen3:8b', label: 'Qwen3 8B' },
-    { value: 'claude', label: 'Claude' },
-    { value: 'gemma4:e2b', label: 'Gemma 4 E2B' },
-    { value: 'mistral', label: 'Mistral 7B' },
+    { value: 'qwen3:8b', label: 'Qwen3 8B (principal)' },
+    { value: 'phi4-mini', label: 'Phi-4 Mini (SKIP logic)' },
+    { value: 'nemotron-mini', label: 'Nemotron Mini (résumés)' },
+    { value: 'claude', label: 'Claude (escalation)' },
   ];
   const findPModel = (val) => proactiveModelOptions.find(o => o.value === val) || { value: val, label: val };
 
@@ -1069,7 +1087,9 @@ function ProactivePanel({ api }) {
       {alert && <Alert type={alert.type} dismissible onDismiss={() => setAlert(null)}>{alert.text}</Alert>}
       <ColumnLayout columns={2}>
         <SpaceBetween size="m">
-          <Container header={<Header variant="h3">Actions proactives</Header>}>
+          <Container header={<Header variant="h3" actions={
+            <Button iconName="add-plus" onClick={addAction}>Ajouter une action</Button>
+          }>Actions proactives</Header>}>
             <SpaceBetween size="m">
               {parsed.actions.map((a, i) => (
                 <Container key={i} header={
@@ -1172,6 +1192,354 @@ function AgentPromptPanel({ api }) {
   );
 }
 
+// --- Hotel Rooms CRUD Panel ---
+function HotelRoomsPanel({ api, onAlert }) {
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [assigningRoom, setAssigningRoom] = useState(null);
+  const [formName, setFormName] = useState('');
+  const [formEmail, setFormEmail] = useState('');
+  const [formLang, setFormLang] = useState('auto');
+  const [formCheckIn, setFormCheckIn] = useState('');
+  const [formCheckOut, setFormCheckOut] = useState('');
+  const [sendEmail, setSendEmail] = useState(true);
+  const [showEnrollForm, setShowEnrollForm] = useState(false);
+  const [enrollRoom, setEnrollRoom] = useState('');
+  const [wifiName, setWifiName] = useState('');
+  const [wifiPass, setWifiPass] = useState('');
+  const [hotelRules, setHotelRules] = useState('');
+  const [hotelEmergency, setHotelEmergency] = useState('');
+  const [hotelPropertyDesc, setHotelPropertyDesc] = useState('');
+  const [hotelCheckoutTime, setHotelCheckoutTime] = useState('11:00');
+  const [infoDirty, setInfoDirty] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [newRoomFloor, setNewRoomFloor] = useState('upper');
+  const [floors, setFloors] = useState([]);
+
+  const loadRooms = useCallback(() => {
+    setLoading(true);
+    Promise.all([
+      fetch(api + '/api/hospitality/hotel/rooms').then(r => r.ok ? r.json() : { rooms: [] }).catch(() => ({ rooms: [] })),
+      fetch(api + '/api/config?file=config/hospitality.yaml').then(r => r.ok ? r.json() : { content: '' }).catch(() => ({ content: '' })),
+    ]).then(([roomData, yamlData]) => {
+      setRooms(roomData.rooms || []);
+      setFloors(roomData.floors || [{ id: 'ground', name: 'Rez-de-chaussée' }, { id: 'upper', name: 'Étage' }]);
+      const text = yamlData.content || '';
+      // Parse shared guest_info section
+      const guestInfoMatch = text.match(/guest_info:\s*\n([\s\S]*?)(?=\n\S|\n*$)/);
+      const infoText = guestInfoMatch ? guestInfoMatch[1] : '';
+      setWifiName((infoText.match(/wifi_name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      setWifiPass((infoText.match(/wifi_password:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      const rulesMatch = infoText.match(/rules:\s*\|\s*\n((?:\s+.*\n)*)/);
+      setHotelRules(rulesMatch ? rulesMatch[1].replace(/^\s{4}/gm, '').trim() : '');
+      const emergMatch = infoText.match(/emergency_contacts:\s*\|\s*\n((?:\s+.*\n)*)/);
+      setHotelEmergency(emergMatch ? emergMatch[1].replace(/^\s{4}/gm, '').trim() : '');
+      const descMatch = infoText.match(/property_description:\s*\|\s*\n((?:\s+.*\n)*)/);
+      setHotelPropertyDesc(descMatch ? descMatch[1].replace(/^\s{4}/gm, '').trim() : '');
+      setHotelCheckoutTime((infoText.match(/checkout_time:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '11:00');
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [api]);
+
+  useEffect(() => { loadRooms(); }, [loadRooms]);
+
+  const resetForm = () => {
+    setFormName(''); setFormEmail(''); setFormLang('auto'); setFormCheckIn(''); setFormCheckOut('');
+    setAssigningRoom(null); setShowEnrollForm(false); setEnrollRoom('');
+  };
+
+  const assignGuest = async (roomId) => {
+    if (!formName.trim()) { onAlert({ type: 'error', text: 'Le nom de l\'invité est requis' }); return; }
+    try {
+      const res = await fetch(api + '/api/hospitality/hotel/guests', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roomId,
+          guest: { name: formName, email: formEmail, language: formLang, checkIn: formCheckIn || new Date().toISOString().slice(0, 10), checkOut: formCheckOut },
+          sendEmail: sendEmail && !!formEmail,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const emailMsg = data.emailSent ? ' — email envoyé' : '';
+        onAlert({ type: 'success', text: formName + ' enregistré dans ' + (rooms.find(r => r.id === roomId)?.name || roomId) + emailMsg });
+        resetForm();
+        loadRooms();
+      } else {
+        onAlert({ type: 'error', text: data.error || 'Erreur' });
+      }
+    } catch (err) { onAlert({ type: 'error', text: err.message }); }
+  };
+
+  const checkoutGuest = async (roomId, guestName) => {
+    try {
+      const res = await fetch(api + '/api/hospitality/hotel/guests/' + roomId, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        onAlert({ type: 'success', text: guestName + ' — checkout complété' });
+        loadRooms();
+      } else {
+        onAlert({ type: 'error', text: data.error || 'Erreur' });
+      }
+    } catch (err) { onAlert({ type: 'error', text: err.message }); }
+  };
+
+  const saveHotelInfo = async () => {
+    try {
+      const res = await fetch(api + '/api/hospitality/config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wifiName, wifiPass, rules: hotelRules, emergency: hotelEmergency, propertyDescription: hotelPropertyDesc, checkoutTime: hotelCheckoutTime }),
+      });
+      const data = await res.json();
+      if (data.saved) { onAlert({ type: 'success', text: 'Infos sauvegardées' }); setInfoDirty(false); }
+      else onAlert({ type: 'error', text: data.error || 'Erreur' });
+    } catch (err) { onAlert({ type: 'error', text: err.message }); }
+  };
+
+  const addRoom = async () => {
+    if (!newRoomName.trim()) return;
+    try {
+      const res = await fetch(api + '/api/hospitality/hotel/rooms', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newRoomName, floor: newRoomFloor }),
+      });
+      if (!res.ok) { onAlert({ type: 'error', text: 'Erreur serveur (' + res.status + '). Redémarrez l\'agent pour activer les nouvelles routes.' }); return; }
+      const data = await res.json();
+      if (data.success) {
+        onAlert({ type: 'success', text: 'Chambre ajoutée: ' + data.name + ' (ID: ' + data.id + ')' });
+        setNewRoomName('');
+        loadRooms();
+      } else {
+        onAlert({ type: 'error', text: data.error || 'Erreur' });
+      }
+    } catch (err) { onAlert({ type: 'error', text: 'Erreur: ' + err.message + '. Redémarrez l\'agent si le problème persiste.' }); }
+  };
+
+  const removeRoom = async (roomId) => {
+    try {
+      const res = await fetch(api + '/api/hospitality/hotel/rooms/' + roomId, { method: 'DELETE' });
+      if (!res.ok) { onAlert({ type: 'error', text: 'Erreur serveur (' + res.status + ')' }); return; }
+      const data = await res.json();
+      if (data.success) {
+        onAlert({ type: 'success', text: 'Chambre supprimée' });
+        loadRooms();
+      } else {
+        onAlert({ type: 'error', text: data.error || 'Erreur' });
+      }
+    } catch (err) { onAlert({ type: 'error', text: err.message }); }
+  };
+
+  const langOptions = [
+    { value: 'auto', label: 'Auto-détection' }, { value: 'fr', label: 'Français' },
+    { value: 'en', label: 'English' }, { value: 'es', label: 'Español' },
+    { value: 'de', label: 'Deutsch' }, { value: 'ja', label: '日本語' },
+    { value: 'zh', label: '中文' }, { value: 'pt', label: 'Português' }, { value: 'ar', label: 'العربية' },
+  ];
+
+  if (loading) return <Spinner size="large" />;
+
+  const occupied = rooms.filter(r => r.guest).length;
+  const vacantRooms = rooms.filter(r => !r.guest);
+
+  const nightsLeft = (checkOut) => {
+    if (!checkOut) return null;
+    const diff = Math.ceil((new Date(checkOut) - new Date()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
+
+  const enrollmentForm = (targetRoomId) => (
+    <Container header={<Header variant="h4"><Icon name="user-profile" /> Enregistrer un invité</Header>}>
+      <SpaceBetween size="s">
+        {!targetRoomId && (
+          <FormField label="Chambre" description="Sélectionnez la chambre à attribuer">
+            <Select
+              selectedOption={vacantRooms.find(r => r.id === enrollRoom) ? { value: enrollRoom, label: rooms.find(r => r.id === enrollRoom)?.name } : null}
+              onChange={({ detail }) => setEnrollRoom(detail.selectedOption.value)}
+              options={vacantRooms.map(r => ({ value: r.id, label: r.name + ' (' + r.floor + ')' }))}
+              placeholder="Choisir une chambre disponible"
+            />
+          </FormField>
+        )}
+        <ColumnLayout columns={2}>
+          <FormField label="Nom complet" description="L'invité utilisera ce nom pour se connecter au portail">
+            <Input value={formName} onChange={({ detail }) => setFormName(detail.value)} placeholder="Marie Dupont" />
+          </FormField>
+          <FormField label="Email" description="Pour envoyer les infos d'accès automatiquement">
+            <Input value={formEmail} onChange={({ detail }) => setFormEmail(detail.value)} placeholder="invité@email.com" type="email" />
+          </FormField>
+        </ColumnLayout>
+        <ColumnLayout columns={3}>
+          <FormField label="Langue">
+            <Select selectedOption={langOptions.find(o => o.value === formLang)} onChange={({ detail }) => setFormLang(detail.selectedOption.value)} options={langOptions} />
+          </FormField>
+          <FormField label="Arrivée">
+            <Input type="date" value={formCheckIn} onChange={({ detail }) => setFormCheckIn(detail.value)} />
+          </FormField>
+          <FormField label="Départ">
+            <Input type="date" value={formCheckOut} onChange={({ detail }) => setFormCheckOut(detail.value)} />
+          </FormField>
+        </ColumnLayout>
+        <Toggle checked={sendEmail} onChange={({ detail }) => setSendEmail(detail.checked)}>
+          Envoyer un email de bienvenue (portail, WiFi, infos chambre)
+        </Toggle>
+        <Alert type="info">
+          L'invité pourra se connecter au portail (port 3082) avec son <strong>nom</strong> et le <strong>nom de la chambre</strong>. L'email contiendra toutes les infos nécessaires.
+        </Alert>
+        <SpaceBetween direction="horizontal" size="xs">
+          <Button variant="primary" onClick={() => assignGuest(targetRoomId || enrollRoom)} iconName="check"
+            disabled={!formName.trim() || (!targetRoomId && !enrollRoom)}>
+            Confirmer le check-in
+          </Button>
+          <Button variant="link" onClick={resetForm}>Annuler</Button>
+        </SpaceBetween>
+      </SpaceBetween>
+    </Container>
+  );
+
+  return (
+    <SpaceBetween size="m">
+      {/* Occupancy + enroll */}
+      <Container header={
+        <Header variant="h3" counter={'(' + occupied + '/' + rooms.length + ')'} actions={
+          !showEnrollForm ? (
+            <Button variant="primary" iconName="add-plus" disabled={vacantRooms.length === 0} onClick={() => { setShowEnrollForm(true); setFormCheckIn(new Date().toISOString().slice(0, 10)); }}>
+              Enregistrer un invité
+            </Button>
+          ) : null
+        }>
+          Chambres
+        </Header>
+      }>
+        <SpaceBetween size="m">
+          <div style={{ display: 'flex', gap: '4px', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
+            {rooms.map(room => (
+              <div key={room.id} style={{ flex: 1, background: room.guest ? '#0972d3' : '#e9ebed', borderRadius: '2px' }} title={room.name + (room.guest ? ' — ' + room.guest.name : ' — vacante')} />
+            ))}
+          </div>
+          {showEnrollForm && enrollmentForm(null)}
+        </SpaceBetween>
+      </Container>
+
+      {/* Room cards */}
+      <ColumnLayout columns={rooms.length > 2 ? 3 : rooms.length}>
+        {rooms.map(room => {
+          const nights = room.guest ? nightsLeft(room.guest.checkOut) : null;
+          return (
+            <Container key={room.id} header={
+              <Header variant="h4" actions={
+                room.guest ? (
+                  <Button onClick={() => checkoutGuest(room.id, room.guest.name)} variant="normal" iconName="remove">Checkout</Button>
+                ) : (
+                  <Button onClick={() => { setAssigningRoom(assigningRoom === room.id ? null : room.id); setShowEnrollForm(false); setFormCheckIn(new Date().toISOString().slice(0, 10)); }} iconName="add-plus" variant="primary">Check-in</Button>
+                )
+              }>
+                <StatusIndicator type={room.guest ? 'success' : 'stopped'}>{room.name}</StatusIndicator>
+              </Header>
+            }>
+              <SpaceBetween size="xs">
+                <SpaceBetween direction="horizontal" size="xs">
+                  <Box variant="small" color="text-body-secondary"><Icon name="status-info" /> {floors.find(f => f.id === room.floor)?.name || room.floor}</Box>
+                  {room.devices.length > 0 && <Box variant="small" color="text-body-secondary"><Icon name="audio-full" /> {room.devices.join(', ')}</Box>}
+                </SpaceBetween>
+                {room.amenities.length > 0 && (
+                  <Box variant="small" color="text-body-secondary">{room.amenities.join(' · ')}</Box>
+                )}
+                {room.guest ? (
+                  <Container>
+                    <SpaceBetween size="xxs">
+                      <SpaceBetween direction="horizontal" size="xs">
+                        <Icon name="user-profile" />
+                        <Box fontWeight="bold">{room.guest.name}</Box>
+                        {nights !== null && (
+                          <StatusIndicator type={nights <= 1 ? 'warning' : 'info'}>
+                            {nights === 0 ? 'Checkout aujourd\'hui' : nights + ' nuit' + (nights > 1 ? 's' : '')}
+                          </StatusIndicator>
+                        )}
+                      </SpaceBetween>
+                      <Box variant="small" color="text-body-secondary">
+                        {langOptions.find(o => o.value === room.guest.language)?.label || room.guest.language} · {room.guest.checkIn} → {room.guest.checkOut || '—'}
+                      </Box>
+                    </SpaceBetween>
+                  </Container>
+                ) : (
+                  <Box textAlign="center" padding="m">
+                    <StatusIndicator type="stopped">Libre</StatusIndicator>
+                  </Box>
+                )}
+                {assigningRoom === room.id && enrollmentForm(room.id)}
+              </SpaceBetween>
+            </Container>
+          );
+        })}
+      </ColumnLayout>
+
+      {/* Add/remove rooms */}
+      <Container header={<Header variant="h3">Gérer les chambres</Header>}>
+        <SpaceBetween size="m">
+          <Alert type="info">
+            Ajoutez ou supprimez des chambres. Un identifiant unique est généré automatiquement à partir du nom.
+          </Alert>
+          <ColumnLayout columns={3}>
+            <FormField label="Nom de la chambre">
+              <Input value={newRoomName} onChange={({ detail }) => setNewRoomName(detail.value)} placeholder="Chambre Rose" />
+            </FormField>
+            <FormField label="Étage">
+              <Select selectedOption={floors.find(f => f.id === newRoomFloor) ? { value: newRoomFloor, label: floors.find(f => f.id === newRoomFloor)?.name } : { value: newRoomFloor, label: newRoomFloor }}
+                onChange={({ detail }) => setNewRoomFloor(detail.selectedOption.value)}
+                options={floors.map(f => ({ value: f.id, label: f.name }))} />
+            </FormField>
+            <FormField label="Action">
+              <Button variant="primary" iconName="add-plus" onClick={addRoom} disabled={!newRoomName.trim()}>
+                Ajouter
+              </Button>
+            </FormField>
+          </ColumnLayout>
+          {rooms.length > 0 && (
+            <SpaceBetween size="xs">
+              <Box variant="awsui-key-label">Chambres existantes (cliquez pour supprimer)</Box>
+              {rooms.map(r => (
+                <SpaceBetween key={r.id} direction="horizontal" size="xs">
+                  <Box variant="small"><strong>{r.name}</strong> (ID: {r.id}) — {r.floor}</Box>
+                  {!r.guest && <Button variant="icon" iconName="remove" onClick={() => removeRoom(r.id)} />}
+                  {r.guest && <Box variant="small" color="text-body-secondary">occupée</Box>}
+                </SpaceBetween>
+              ))}
+            </SpaceBetween>
+          )}
+        </SpaceBetween>
+      </Container>
+
+      {/* Hotel info for invités */}
+      <Container header={<Header variant="h3" actions={
+        infoDirty ? <Button variant="primary" onClick={saveHotelInfo} iconName="upload">Sauvegarder</Button> : null
+      }>Infos pour les invités</Header>}>
+        <SpaceBetween size="m">
+          <ColumnLayout columns={2}>
+            <FormField label="WiFi — Réseau">
+              <Input value={wifiName} onChange={({ detail }) => { setWifiName(detail.value); setInfoDirty(true); }} placeholder="MonWiFi" />
+            </FormField>
+            <FormField label="WiFi — Mot de passe">
+              <Input value={wifiPass} onChange={({ detail }) => { setWifiPass(detail.value); setInfoDirty(true); }} placeholder="MotDePasse123" />
+            </FormField>
+          </ColumnLayout>
+          <FormField label="Description de la propriété">
+            <Textarea value={hotelPropertyDesc} onChange={({ detail }) => { setHotelPropertyDesc(detail.value); setInfoDirty(true); }} rows={3} placeholder="Bienvenue dans notre maison..." />
+          </FormField>
+          <FormField label="Règles de la maison">
+            <Textarea value={hotelRules} onChange={({ detail }) => { setHotelRules(detail.value); setInfoDirty(true); }} rows={3} placeholder="- Silence après 22h&#10;- Petit-déjeuner 7h-9h" />
+          </FormField>
+          <FormField label="Contacts d'urgence">
+            <Textarea value={hotelEmergency} onChange={({ detail }) => { setHotelEmergency(detail.value); setInfoDirty(true); }} rows={2} placeholder="Urgences: 911&#10;Hôte: 514-xxx-xxxx" />
+          </FormField>
+          <FormField label="Heure de checkout">
+            <Input value={hotelCheckoutTime} onChange={({ detail }) => { setHotelCheckoutTime(detail.value); setInfoDirty(true); }} placeholder="11:00" />
+          </FormField>
+        </SpaceBetween>
+      </Container>
+    </SpaceBetween>
+  );
+}
+
 function HospitalityPanel({ api }) {
   const [status, setStatus] = useState(null);
   const [alert, setAlert] = useState(null);
@@ -1186,31 +1554,36 @@ function HospitalityPanel({ api }) {
   const [wifiPass, setWifiPass] = useState('');
   const [rules, setRules] = useState('');
   const [emergency, setEmergency] = useState('');
-  const [localInfo, setLocalInfo] = useState('');
+  const [propertyDesc, setPropertyDesc] = useState('');
+  const [checkoutTime, setCheckoutTime] = useState('11:00');
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
     Promise.all([
-      fetch(api + '/api/hospitality').then(r => r.json()),
-      fetch(api + '/api/config?file=config/hospitality.yaml').then(r => r.json()).catch(() => ({ content: '' })),
+      fetch(api + '/api/hospitality').then(r => r.ok ? r.json() : { mode: 'residence' }).catch(() => ({ mode: 'residence' })),
+      fetch(api + '/api/config?file=config/hospitality.yaml').then(r => r.ok ? r.json() : { content: '' }).catch(() => ({ content: '' })),
     ]).then(([hospData, yamlData]) => {
       setStatus(hospData);
       setYaml(yamlData.content || '');
-      // Parse guest details from YAML
       const text = yamlData.content || '';
       setGuestName((text.match(/guest:\s*\n\s+name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
       setGuestEmail((text.match(/email:\s*"?([^"\n]*@[^"\n]*)"?/) || [])[1]?.trim() || '');
       setGuestLang((text.match(/language:\s*(\S+)/) || [])[1] || 'auto');
       setCheckIn((text.match(/check_in:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
       setCheckOut((text.match(/check_out:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
-      setWifiName((text.match(/wifi_name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
-      setWifiPass((text.match(/wifi_password:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
-      const rulesMatch = text.match(/rules:\s*\|\s*\n((?:\s+.*\n)*)/);
-      if (rulesMatch) setRules(rulesMatch[1].replace(/^\s{4,}/gm, '').trim());
-      const emergMatch = text.match(/emergency_contacts:\s*\|\s*\n((?:\s+.*\n)*)/);
-      if (emergMatch) setEmergency(emergMatch[1].replace(/^\s{4,}/gm, '').trim());
-      const localMatch = text.match(/local_info:\s*\|\s*\n((?:\s+.*\n)*)/);
-      if (localMatch) setLocalInfo(localMatch[1].replace(/^\s{4,}/gm, '').trim());
+      // Parse shared guest_info section
+      const guestInfoMatch = text.match(/guest_info:\s*\n([\s\S]*?)(?=\n\S|\n*$)/);
+      const infoText = guestInfoMatch ? guestInfoMatch[1] : '';
+      setWifiName((infoText.match(/wifi_name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      setWifiPass((infoText.match(/wifi_password:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '');
+      const rulesMatch = infoText.match(/rules:\s*\|\s*\n((?:\s+.*\n)*)/);
+      if (rulesMatch) setRules(rulesMatch[1].replace(/^\s{4}/gm, '').trim());
+      const emergMatch = infoText.match(/emergency_contacts:\s*\|\s*\n((?:\s+.*\n)*)/);
+      if (emergMatch) setEmergency(emergMatch[1].replace(/^\s{4}/gm, '').trim());
+      const descMatch = infoText.match(/property_description:\s*\|\s*\n((?:\s+.*\n)*)/);
+      if (descMatch) setPropertyDesc(descMatch[1].replace(/^\s{4}/gm, '').trim());
+      setCheckoutTime((infoText.match(/checkout_time:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '11:00');
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [api]);
@@ -1224,10 +1597,8 @@ function HospitalityPanel({ api }) {
         body: JSON.stringify({ mode }),
       });
       const data = await res.json();
-      if (data.success) {
-        setAlert({ type: 'success', text: 'Mode changé: ' + mode });
-        load();
-      } else setAlert({ type: 'error', text: 'Erreur' });
+      if (data.success) { setAlert({ type: 'success', text: 'Mode changé: ' + mode }); load(); }
+      else setAlert({ type: 'error', text: 'Erreur' });
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
 
@@ -1235,26 +1606,52 @@ function HospitalityPanel({ api }) {
     try {
       const res = await fetch(api + '/api/hospitality/guest-code', { method: 'POST' });
       const data = await res.json();
-      setAlert({ type: 'success', text: 'Code généré: ' + data.code + ' — à envoyer au guest' });
+      setAlert({ type: 'success', text: 'Code: ' + data.code });
       load();
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  const sendCodeEmail = async () => {
+    setSendingEmail(true);
+    try {
+      const res = await fetch(api + '/api/hospitality/send-code-email', { method: 'POST' });
+      const data = await res.json();
+      if (data.sent) setAlert({ type: 'success', text: 'Email envoyé à ' + (guestEmail || 'invité') });
+      else setAlert({ type: 'error', text: data.error || 'Échec de l\'envoi' });
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+    setSendingEmail(false);
   };
 
   const revoke = async () => {
     try {
       await fetch(api + '/api/hospitality/revoke', { method: 'POST' });
-      setAlert({ type: 'success', text: 'Accès guest révoqué' });
+      setAlert({ type: 'success', text: 'Accès invité révoqué' });
       load();
+    } catch (err) { setAlert({ type: 'error', text: err.message }); }
+  };
+
+  const saveAirbnbConfig = async () => {
+    try {
+      const res = await fetch(api + '/api/hospitality/config', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guestName, guestEmail, guestLang, checkIn, checkOut, wifiName, wifiPass, rules, emergency, propertyDescription: propertyDesc, checkoutTime }),
+      });
+      const data = await res.json();
+      if (data.saved) setAlert({ type: 'success', text: 'Configuration sauvegardée' });
+      else setAlert({ type: 'error', text: data.error || 'Erreur' });
     } catch (err) { setAlert({ type: 'error', text: err.message }); }
   };
 
   if (loading) return <Spinner size="large" />;
 
   const modeOptions = [
-    { value: 'residence', label: '🏠 Résidence — mode famille (défaut)' },
-    { value: 'airbnb', label: '🏡 Airbnb — location courte durée' },
-    { value: 'hotel', label: '🏨 Hôtel — chambres individuelles' },
+    { value: 'residence', label: 'Résidence — mode famille (défaut)' },
+    { value: 'airbnb', label: 'Airbnb — location courte durée' },
+    { value: 'hotel', label: 'Hôtel — chambres individuelles' },
   ];
+
+  const stayDays = (checkIn && checkOut) ? Math.ceil((new Date(checkOut) - new Date(checkIn)) / (1000 * 60 * 60 * 24)) : null;
+  const daysUntilCheckout = checkOut ? Math.ceil((new Date(checkOut) - new Date()) / (1000 * 60 * 60 * 24)) : null;
 
   return (
     <SpaceBetween size="l">
@@ -1262,100 +1659,116 @@ function HospitalityPanel({ api }) {
 
       <Container header={<Header variant="h3">Mode d'exploitation</Header>}>
         <SpaceBetween size="m">
-          <Alert type="info">
-            Change le mode de fonctionnement de Vertex Nova. En mode Airbnb ou Hôtel, un portail guest séparé est activé sur un port dédié. Le Dream Engine est désactivé en mode hospitalité.
-          </Alert>
           <Select
             selectedOption={modeOptions.find(o => o.value === (status?.mode || 'residence'))}
             onChange={({ detail }) => setMode(detail.selectedOption.value)}
             options={modeOptions}
           />
-          {status?.mode === 'airbnb' && (
-            <Box>
-              <Box variant="awsui-key-label">Portail guest</Box>
-              <Box>Port 3081 — <a href={'https://' + window.location.hostname + ':3081'} target="_blank" rel="noreferrer">Ouvrir</a></Box>
-            </Box>
-          )}
-          {status?.mode === 'hotel' && (
-            <Box>
-              <Box variant="awsui-key-label">Portail guest</Box>
-              <Box>Port 3082 — <a href={'https://' + window.location.hostname + ':3082'} target="_blank" rel="noreferrer">Ouvrir</a></Box>
-            </Box>
+          {status?.mode !== 'residence' && (
+            <Alert type="info">
+              Portail invité actif — <a href={'https://' + window.location.hostname + ':' + (status?.mode === 'airbnb' ? '3081' : '3082')} target="_blank" rel="noreferrer">
+                https://{window.location.hostname}:{status?.mode === 'airbnb' ? '3081' : '3082'}
+              </a> — Dream Engine désactivé
+            </Alert>
           )}
         </SpaceBetween>
       </Container>
 
       {status?.mode === 'airbnb' && (
-        <Container header={<Header variant="h3">Guest Airbnb</Header>}>
-          <SpaceBetween size="m">
-            <ColumnLayout columns={3}>
-              <FormField label="Nom du guest">
-                <Input value={guestName} onChange={({ detail }) => setGuestName(detail.value)} placeholder="John Smith" />
-              </FormField>
-              <FormField label="Email">
-                <Input value={guestEmail} onChange={({ detail }) => setGuestEmail(detail.value)} placeholder="guest@email.com" />
-              </FormField>
-              <FormField label="Langue">
-                <Select selectedOption={{ value: guestLang, label: guestLang }} onChange={({ detail }) => setGuestLang(detail.selectedOption.value)}
-                  options={[{ value: 'auto', label: 'Auto-détection' }, { value: 'fr', label: 'Français' }, { value: 'en', label: 'English' }, { value: 'es', label: 'Español' }, { value: 'de', label: 'Deutsch' }, { value: 'ja', label: '日本語' }, { value: 'zh', label: '中文' }, { value: 'pt', label: 'Português' }, { value: 'ar', label: 'العربية' }]} />
-              </FormField>
-            </ColumnLayout>
-            <ColumnLayout columns={2}>
-              <FormField label="Check-in">
-                <Input type="date" value={checkIn} onChange={({ detail }) => setCheckIn(detail.value)} />
-              </FormField>
-              <FormField label="Check-out">
-                <Input type="date" value={checkOut} onChange={({ detail }) => setCheckOut(detail.value)} />
-              </FormField>
-            </ColumnLayout>
-            <ColumnLayout columns={2}>
-              <FormField label="WiFi — Nom du réseau">
-                <Input value={wifiName} onChange={({ detail }) => setWifiName(detail.value)} placeholder="MonWiFi" />
-              </FormField>
-              <FormField label="WiFi — Mot de passe">
-                <Input value={wifiPass} onChange={({ detail }) => setWifiPass(detail.value)} placeholder="MotDePasse123" />
-              </FormField>
-            </ColumnLayout>
-            <FormField label="Règles de la maison">
-              <Textarea value={rules} onChange={({ detail }) => setRules(detail.value)} rows={3} placeholder="- Pas de fête&#10;- Silence après 22h" />
-            </FormField>
-            <FormField label="Contacts d'urgence">
-              <Textarea value={emergency} onChange={({ detail }) => setEmergency(detail.value)} rows={2} placeholder="Urgences: 911&#10;Hôte: 514-xxx-xxxx" />
-            </FormField>
-            <FormField label="Infos locales" description="Restaurants, transport, activités — ou cliquez Générer pour auto-remplir via l'IA">
-              <SpaceBetween size="xs">
-                <Textarea value={localInfo} onChange={({ detail }) => setLocalInfo(detail.value)} rows={3} placeholder="Restaurants, transport, activités..." />
-                <Button onClick={async () => {
-                  setAlert({ type: 'info', text: 'Génération des infos locales en cours...' });
-                  try {
-                    const res = await fetch(api + '/api/hospitality/generate-local-info', { method: 'POST' });
-                    const data = await res.json();
-                    if (data.localInfo) { setLocalInfo(data.localInfo); setAlert({ type: 'success', text: 'Infos locales générées!' }); }
-                    else setAlert({ type: 'error', text: data.error || 'Erreur' });
-                  } catch (err) { setAlert({ type: 'error', text: err.message }); }
-                }} iconName="gen-ai">Générer via IA</Button>
-              </SpaceBetween>
-            </FormField>
-            <ColumnLayout columns={2}>
-              <Box>
-                <Box variant="awsui-key-label">Code d'accès</Box>
-                <Box>{status.airbnb?.hasCode ? '✅ Actif' : '❌ Aucun code'}</Box>
-              </Box>
+        <SpaceBetween size="m">
+          <Container header={<Header variant="h3" actions={
+            <Button onClick={saveAirbnbConfig} variant="primary" iconName="upload">Sauvegarder</Button>
+          }>Invité actuel</Header>}>
+            <SpaceBetween size="m">
+              {guestName && (
+                <Container>
+                  <ColumnLayout columns={3}>
+                    <SpaceBetween size="xxs">
+                      <Box variant="awsui-key-label">Nom</Box>
+                      <Box><Icon name="user-profile" /> {guestName}</Box>
+                    </SpaceBetween>
+                    <SpaceBetween size="xxs">
+                      <Box variant="awsui-key-label">Email</Box>
+                      <Box>{guestEmail || '—'}</Box>
+                    </SpaceBetween>
+                    <SpaceBetween size="xxs">
+                      <Box variant="awsui-key-label">Jours restants</Box>
+                      <Box>{daysUntilCheckout !== null ? (
+                        <StatusIndicator type={daysUntilCheckout <= 1 ? 'warning' : 'success'}>
+                          {daysUntilCheckout} jour{daysUntilCheckout !== 1 ? 's' : ''}
+                        </StatusIndicator>
+                      ) : '—'}</Box>
+                    </SpaceBetween>
+                  </ColumnLayout>
+                </Container>
+              )}
+              <ColumnLayout columns={3}>
+                <FormField label="Nom de l'invité">
+                  <Input value={guestName} onChange={({ detail }) => setGuestName(detail.value)} placeholder="John Smith" />
+                </FormField>
+                <FormField label="Email">
+                  <Input value={guestEmail} onChange={({ detail }) => setGuestEmail(detail.value)} placeholder="guest@email.com" type="email" />
+                </FormField>
+                <FormField label="Langue">
+                  <Select selectedOption={{ value: guestLang, label: guestLang }} onChange={({ detail }) => setGuestLang(detail.selectedOption.value)}
+                    options={[{ value: 'auto', label: '🌐 Auto' }, { value: 'fr', label: '🇫🇷 Français' }, { value: 'en', label: '🇬🇧 English' }, { value: 'es', label: '🇪🇸 Español' }, { value: 'de', label: '🇩🇪 Deutsch' }, { value: 'ja', label: '🇯🇵 日本語' }, { value: 'zh', label: '🇨🇳 中文' }, { value: 'pt', label: '🇧🇷 Português' }, { value: 'ar', label: '🇸🇦 العربية' }]} />
+                </FormField>
+              </ColumnLayout>
+              <ColumnLayout columns={2}>
+                <FormField label="Check-in">
+                  <Input type="date" value={checkIn} onChange={({ detail }) => setCheckIn(detail.value)} />
+                </FormField>
+                <FormField label="Check-out">
+                  <Input type="date" value={checkOut} onChange={({ detail }) => setCheckOut(detail.value)} />
+                </FormField>
+              </ColumnLayout>
+            </SpaceBetween>
+          </Container>
+
+          <Container header={<Header variant="h3">Accès au portail</Header>}>
+            <SpaceBetween size="m">
+              <StatusIndicator type={status.airbnb?.hasCode ? 'success' : 'warning'}>
+                {status.airbnb?.hasCode ? 'Code actif — l\'invité peut se connecter' : 'Aucun code généré'}
+              </StatusIndicator>
               <SpaceBetween direction="horizontal" size="xs">
-                <Button onClick={generateCode} iconName="key">Générer un code</Button>
+                <Button onClick={generateCode} iconName="key" variant={status.airbnb?.hasCode ? 'normal' : 'primary'}>{status.airbnb?.hasCode ? 'Régénérer' : 'Générer un code'}</Button>
+                {status.airbnb?.hasCode && guestEmail && (
+                  <Button onClick={sendCodeEmail} loading={sendingEmail} iconName="envelope">Envoyer par email</Button>
+                )}
                 {status.airbnb?.hasCode && <Button onClick={revoke} variant="link">Révoquer</Button>}
               </SpaceBetween>
-            </ColumnLayout>
-          </SpaceBetween>
-        </Container>
+            </SpaceBetween>
+          </Container>
+
+          <Container header={<Header variant="h3">Infos pour l'invité</Header>}>
+            <SpaceBetween size="m">
+              <ColumnLayout columns={2}>
+                <FormField label="WiFi — Réseau">
+                  <Input value={wifiName} onChange={({ detail }) => setWifiName(detail.value)} placeholder="MonWiFi" />
+                </FormField>
+                <FormField label="WiFi — Mot de passe">
+                  <Input value={wifiPass} onChange={({ detail }) => setWifiPass(detail.value)} placeholder="MotDePasse123" />
+                </FormField>
+              </ColumnLayout>
+              <FormField label="Description de la propriété">
+                <Textarea value={propertyDesc} onChange={({ detail }) => setPropertyDesc(detail.value)} rows={3} placeholder="Bienvenue dans notre maison..." />
+              </FormField>
+              <FormField label="Règles de la maison">
+                <Textarea value={rules} onChange={({ detail }) => setRules(detail.value)} rows={3} placeholder="- Pas de fête&#10;- Silence après 22h" />
+              </FormField>
+              <FormField label="Contacts d'urgence">
+                <Textarea value={emergency} onChange={({ detail }) => setEmergency(detail.value)} rows={2} placeholder="Urgences: 911&#10;Hôte: 514-xxx-xxxx" />
+              </FormField>
+              <FormField label="Heure de checkout">
+                <Input value={checkoutTime} onChange={({ detail }) => setCheckoutTime(detail.value)} placeholder="11:00" />
+              </FormField>
+            </SpaceBetween>
+          </Container>
+        </SpaceBetween>
       )}
 
       {status?.mode === 'hotel' && (
-        <Container header={<Header variant="h3">Chambres</Header>}>
-          <Alert type="info">
-            Configurez les chambres et guests dans config/hospitality.yaml. Le panneau visuel avec les cartes de chambres arrive bientôt.
-          </Alert>
-        </Container>
+        <HotelRoomsPanel api={api} onAlert={setAlert} />
       )}
     </SpaceBetween>
   );
@@ -1634,13 +2047,41 @@ function FamilyPanel({ api }) {
 // ============================================================
 
 export default function ConfigPanel({ api }) {
+  const [mode, setMode] = useState(null);
+
+  useEffect(() => {
+    fetch(api + '/api/hospitality').then(r => r.ok ? r.json() : { mode: 'residence' }).then(data => {
+      setMode(data.mode || 'residence');
+    }).catch(() => setMode('residence'));
+  }, [api]);
+
+  if (!mode) return <Spinner size="large" />;
+
+  // Hospitality modes: different tab layout focused on guest management
+  if (mode === 'airbnb' || mode === 'hotel') {
+    return (
+      <SpaceBetween size="s">
+        <Alert type="info">
+          Mode {mode === 'airbnb' ? 'Airbnb' : 'Hôtel'} actif — Dream Engine désactivé — Portail invité sur port {mode === 'airbnb' ? '3081' : '3082'}
+        </Alert>
+        <Tabs tabs={[
+          { id: 'hospitality', label: mode === 'airbnb' ? 'Invité & Accès' : 'Chambres & Invités', content: <HospitalityPanel api={api} /> },
+          { id: 'routing', label: 'Routage (hospitalité)', content: <RoutingPanel api={api} configFile="config/routing-hospitality.yaml" /> },
+          { id: 'proactive', label: 'Actions (hospitalité)', content: <ProactivePanel api={api} configFile="config/proactive-hospitality.yaml" /> },
+          { id: 'models', label: 'Modèles & Appareils', content: <ModelsPanel api={api} /> },
+        ]} />
+      </SpaceBetween>
+    );
+  }
+
+  // Residence mode: full dashboard
   return (
     <Tabs tabs={[
       { id: 'models', label: 'Modèles & Appareils', content: <ModelsPanel api={api} /> },
       { id: 'family', label: 'Famille', content: <FamilyPanel api={api} /> },
       { id: 'hospitality', label: 'Hospitalité', content: <HospitalityPanel api={api} /> },
-      { id: 'routing', label: 'Routage', content: <RoutingPanel api={api} /> },
-      { id: 'proactive', label: 'Actions proactives', content: <ProactivePanel api={api} /> },
+      { id: 'routing', label: 'Routage', content: <RoutingPanel api={api} configFile="config/routing.yaml" /> },
+      { id: 'proactive', label: 'Actions proactives', content: <ProactivePanel api={api} configFile="config/proactive.yaml" /> },
       { id: 'prompt', label: 'Prompt agent', content: <AgentPromptPanel api={api} /> },
     ]} />
   );

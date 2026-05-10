@@ -9,6 +9,7 @@ import LogsPanel from './panels/LogsPanel';
 import KnowledgeBasePanel from './panels/KnowledgeBasePanel';
 import DevicesPanel from './panels/DevicesPanel';
 import DashboardPanel from './panels/DashboardPanel';
+import DreamPanel from './panels/DreamPanel';
 
 const API = '';
 
@@ -28,6 +29,36 @@ export default function App() {
   }, []);
 
   const modeLabels = { residence: '🏠 Résidence', airbnb: '🏡 Airbnb', hotel: '🏨 Hôtel' };
+  const isHospitality = hospitalityMode !== 'residence';
+
+  // Navigation items differ by mode
+  const navItems = isHospitality ? [
+    { type: 'link', text: 'Accueil', href: '#/dashboard' },
+    { type: 'link', text: 'Chat admin', href: '#/chat' },
+    { type: 'link', text: 'Configuration', href: '#/config' },
+    { type: 'link', text: 'Appareils', href: '#/devices' },
+    { type: 'link', text: 'Logs', href: '#/logs' },
+    { type: 'divider' },
+    { type: 'link', text: 'Statut', href: '#/status', info: (
+      <StatusIndicator type={status.ollama ? 'success' : 'error'}>
+        {status.ollama ? 'En ligne' : 'Hors ligne'}
+      </StatusIndicator>
+    )},
+  ] : [
+    { type: 'link', text: 'Accueil', href: '#/dashboard' },
+    { type: 'link', text: 'Chat', href: '#/chat' },
+    { type: 'link', text: 'Configuration', href: '#/config' },
+    { type: 'link', text: 'Connaissances', href: '#/kb' },
+    { type: 'link', text: 'Appareils', href: '#/devices' },
+    { type: 'link', text: 'Dream Engine', href: '#/dreams' },
+    { type: 'link', text: 'Logs', href: '#/logs' },
+    { type: 'divider' },
+    { type: 'link', text: 'Statut', href: '#/status', info: (
+      <StatusIndicator type={status.ollama ? 'success' : 'error'}>
+        {status.ollama ? 'En ligne' : 'Hors ligne'}
+      </StatusIndicator>
+    )},
+  ];
 
   return (
     <div>
@@ -43,31 +74,19 @@ export default function App() {
           <SideNavigation
             activeHref={'#/' + activePanel}
             header={{ text: 'Navigation', href: '#' }}
-            items={[
-              { type: 'link', text: 'Accueil', href: '#/dashboard' },
-              { type: 'link', text: 'Chat', href: '#/chat' },
-              { type: 'link', text: 'Configuration', href: '#/config' },
-              { type: 'link', text: 'Connaissances', href: '#/kb' },
-              { type: 'link', text: 'Appareils', href: '#/devices' },
-              { type: 'link', text: 'Logs', href: '#/logs' },
-              { type: 'divider' },
-              { type: 'link', text: 'Statut', href: '#/status', info: (
-                <StatusIndicator type={status.ollama ? 'success' : 'error'}>
-                  {status.ollama ? 'En ligne' : 'Hors ligne'}
-                </StatusIndicator>
-              )},
-            ]}
+            items={navItems}
             onFollow={e => { e.preventDefault(); setActivePanel(e.detail.href.replace('#/', '')); }}
           />
         }
         content={
-          activePanel === 'dashboard' ? <DashboardPanel api={API} onNavigate={setActivePanel} /> :
+          activePanel === 'dashboard' ? <DashboardPanel api={API} onNavigate={setActivePanel} mode={hospitalityMode} /> :
           activePanel === 'chat' ? <ChatPanel api={API} /> :
           activePanel === 'config' ? <ConfigPanel api={API} /> :
           activePanel === 'kb' ? <KnowledgeBasePanel api={API} /> :
           activePanel === 'devices' ? <DevicesPanel api={API} /> :
+          activePanel === 'dreams' ? <DreamPanel api={API} /> :
           activePanel === 'logs' ? <LogsPanel api={API} /> :
-          <DashboardPanel api={API} onNavigate={setActivePanel} />
+          <DashboardPanel api={API} onNavigate={setActivePanel} mode={hospitalityMode} />
         }
         toolsHide
         navigationWidth={220}

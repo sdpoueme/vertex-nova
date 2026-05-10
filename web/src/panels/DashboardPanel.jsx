@@ -7,6 +7,7 @@ import Box from '@cloudscape-design/components/box';
 import StatusIndicator from '@cloudscape-design/components/status-indicator';
 import Button from '@cloudscape-design/components/button';
 import Icon from '@cloudscape-design/components/icon';
+import Alert from '@cloudscape-design/components/alert';
 
 const SKIP_CATS = new Set(['ALEXA_VOICE_ENABLED', 'TV', 'GAME_CONSOLE', 'SPEAKERS', 'PRINTER']);
 const CAT_ICONS = { WASHER: '👕', DRYER: '👕', THERMOSTAT: '🌡️', SMARTLOCK: '🔐', SECURITY_PANEL: '🔒', CAMERA: '📹', LIGHT: '💡', SMARTPLUG: '🔌', SWITCH: '🔌', OVEN: '🍳', OTHER: '📱', DOORBELL: '🔔', GARAGE_DOOR: '🚗' };
@@ -70,31 +71,265 @@ function PresenceWidget({ api }) {
   );
 }
 
-export default function DashboardPanel({ api, onNavigate }) {
+// ============================================================
+// Hospitality Dashboard — shown in airbnb/hotel mode
+// ============================================================
+function HospitalityDashboard({ api, onNavigate, mode }) {
+  const [status, setStatus] = useState(null);
+  const [hospStatus, setHospStatus] = useState(null);
+  const [rooms, setRooms] = useState([]);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    fetch(api + '/api/status').then(r => r.json()).then(setStatus).catch(() => {});
+    fetch(api + '/api/hospitality').then(r => r.json()).then(setHospStatus).catch(() => {});
+    fetch(api + '/api/history').then(r => r.ok ? r.json() : {}).then(d => {
+      const adminOnly = (d.interactions || []).filter(h => h.channel !== 'guest' && !h.channel?.startsWith('guest-'));
+      setHistory(adminOnly);
+    }).catch(() => {});
+    if (mode === 'hotel') {
+      fetch(api + '/api/hospitality/hotel/rooms').then(r => r.json()).then(d => setRooms(d.rooms || [])).catch(() => {});
+    }
+  }, [api, mode]);
+
+  const occupied = rooms.filter(r => r.guest).length;
+  const portalPort = mode === 'airbnb' ? '3081' : '3082';
+  const guest = hospStatus?.airbnb?.guest;
+
+  const nightsLeft = (checkOut) => {
+    if (!checkOut) return null;
+    const diff = Math.ceil((new Date(checkOut) - new Date()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
+
+  const today = new Date().toLocaleDateString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <SpaceBetween size="l">
+      {/* Header with date */}
+      <Header variant="h1" description={today}>
+        {mode === 'airbnb' ? 'Vertex Nova — Airbnb' : 'Vertex Nova — Hôtel'}
+      </Header>
+
+      {/* Key metrics row */}
+      <ColumnLayout columns={mode === 'hotel' ? 4 : 3}>
+        <Container>
+          <SpaceBetween size="xxs">
+            <Box variant="awsui-key-label">Système</Box>
+            <StatusIndicator type={status?.ollama ? 'success' : 'error'}>
+              {status?.ollama ? 'En ligne' : 'Hors ligne'}
+            </StatusIndicator>
+            <Box variant="small" color="text-body-secondary">{formatUptime(status?.uptime)}</Box>
+          </SpaceBetween>
+        </Container>
+        <Container>
+          <SpaceBetween size="xxs">
+            <Box variant="awsui-key-label">Portail invité</Box>
+            <StatusIndicator type="success">Actif</StatusIndicator>
+            <Box variant="small">
+              <a href={'https://' + window.location.hostname + ':' + portalPort} target="_blank" rel="noreferrer">
+                Port {portalPort} ↗
+              </a>
+            </Box>
+          </SpaceBetween>
+        </Container>
+        {mode === 'hotel' && (
+          <Container>
+            <SpaceBetween size="xxs">
+              <Box variant="awsui-key-label">Agent IA</Box>
+              <Box variant="small"><strong>Modèle actif:</strong> {status?.model || '—'}</Box>
+              <Box variant="small"><strong>Proactif:</strong> {status?.proactive ? 'Actif' : 'Inactif'}</Box>
+              <Box variant="small"><strong>Interactions:</strong> {history.length} aujourd'hui</Box>
+            </SpaceBetween>
+          </Container>
+        )}
+        <Container>
+          <SpaceBetween size="xxs">
+            <Box variant="awsui-key-label">Confidentialité</Box>
+            <SpaceBetween direction="horizontal" size="xxs">
+              <Icon name="lock-private" />
+              <Box variant="small">Conversations isolées</Box>
+            </SpaceBetween>
+          </SpaceBetween>
+        </Container>
+      </ColumnLayout>
+
+      {/* HOTEL: Room occupancy cards */}
+      {mode === 'hotel' && rooms.length > 0 && (
+        <Container header={
+          <Header variant="h3" counter={'(' + occupied + '/' + rooms.length + ')'} actions={
+            <Button onClick={() => onNavigate('config')} iconName="settings">Gérer les chambres</Button>
+          }>
+            Chambres
+          </Header>
+        }>
+          <SpaceBetween size="m">
+            <div style={{ display: 'flex', gap: '4px', height: '10px', borderRadius: '5px', overflow: 'hidden' }}>
+              {rooms.map(room => (
+                <div key={room.id} style={{ flex: 1, background: room.guest ? '#0972d3' : '#e9ebed', borderRadius: '3px' }} title={room.name} />
+              ))}
+            </div>
+            <ColumnLayout columns={rooms.length}>
+              {rooms.map(room => {
+                const nights = room.guest ? nightsLeft(room.guest.checkOut) : null;
+                return (
+                  <Container key={room.id}>
+                    <SpaceBetween size="xxs">
+                      <Box textAlign="center">
+                        <StatusIndicator type={room.guest ? 'success' : 'stopped'}>{room.name}</StatusIndicator>
+                      </Box>
+                      {room.guest ? (
+                        <SpaceBetween size="xxxs">
+                          <Box textAlign="center" variant="small" fontWeight="bold">
+                            <Icon name="user-profile" /> {room.guest.name}
+                          </Box>
+                          <Box textAlign="center" variant="small" color="text-body-secondary">
+                            {room.guest.checkIn} → {room.guest.checkOut || '—'}
+                          </Box>
+                          {nights !== null && (
+                            <Box textAlign="center">
+                              <StatusIndicator type={nights <= 1 ? 'warning' : 'info'}>
+                                {nights === 0 ? 'Checkout aujourd\'hui' : nights + ' nuit' + (nights > 1 ? 's' : '')}
+                              </StatusIndicator>
+                            </Box>
+                          )}
+                        </SpaceBetween>
+                      ) : (
+                        <Box textAlign="center" variant="small" color="text-body-secondary" padding="s">
+                          Libre
+                        </Box>
+                      )}
+                    </SpaceBetween>
+                  </Container>
+                );
+              })}
+            </ColumnLayout>
+            {rooms.some(r => r.guest && nightsLeft(r.guest.checkOut) === 0) && (
+              <Alert type="warning">
+                Un ou plusieurs invités ont un checkout prévu aujourd'hui.
+              </Alert>
+            )}
+          </SpaceBetween>
+        </Container>
+      )}
+
+      {/* AIRBNB: Invité card */}
+      {mode === 'airbnb' && (
+        <Container header={
+          <Header variant="h3" actions={
+            <Button onClick={() => onNavigate('config')} iconName="settings">Gérer l'invité</Button>
+          }>
+            Invité actuel
+          </Header>
+        }>
+          {guest?.name ? (
+            <SpaceBetween size="m">
+              <ColumnLayout columns={3}>
+                <SpaceBetween size="xxs">
+                  <Box variant="awsui-key-label">Nom</Box>
+                  <Box><Icon name="user-profile" /> {guest.name}</Box>
+                </SpaceBetween>
+                <SpaceBetween size="xxs">
+                  <Box variant="awsui-key-label">Langue</Box>
+                  <Box>{guest.language === 'auto' ? 'Auto-détection' : guest.language}</Box>
+                </SpaceBetween>
+                <SpaceBetween size="xxs">
+                  <Box variant="awsui-key-label">Séjour</Box>
+                  <Box>{guest.checkIn || '—'} → {guest.checkOut || '—'}</Box>
+                </SpaceBetween>
+              </ColumnLayout>
+              {guest.checkOut && (
+                <Box>
+                  {(() => {
+                    const days = nightsLeft(guest.checkOut);
+                    if (days === 0) return <StatusIndicator type="warning">Checkout aujourd'hui</StatusIndicator>;
+                    if (days !== null && days <= 2) return <StatusIndicator type="info">{days} jour{days > 1 ? 's' : ''} restant{days > 1 ? 's' : ''}</StatusIndicator>;
+                    return <StatusIndicator type="success">Séjour en cours</StatusIndicator>;
+                  })()}
+                </Box>
+              )}
+              <SpaceBetween direction="horizontal" size="xs">
+                <StatusIndicator type={hospStatus?.airbnb?.hasCode ? 'success' : 'warning'}>
+                  {hospStatus?.airbnb?.hasCode ? 'Code actif' : 'Pas de code'}
+                </StatusIndicator>
+              </SpaceBetween>
+            </SpaceBetween>
+          ) : (
+            <Box textAlign="center" padding="l" color="text-body-secondary">
+              <SpaceBetween size="s">
+                <Box variant="p">Aucun invité enregistré</Box>
+                <Button onClick={() => onNavigate('config')} iconName="add-plus">Configurer un invité</Button>
+              </SpaceBetween>
+            </Box>
+          )}
+        </Container>
+      )}
+
+      {/* Admin activity log */}
+      <Container header={
+        <Header variant="h3" counter={'(' + history.length + ')'} description="Conversations invité non visibles">
+          Activité admin
+        </Header>
+      }>
+        {history.length === 0 ? (
+          <Box color="text-body-secondary" textAlign="center" padding="l">
+            Aucune interaction admin récente
+          </Box>
+        ) : (
+          <SpaceBetween size="xs">
+            {history.slice(0, 5).map((h, i) => (
+              <SpaceBetween key={i} direction="horizontal" size="xs">
+                <Icon name={h.direction === 'in' ? 'arrow-right' : 'arrow-left'} />
+                <Box variant="small" color="text-body-secondary">{h.channel}</Box>
+                <Box variant="small">{(h.text || '').slice(0, 100)}</Box>
+              </SpaceBetween>
+            ))}
+          </SpaceBetween>
+        )}
+      </Container>
+
+      {/* Quick actions */}
+      <ColumnLayout columns={2}>
+        <Button variant="primary" onClick={() => onNavigate('chat')} iconName="contact" fullWidth>Chat admin</Button>
+        <Button onClick={() => onNavigate('config')} iconName="settings" fullWidth>Configuration</Button>
+      </ColumnLayout>
+    </SpaceBetween>
+  );
+}
+
+// ============================================================
+// Residence Dashboard — full family view
+// ============================================================
+export default function DashboardPanel({ api, onNavigate, mode }) {
+  // All hooks must be called unconditionally (React rules of hooks)
   const [status, setStatus] = useState(null);
   const [kbs, setKbs] = useState([]);
   const [alexaDevices, setAlexaDevices] = useState([]);
   const [deviceStates, setDeviceStates] = useState([]);
   const [history, setHistory] = useState([]);
-  const [emails, setEmails] = useState(null);
 
   useEffect(() => {
+    if (mode === 'airbnb' || mode === 'hotel') return; // Skip for hospitality mode
     fetch(api + '/api/status').then(r => r.json()).then(setStatus).catch(() => {});
     fetch(api + '/api/knowledgebases').then(r => r.ok ? r.json() : {}).then(d => setKbs(d.knowledgebases || [])).catch(() => {});
     fetch(api + '/api/alexa/discovered').then(r => r.ok ? r.json() : {}).then(d => setAlexaDevices((d.devices || []).filter(x => !SKIP_CATS.has(x.category)))).catch(() => {});
     fetch(api + '/api/alexa/states').then(r => r.ok ? r.json() : {}).then(d => setDeviceStates(d.devices || [])).catch(() => {});
     fetch(api + '/api/history').then(r => r.ok ? r.json() : {}).then(d => setHistory(d.interactions || [])).catch(() => {});
-  }, [api]);
+  }, [api, mode]);
 
-  // Auto-refresh device states every 30s
   useEffect(() => {
+    if (mode === 'airbnb' || mode === 'hotel') return;
     const t = setInterval(() => {
       fetch(api + '/api/alexa/states').then(r => r.ok ? r.json() : {}).then(d => setDeviceStates(d.devices || [])).catch(() => {});
     }, 30000);
     return () => clearInterval(t);
-  }, [api]);
+  }, [api, mode]);
 
-  // Merge discovered devices with their live states
+  // If in hospitality mode, show the hospitality dashboard
+  if (mode === 'airbnb' || mode === 'hotel') {
+    return <HospitalityDashboard api={api} onNavigate={onNavigate} mode={mode} />;
+  }
+
   const devicesWithState = alexaDevices.map(d => {
     const state = deviceStates.find(s => s.friendlyName === d.friendlyName);
     return { ...d, capabilities: state?.capabilities || {}, hasState: state?.hasState || false };
@@ -133,7 +368,6 @@ export default function DashboardPanel({ api, onNavigate }) {
         </Container>
       </ColumnLayout>
 
-      {/* Devices — compact status grid */}
       {devicesWithState.length > 0 && (
         <Container header={
           <Header variant="h3" actions={<Button variant="link" onClick={() => onNavigate('devices')}>Détails</Button>}>
@@ -199,7 +433,6 @@ export default function DashboardPanel({ api, onNavigate }) {
             ))}
           </SpaceBetween>
         </Container>
-
       </ColumnLayout>
 
       <Container header={<Header variant="h3" counter={'(' + history.length + ')'}>Dernières interactions</Header>}>

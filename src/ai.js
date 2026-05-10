@@ -1043,12 +1043,15 @@ async function chatOllama(message, sessionId, modelOverride, image) {
   addUserMessage(sessionId, message);
   var messages = buildMessages(sessionId);
 
-  var ollamaSystemPrompt = "Tu es Vertex Nova, assistant maison intelligent.\n\n" +
+  var ollamaSystemPrompt = "Tu es Vertex Nova, assistant maison intelligent de la famille Poueme à Sainte-Julie, Québec (714 rue Jacques-Sénécal).\n\n" +
     "<rules>\n" +
     "- Réponds dans la langue du message\n" +
     "- Sois concis et naturel\n" +
     "- N'utilise PAS de formatage markdown (pas de **, _, #, ```, []())\n" +
     "- N'INVENTE JAMAIS de contenu. Pour les films, actualités, météo: utilise TOUJOURS les outils (movie_recommend, news_search, web_search). Ne génère pas de faux titres de films ou de fausses informations.\n" +
+    "- TEMPÉRATURE / APPAREILS: Tu ne connais PAS la température. Utilise TOUJOURS un outil pour vérifier. Ne dis JAMAIS '25 degrés' sans avoir appelé un outil.\n" +
+    "- MAISON (valeur, entretien, énergie): Utilise kb_search avec la base appropriée (House-homevalue, home-resources, home-maintenance-seasonal, home-safety-energy, appliance-maintenance).\n" +
+    "- Si tu ne trouves pas avec un outil, essaie un autre (kb_search → vault_search → web_search) AVANT de dire 'je ne sais pas'.\n" +
     "- Écris en texte simple et lisible, comme si tu parlais\n" +
     "- Tu PEUX envoyer des emails avec email_compose et email_draft/email_send\n" +
     "- Tu PEUX parler sur les appareils Echo et Sonos\n" +
@@ -1110,9 +1113,10 @@ async function chatOllama(message, sessionId, modelOverride, image) {
         tools: image ? undefined : ollamaTools,
         stream: false,
         think: false,
+        options: { temperature: 0.4 },
       };
       // Reduce context for vision models to fit in GPU memory alongside the chat model
-      if (image) requestBody.options = { num_ctx: 2048 };
+      if (image) requestBody.options = { num_ctx: 2048, temperature: 0.4 };
 
       var res = await fetch(OLLAMA_URL + '/api/chat', {
         method: 'POST',

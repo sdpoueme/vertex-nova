@@ -2,6 +2,10 @@
 
 Complete guide to install and run Vertex Nova on macOS, Linux, or Windows.
 
+This covers the core installation. After setup, choose your operating mode:
+- [Residence mode](MODE-RESIDENCE.md) — family assistant (default)
+- [Hospitality mode](MODE-HOSPITALITY.md) — Airbnb or Hotel guest concierge
+
 ## Table of Contents
 
 1. [Automated Install](#automated-install)
@@ -12,8 +16,9 @@ Complete guide to install and run Vertex Nova on macOS, Linux, or Windows.
 6. [WhatsApp Setup](#whatsapp-setup)
 7. [Configuration Reference](#configuration-reference)
 8. [Running the Agent](#running-the-agent)
-9. [Auto-start](#auto-start)
-10. [Troubleshooting](#troubleshooting)
+9. [Choosing a Mode](#choosing-a-mode)
+10. [Auto-start](#auto-start)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -295,6 +300,35 @@ The agent starts:
 - Identity layer (user profiles and fact extraction)
 - Presence detection (ARP + ping sweep for mesh WiFi)
 - Dream engine (1-5 AM)
+
+---
+
+## Choosing a Mode
+
+After the agent starts, it runs in **Résidence** mode by default. To switch:
+
+### From the Dashboard
+
+1. Open `https://localhost:3080`
+2. Go to Configuration → Hospitalité
+3. Select your mode (Résidence, Airbnb, or Hôtel)
+
+### From the Config File
+
+Edit `config/hospitality.yaml`:
+```yaml
+mode: residence  # residence | airbnb | hotel
+```
+
+### What Each Mode Does
+
+| Mode | What happens |
+|------|-------------|
+| `residence` | Full family assistant. All features active. |
+| `airbnb` | Guest portal starts on port 3081. Dream engine disabled. Dashboard shows guest management. Routing/proactive switch to hospitality configs. |
+| `hotel` | Guest portal starts on port 3082. Same as airbnb but with multi-room management. |
+
+See [MODE-RESIDENCE.md](MODE-RESIDENCE.md) and [MODE-HOSPITALITY.md](MODE-HOSPITALITY.md) for full details on each mode.
 
 ---
 

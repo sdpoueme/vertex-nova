@@ -5,6 +5,21 @@
 
 mode: residence  # residence | airbnb | hotel
 
+# --- Shared Guest Info (applies to all hospitality modes) ---
+guest_info:
+  wifi_name: ""
+  wifi_password: ""
+  rules: |
+    - Pas de fête
+    - Silence après 22h
+    - Recyclage dans le bac bleu
+  emergency_contacts: |
+    Urgences: 911
+    Hôte: 514-xxx-xxxx
+  checkout_time: "11:00"
+  property_description: |
+    Bienvenue dans notre maison. Vous avez accès à la cuisine, au salon et à votre chambre.
+
 # --- Airbnb Mode (port 3081) ---
 airbnb:
   port: 3081
@@ -18,7 +33,7 @@ airbnb:
     language: auto           # auto | fr | en | es | ja | zh | de | pt | ar
     check_in: ""             # YYYY-MM-DD
     check_out: ""            # YYYY-MM-DD
-    code: ""                 # Generated access code
+    code: "16A132"                 # Generated access code
     preferences:
       temperature: moderate  # cool | moderate | warm
       wake_time: "08:00"
@@ -34,24 +49,18 @@ airbnb:
   hidden_devices:
     - 714JS Ring
     - 714JS-Backyard
-  info:
-    wifi_name: ""
-    wifi_password: ""
-    rules: |
-      - Pas de fête
-      - Silence après 22h
-      - Recyclage dans le bac bleu
-    emergency_contacts: |
-      Urgences: 911
-      Hôte: 514-xxx-xxxx
-    local_info: |
-      Restaurants, transport, activités à proximité.
-    checkout_time: "11:00"
 
 # --- Hotel Mode (port 3082) ---
 hotel:
   port: 3082
   name: "Maison Poueme"
+  floors:
+    - id: ground
+      name: "Rez-de-chaussée"
+    - id: upper
+      name: "Étage"
+    - id: basement
+      name: "Sous-sol"
   rooms:
     - id: chambre-2
       name: "Chambre Bleue"
@@ -91,13 +100,6 @@ hotel:
     - basement-family-room
   common_devices:
     - Sonos Rez de Chaussee
-  info:
-    wifi_name: ""
-    wifi_password: ""
-    rules: ""
-    emergency_contacts: ""
-    local_info: ""
-    breakfast_hours: "07:00-09:00"
 
 # --- IoT Presence Sensors ---
 sensors:

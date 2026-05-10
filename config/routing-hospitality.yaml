@@ -1,0 +1,21 @@
+# Vertex Nova — Model Routing (Hospitality Mode)
+# Simpler routing for guest interactions — no family/personal tools
+
+routes:
+  - name: guest-chat
+    patterns:
+      - ".*"
+    model: qwen3:8b
+
+  - name: vision
+    patterns:
+      - "image|photo|regarde|see|look"
+    model: qwen2.5vl:7b
+
+  - name: escalation
+    patterns:
+      - "complex|urgent|emergency|urgence"
+    model: claude
+
+default:
+  model: qwen3:8b

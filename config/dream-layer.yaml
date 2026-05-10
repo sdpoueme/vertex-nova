@@ -15,7 +15,7 @@ dream_layer:
   generator:
     temperature: 1.4
     max_dreams_per_night: 5
-    model: qwen3
+    model: phi4-mini
     refinement_temperature: 0.9
     safety_tags:
       prefix: "[DREAM]"

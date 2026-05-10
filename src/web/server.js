@@ -10,7 +10,7 @@
  */
 import { createServer } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { networkInterfaces } from 'node:os';
@@ -82,7 +82,7 @@ export function startDashboard(config, port) {
 
     // CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
@@ -251,7 +251,7 @@ export function startDashboard(config, port) {
     // --- API: Get config file ---
     if (path === '/api/config' && req.method === 'GET') {
       var file = url.searchParams.get('file');
-      var allowed = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'config/family.yaml', 'agent.md'];
+      var allowed = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'config/family.yaml', 'config/hospitality.yaml', 'config/routing-hospitality.yaml', 'config/proactive-hospitality.yaml', 'config/dream-layer.yaml', 'agent.md'];
       if (!allowed.includes(file)) { json(res, 400, { error: 'File not allowed' }); return; }
       try {
         var content = readFileSync(join(projectDir, file), 'utf8');
@@ -267,7 +267,7 @@ export function startDashboard(config, port) {
       var body2 = await readBody(req);
       try {
         var data2 = JSON.parse(body2);
-        var allowed2 = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'config/family.yaml', 'agent.md'];
+        var allowed2 = ['config/routing.yaml', 'config/proactive.yaml', 'config/knowledgebases.yaml', 'config/family.yaml', 'config/hospitality.yaml', 'config/routing-hospitality.yaml', 'config/proactive-hospitality.yaml', 'config/dream-layer.yaml', 'agent.md'];
         if (!allowed2.includes(data2.file)) { json(res, 400, { error: 'File not allowed' }); return; }
         writeFileSync(join(projectDir, data2.file), data2.content);
         json(res, 200, { saved: true, file: data2.file });
@@ -493,7 +493,17 @@ export function startDashboard(config, port) {
 
     // --- API: Recent interactions ---
     if (path === '/api/history' && req.method === 'GET') {
-      json(res, 200, { interactions: recentInteractions.slice(-30).reverse() });
+      // In hospitality mode, filter out guest interactions for privacy
+      var filteredInteractions = recentInteractions;
+      try {
+        var { getMode: getHistMode } = await import('../hospitality.js');
+        if (getHistMode() !== 'residence') {
+          filteredInteractions = recentInteractions.filter(function(h) {
+            return h.channel !== 'guest' && !(h.channel || '').startsWith('guest-');
+          });
+        }
+      } catch {}
+      json(res, 200, { interactions: filteredInteractions.slice(-30).reverse() });
       return;
     }
 
@@ -732,6 +742,103 @@ export function startDashboard(config, port) {
       return;
     }
 
+    if (path === '/api/hospitality/send-code-email' && req.method === 'POST') {
+      try {
+        var { sendGuestCodeEmail } = await import('../hospitality.js');
+        var sent = await sendGuestCodeEmail();
+        json(res, 200, { sent: sent, error: sent ? null : 'Email non configuré ou guest sans email' });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Hotel rooms (CRUD) ---
+    if (path === '/api/hospitality/hotel/rooms' && req.method === 'GET') {
+      try {
+        var { getHotelRooms, getHotelFloors } = await import('../hospitality.js');
+        var rooms = getHotelRooms();
+        var floors = getHotelFloors();
+        json(res, 200, { rooms: rooms, floors: floors });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/hospitality/hotel/rooms' && req.method === 'POST') {
+      var addRoomBody = await readBody(req);
+      try {
+        var addRoomData = JSON.parse(addRoomBody);
+        var { addHotelRoom } = await import('../hospitality.js');
+        var result = addHotelRoom(addRoomData);
+        if (result.error) { json(res, 400, result); return; }
+        json(res, 200, result);
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path.startsWith('/api/hospitality/hotel/rooms/') && req.method === 'DELETE') {
+      try {
+        var delRoomId = path.split('/api/hospitality/hotel/rooms/')[1];
+        var { removeHotelRoom } = await import('../hospitality.js');
+        var result = removeHotelRoom(delRoomId);
+        if (result.error) { json(res, 400, result); return; }
+        json(res, 200, result);
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path === '/api/hospitality/hotel/guests' && req.method === 'POST') {
+      var guestBody = await readBody(req);
+      try {
+        var guestData = JSON.parse(guestBody);
+        var { assignHotelGuest, sendHotelGuestEmail } = await import('../hospitality.js');
+        var result = assignHotelGuest(guestData.roomId, guestData.guest);
+        if (result.error) { json(res, 400, result); return; }
+        // Send welcome email if requested and email provided
+        var emailSent = false;
+        if (guestData.sendEmail && guestData.guest.email) {
+          emailSent = await sendHotelGuestEmail(guestData.roomId, guestData.guest);
+        }
+        json(res, 200, { ...result, emailSent: emailSent });
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    if (path.startsWith('/api/hospitality/hotel/guests/') && req.method === 'DELETE') {
+      try {
+        var roomId = path.split('/api/hospitality/hotel/guests/')[1];
+        var { checkoutHotelGuest } = await import('../hospitality.js');
+        var result = checkoutHotelGuest(roomId);
+        if (result.error) { json(res, 400, result); return; }
+        json(res, 200, result);
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Save hospitality YAML (airbnb guest form) ---
+    if (path === '/api/hospitality/config' && req.method === 'PUT') {
+      var hospConfigBody = await readBody(req);
+      try {
+        var hospConfigData = JSON.parse(hospConfigBody);
+        var { saveHospitalityConfig } = await import('../hospitality.js');
+        var result = saveHospitalityConfig(hospConfigData);
+        json(res, 200, result);
+      } catch (err) {
+        json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
     // --- API: Generate local info for guest via AI ---
     if (path === '/api/hospitality/generate-local-info' && req.method === 'POST') {
       try {
@@ -745,14 +852,22 @@ export function startDashboard(config, port) {
 
         var prompt = 'Utilise web_search pour chercher "restaurants activités transport ' + location + '".\n' +
           'Avec les résultats, génère un guide local concis pour un visiteur.\n' +
-          'Sections: 🍽️ Restaurants (3-5), 🚌 Transport, 🎯 Activités (3-5), 🏪 Services utiles.\n' +
+          'Sections: Restaurants (3-5), Transport, Activités (3-5), Services utiles.\n' +
           'Format texte simple, pas de markdown. ' +
           (guestLangGen !== 'fr' ? 'Écris en ' + guestLangGen + '.' : 'Écris en français.');
 
-        var response = await chat(prompt, 'generate-local-info-' + Date.now().toString(36));
-        json(res, 200, { localInfo: response });
+        var genTimeout = new Promise(function(_, reject) { setTimeout(function() { reject(new Error('timeout')); }, 90000); });
+        var genPromise = chat(prompt, 'generate-local-info-' + Date.now().toString(36));
+        var response = await Promise.race([genPromise, genTimeout]);
+
+        if (!response || response.length < 20) {
+          json(res, 200, { localInfo: null, error: 'Réponse IA trop courte ou vide. Vérifiez que le modèle est en ligne.' });
+        } else {
+          json(res, 200, { localInfo: response });
+        }
       } catch (err) {
-        json(res, 500, { error: err.message });
+        var errMsg = err.message === 'timeout' ? 'Délai dépassé (90s). Le modèle IA est peut-être surchargé ou web_search a échoué.' : err.message;
+        json(res, 200, { localInfo: null, error: errMsg });
       }
       return;
     }
@@ -828,9 +943,24 @@ export function startDashboard(config, port) {
         var vp = config.vaultPath || join(projectDir, 'vault');
         var days = parseInt(url.searchParams.get('days')) || 7;
         var dreams = listRecentDreams(vp, days);
-        json(res, 200, { dreams: dreams });
+        // Also get dream day logs for metrics
+        var dreamDays = [];
+        try {
+          var dreamsDir = join(vp, 'dreams');
+          var mdFiles = readFileSync ? readdirSync(dreamsDir).filter(function(f) { return f.match(/^\d{4}-\d{2}-\d{2}\.md$/); }) : [];
+          dreamDays = mdFiles.map(function(f) {
+            var text = readFileSync(join(dreamsDir, f), 'utf8');
+            var date = f.replace('.md', '');
+            var time = (text.match(/time:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+            var dreamsGenerated = (text.match(/(\d+) dreams? generated/) || [])[1] || '0';
+            var templatesExtracted = (text.match(/(\d+) templates? extracted/) || [])[1] || '0';
+            var hasConsolidation = /## Consolidation/.test(text);
+            return { date: date, time: time, dreamsGenerated: parseInt(dreamsGenerated), templatesExtracted: parseInt(templatesExtracted), hasConsolidation: hasConsolidation };
+          }).sort(function(a, b) { return b.date.localeCompare(a.date); });
+        } catch {}
+        json(res, 200, { dreams: dreams, dreamDays: dreamDays });
       } catch (err) {
-        json(res, 200, { dreams: [], error: err.message });
+        json(res, 200, { dreams: [], dreamDays: [], error: err.message });
       }
       return;
     }
@@ -841,6 +971,41 @@ export function startDashboard(config, port) {
         var vp2 = config.vaultPath || join(projectDir, 'vault');
         var status = url.searchParams.get('status') || null;
         var policies = listPolicies(vp2, status);
+
+        // Also load structural patterns as suggested policies, excluding already-decided ones
+        try {
+          var patternsPath = join(vp2, 'dreams', 'analysis', 'structural_patterns.md');
+          if (existsSync(patternsPath)) {
+            var patternsText = readFileSync(patternsPath, 'utf8');
+            var patternsJson = patternsText.match(/^\[[\s\S]*?\]/m);
+            if (patternsJson) {
+              var patterns = JSON.parse(patternsJson[0]);
+              // Check which patterns already have a decision file
+              var decidedIds = new Set(policies.map(function(p) { return p.id; }));
+              for (var pi = 0; pi < patterns.length; pi++) {
+                var patId = 'pattern-' + pi;
+                if (!decidedIds.has(patId)) {
+                  policies.push({
+                    id: patId,
+                    title: patterns[pi].pattern.replace(/_/g, ' '),
+                    description: patterns[pi].suggested_policy,
+                    rule: patterns[pi].suggested_policy,
+                    status: 'pending',
+                    frequency: patterns[pi].frequency,
+                    source: 'structural_patterns',
+                    created_at: new Date().toISOString(),
+                  });
+                }
+              }
+            }
+          }
+        } catch {}
+
+        // Filter by status if requested
+        if (status) {
+          policies = policies.filter(function(p) { return p.status === status; });
+        }
+
         json(res, 200, { policies: policies });
       } catch (err) {
         json(res, 200, { policies: [], error: err.message });
@@ -852,10 +1017,22 @@ export function startDashboard(config, port) {
       var apprBody = await readBody(req);
       try {
         var apprData = JSON.parse(apprBody);
-        var { approvePolicy: apprFn } = await import('../dream-interpreter.js');
         var vp3 = config.vaultPath || join(projectDir, 'vault');
-        var result = apprFn(vp3, apprData.id);
-        json(res, 200, { policy: result });
+        var policyId = apprData.id;
+
+        // If it's a pattern-based policy, write it as a JSON file
+        if (policyId.startsWith('pattern-')) {
+          var policiesDir = join(vp3, 'dreams', 'policies');
+          if (!existsSync(policiesDir)) { var { mkdirSync: mkPol } = await import('node:fs'); mkPol(policiesDir, { recursive: true }); }
+          var policyFile = join(policiesDir, policyId + '.json');
+          var policyData = { id: policyId, title: apprData.title || policyId, description: apprData.description || '', rule: apprData.rule || '', status: 'approved', approved_by: 'admin', applied_at: new Date().toISOString(), source: 'structural_patterns' };
+          writeFileSync(policyFile, JSON.stringify(policyData, null, 2));
+          json(res, 200, { policy: policyData });
+        } else {
+          var { approvePolicy: apprFn } = await import('../dream-interpreter.js');
+          var result = apprFn(vp3, policyId);
+          json(res, 200, { policy: result });
+        }
       } catch (err) {
         json(res, 500, { error: err.message });
       }
@@ -866,12 +1043,60 @@ export function startDashboard(config, port) {
       var rejBody = await readBody(req);
       try {
         var rejData = JSON.parse(rejBody);
-        var { rejectPolicy: rejFn } = await import('../dream-interpreter.js');
         var vp4 = config.vaultPath || join(projectDir, 'vault');
-        var result2 = rejFn(vp4, rejData.id);
-        json(res, 200, { policy: result2 });
+        var rejPolicyId = rejData.id;
+
+        if (rejPolicyId.startsWith('pattern-')) {
+          var policiesDir2 = join(vp4, 'dreams', 'policies');
+          if (!existsSync(policiesDir2)) { var { mkdirSync: mkPol2 } = await import('node:fs'); mkPol2(policiesDir2, { recursive: true }); }
+          var rejFile = join(policiesDir2, rejPolicyId + '.json');
+          var rejPolicyData = { id: rejPolicyId, title: rejData.title || rejPolicyId, description: rejData.description || '', status: 'rejected', rejected_at: new Date().toISOString(), source: 'structural_patterns' };
+          writeFileSync(rejFile, JSON.stringify(rejPolicyData, null, 2));
+          json(res, 200, { policy: rejPolicyData });
+        } else {
+          var { rejectPolicy: rejFn } = await import('../dream-interpreter.js');
+          var result2 = rejFn(vp4, rejPolicyId);
+          json(res, 200, { policy: result2 });
+        }
       } catch (err) {
         json(res, 500, { error: err.message });
+      }
+      return;
+    }
+
+    // --- API: Analyze dreams (lightweight, no tools) ---
+    if (path === '/api/dreams/analyze' && req.method === 'POST') {
+      var analyzeBody = await readBody(req);
+      try {
+        var analyzeData = JSON.parse(analyzeBody);
+        var dreamTexts = analyzeData.dreams || '';
+        var analyzeModel = 'nemotron-mini';
+        var ollamaUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+        var analyzeRes = await fetch(ollamaUrl + '/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: analyzeModel,
+            messages: [
+              { role: 'system', content: 'Tu es un analyste de rêves IA. RÉPONDS TOUJOURS EN FRANÇAIS, quelle que soit la langue des rêves fournis. Analyse les rêves et donne un résumé structuré en français: thèmes récurrents, motifs importants, et 2-3 recommandations concrètes pour améliorer le système. Sois bref et structuré.' },
+              { role: 'user', content: 'Analyse ces rêves en français:\n\n' + dreamTexts },
+            ],
+            stream: false,
+            think: false,
+            options: { temperature: 0.3 },
+          }),
+        });
+
+        if (analyzeRes.ok) {
+          var analyzeResult = await analyzeRes.json();
+          var analysisText = analyzeResult.message?.content || '';
+          json(res, 200, { analysis: analysisText });
+        } else {
+          json(res, 200, { analysis: null, error: 'Modèle ' + analyzeModel + ' non disponible' });
+        }
+      } catch (err) {
+        json(res, 200, { analysis: null, error: err.message });
       }
       return;
     }

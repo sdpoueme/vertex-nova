@@ -1,0 +1,49 @@
+# Vertex Nova — Proactive Actions (Hospitality Mode)
+# Guest-focused actions: checkout reminders, welcome messages, noise monitoring
+
+routing:
+  morning:
+    hours: [7, 8, 9]
+    channel: telegram
+  evening:
+    hours: [18, 19, 20]
+    channel: telegram
+
+actions:
+  - name: checkout-reminder
+    description: "Rappel de checkout pour les guests dont le départ est aujourd'hui"
+    interval_minutes: 1440
+    model: qwen3:8b
+    active_hours: [8, 9, 10]
+    prompt: >
+      Vérifie si des guests ont un checkout aujourd'hui.
+      Si oui, envoie un rappel poli avec l'heure de checkout.
+    notify_condition: always
+    priority: high
+
+  - name: guest-welcome-check
+    description: "Vérifie si un nouveau guest est arrivé et n'a pas encore été accueilli"
+    interval_minutes: 60
+    model: qwen3:8b
+    active_hours: [14, 15, 16, 17, 18, 19, 20]
+    prompt: >
+      Vérifie si un guest a fait un check-in récemment.
+      Si oui, confirme que l'email de bienvenue a été envoyé.
+    notify_condition: not_skip
+    priority: medium
+
+  - name: quiet-hours-monitor
+    description: "Surveillance des heures calmes (22h-7h)"
+    interval_minutes: 30
+    model: qwen3:4b
+    active_hours: [22, 23, 0, 1, 2, 3, 4, 5, 6]
+    prompt: >
+      Vérifie si des appareils audio sont actifs pendant les heures calmes.
+      Si oui, notifie l'admin.
+    notify_condition: always
+    priority: high
+
+behavior:
+  max_notifications_per_hour: 3
+  min_interval_minutes: 15
+  high_priority_bypass: true

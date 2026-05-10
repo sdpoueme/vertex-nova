@@ -545,6 +545,14 @@ async function main() {
     res.end('Not found');
   });
 
+  iftttServer.on('error', function(err) {
+    if (err.code === 'EADDRINUSE') {
+      log.warn('Port ' + iftttPort + ' already in use — IFTTT/webhook server skipped. Kill the process on that port or change WHATSAPP_WEBHOOK_PORT.');
+    } else {
+      log.error('IFTTT server error: ' + err.message);
+    }
+  });
+
   iftttServer.listen(iftttPort, function() {
     log.info('IFTTT/webhook server listening on port ' + iftttPort);
   });

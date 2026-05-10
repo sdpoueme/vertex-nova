@@ -1,22 +1,21 @@
-# Vertex Nova — Family Knowledge Bases
+# Vertex Nova — Knowledge Bases
 
 knowledgebases:
   - name: emmanuel-poueme
     description: "Biographie et généalogie d'Emmanuel Poueme — famille Poueme"
     repo: https://github.com/sdpoueme/emmanuelpoueme.git
     branch: main
-    sync_interval_hours: 24
     file_types: [".html", ".json", ".md"]
+    sync_interval_hours: 24
     enabled: true
 
   - name: serge-poueme
     description: "Page personnelle GitHub de Serge Poueme"
     repo: https://github.com/sdpoueme/sdpoueme.git
     branch: main
-    sync_interval_hours: 24
     file_types: [".md", ".html", ".json"]
+    sync_interval_hours: 24
     enabled: true
-
 
   - name: home-resources
     description: "Sites web utiles pour la maison — services, énergie, municipalité"
@@ -52,3 +51,29 @@ knowledgebases:
       - https://www.rbq.gouv.qc.ca/
     sync_interval_hours: 336
     enabled: true
+
+  - name: House-homevalue
+    description: "home value of the house"
+    urls:
+      - https://www.openhouseqc.com/proprietes/714-rue-jacques-senecal-sainte-julie-2759788
+      - https://www.doormath.ca/properties/1622964
+    sync_interval_hours: 168
+    enabled: true
+
+  - name: pool-spring-opening
+    description: "Guides d'ouverture de piscine au printemps — Québec"
+    urls:
+      - https://www.caaquebec.com/en/advices/maintaining-a-home/guides/pool-guide-ready-to-get-into-the-swim-of-things/opening-your-pool-in-spring
+      - https://www.bmr.ca/en/pool-opening
+      - https://discovermystore.com/blogs/post/spring-pool-opening-complete-step-by-step-guide-2026
+    sync_interval_hours: 168
+    enabled: true
+
+  - name: lawn-care-spring
+    description: "Entretien de la pelouse au printemps — Québec"
+    urls:
+      - https://comptoirrichelieu.ca/redemarrer-votre-pelouse-au-printemps-les-gestes-essentiels-pour-une-saison-reussie/
+      - https://www.canadiantire.ca/fr/cat/exterieur/pelouse-et-jardin/entretien-de-la-pelouse-et-gazon-DC0001473.html
+    sync_interval_hours: 168
+    enabled: true
+

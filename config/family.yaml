@@ -1,19 +1,18 @@
 # Vertex Nova — Family Identity Configuration
-# Maps each family member to their identity profile and behavioral preferences.
-# The agent uses this to adapt notifications, briefings, and recommendations per person.
 
 family:
   - name: Serge
-    identity_id: "787677377"          # Telegram user ID (links to vault/identities/)
+    identity_id: "787677377"
     presence_name: Serge              # Must match config/presence.yaml
     channels:
       telegram: "787677377"
       web: true
+      voice: true
     style:
-      tone: warm_detailed             # warm_detailed, concise, formal
-      briefing: full                  # full, summary, minimal
-      proactive_level: high           # high, medium, low
-      humor: occasional               # occasional, never, frequent
+      tone: warm_detailed
+      briefing: full
+      proactive_level: high
+      humor: occasional
     schedule:
       morning: "07:00"
       work_start: "09:00"
@@ -28,22 +27,22 @@ family:
       - home_automation
       - genealogy
     notification_rules:
-      news: always                    # always, important_only, never
-      weather: severe_only            # always, severe_only, never
-      home_maintenance: when_due      # when_due, weekly_digest, never
-      movies: friday_evening          # friday_evening, on_request, never
-      email: immediate                # immediate, digest, never
+      news: always
+      weather: severe_only
+      home_maintenance: when_due
+      movies: friday_evening
+      email: immediate
 
   - name: Stéphanie
-    identity_id: stephanie
+    identity_id: "stephanie"
     presence_name: Stéphanie
     channels:
-      voice: true                     # Sonos/Echo only
+      web: true
     style:
-      tone: concise                   # warm_detailed, concise, formal
-      briefing: minimal               # full, summary, minimal
-      proactive_level: low            # high, medium, low
-      humor: never
+      tone: formal
+      briefing: minimal
+      proactive_level: low
+      humor: occasional
     schedule:
       morning: "06:30"
       work_start: "08:30"
@@ -60,3 +59,4 @@ family:
       home_maintenance: never
       movies: never
       email: never
+

@@ -175,12 +175,47 @@ export function validateGuestCode(code) {
 
 /**
  * Validate hotel guest login (name + room).
+ * Checks that the room exists and the guest name matches.
  */
 export function validateHotelGuest(name, roomId) {
   if (!config) loadConfig();
-  // This would check against the hotel rooms config
-  // For now, return true if the name matches a configured guest
-  return { valid: true, room: roomId, name: name };
+  if (!name || !roomId) return { valid: false };
+
+  // Get rooms from YAML
+  var rooms = getHotelRooms();
+  // Find room by id or by name (case-insensitive)
+  var room = rooms.find(function(r) {
+    return r.id === roomId || r.id === roomId.toLowerCase().replace(/\s+/g, '-') ||
+      r.name.toLowerCase() === roomId.toLowerCase();
+  });
+
+  if (!room) return { valid: false, error: 'Room not found' };
+  if (!room.guest) return { valid: false, error: 'No guest registered for this room' };
+
+  // Check guest name (case-insensitive, partial match allowed)
+  var guestNameLower = room.guest.name.toLowerCase();
+  var inputNameLower = name.toLowerCase().trim();
+  if (guestNameLower !== inputNameLower && !guestNameLower.includes(inputNameLower) && !inputNameLower.includes(guestNameLower)) {
+    return { valid: false, error: 'Name does not match' };
+  }
+
+  // Check if checkout date has passed
+  if (room.guest.checkOut) {
+    var checkout = new Date(room.guest.checkOut + 'T23:59:59');
+    if (Date.now() > checkout.getTime()) {
+      return { valid: false, error: 'Stay has expired' };
+    }
+  }
+
+  return {
+    valid: true,
+    room: room.id,
+    roomName: room.name,
+    name: room.guest.name,
+    language: room.guest.language,
+    checkIn: room.guest.checkIn,
+    checkOut: room.guest.checkOut,
+  };
 }
 
 /**
@@ -202,6 +237,7 @@ export function revokeGuestAccess() {
 
 /**
  * Get guest-safe config (no sensitive data).
+ * Reads from the shared guest_info section.
  */
 export function getGuestConfig() {
   if (!config) loadConfig();
@@ -209,13 +245,16 @@ export function getGuestConfig() {
   var text = '';
   try { text = readFileSync(configPath, 'utf8'); } catch { return {}; }
 
-  // Extract info section
-  var wifiName = (text.match(/wifi_name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
-  var wifiPass = (text.match(/wifi_password:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
-  var rules = (text.match(/rules:\s*\|\s*\n((?:\s+.*\n)*)/) || [])[1]?.trim() || '';
-  var emergency = (text.match(/emergency_contacts:\s*\|\s*\n((?:\s+.*\n)*)/) || [])[1]?.trim() || '';
-  var localInfo = (text.match(/local_info:\s*\|\s*\n((?:\s+.*\n)*)/) || [])[1]?.trim() || '';
-  var checkoutTime = (text.match(/checkout_time:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '11:00';
+  // Extract from shared guest_info section
+  var guestInfoSection = text.match(/guest_info:\s*\n([\s\S]*?)(?=\n\S|\n*$)/);
+  var infoText = guestInfoSection ? guestInfoSection[1] : '';
+
+  var wifiName = (infoText.match(/wifi_name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+  var wifiPass = (infoText.match(/wifi_password:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+  var rules = (infoText.match(/rules:\s*\|\s*\n((?:\s+.*\n)*)/) || [])[1]?.replace(/^\s{4}/gm, '').trim() || '';
+  var emergency = (infoText.match(/emergency_contacts:\s*\|\s*\n((?:\s+.*\n)*)/) || [])[1]?.replace(/^\s{4}/gm, '').trim() || '';
+  var checkoutTime = (infoText.match(/checkout_time:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '11:00';
+  var propertyDescription = (infoText.match(/property_description:\s*\|\s*\n((?:\s+.*\n)*)/) || [])[1]?.replace(/^\s{4}/gm, '').trim() || '';
 
   return {
     mode: config.mode,
@@ -223,8 +262,8 @@ export function getGuestConfig() {
     wifi: { name: wifiName, password: wifiPass },
     rules: rules,
     emergency: emergency,
-    localInfo: localInfo,
     checkoutTime: checkoutTime,
+    propertyDescription: propertyDescription,
   };
 }
 
@@ -311,15 +350,40 @@ function startGuestServer() {
       return;
     }
 
+    // Guest API: generate local recommendations
+    if (path === '/api/guest/local-info' && req.method === 'POST') {
+      var localBody = '';
+      req.on('data', function(c) { localBody += c; });
+      req.on('end', async function() {
+        try {
+          var data = {};
+          try { data = JSON.parse(localBody); } catch {}
+          var { chat } = await import('./ai.js');
+          var preferences = data.preferences || '';
+          var prompt = '[GUEST MODE — Génère des recommandations locales pour un invité. Réponds en français. Utilise la recherche web si disponible pour trouver des infos à jour.]\n\n';
+          prompt += 'Génère une liste de recommandations locales pour un invité séjournant dans notre propriété. ';
+          prompt += 'Inclus: restaurants, cafés, transport, activités, parcs, épiceries, pharmacies à proximité. ';
+          prompt += 'Formate avec des catégories claires et des emojis.';
+          if (preferences) {
+            prompt += '\n\nPréférences de l\'invité: ' + preferences;
+            prompt += '\nPersonnalise les recommandations selon ces préférences.';
+          }
+          var response = await chat(prompt, 'guest-local-' + Date.now().toString(36));
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ localInfo: response }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
     // Default: serve guest frontend (built React/Cloudscape app)
     var guestDistPath = join(import.meta.dirname, '..', 'web', 'dist', 'guest-app.html');
-    var guestHtmlPath = join(import.meta.dirname, '..', 'web', 'guest.html');
     if (existsSync(guestDistPath)) {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(readFileSync(guestDistPath, 'utf8'));
-    } else if (existsSync(guestHtmlPath)) {
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(readFileSync(guestHtmlPath, 'utf8'));
     } else {
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<html><body><h1>Guest Portal — run: cd web && npm run build</h1></body></html>');
@@ -391,6 +455,323 @@ export function getHospitalityStatus() {
 }
 
 /**
+ * Get hotel floor plan from YAML config.
+ */
+export function getHotelFloors() {
+  if (!config) loadConfig();
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return []; }
+
+  var floors = [];
+  var floorsMatch = text.match(/hotel:[\s\S]*?floors:\s*\n((?:\s+-\s+id:.*\n\s+name:.*\n)*)/);
+  if (floorsMatch) {
+    var floorLines = floorsMatch[1].matchAll(/- id:\s*(\S+)\s*\n\s+name:\s*"?([^"\n]*)"?/g);
+    for (var m of floorLines) {
+      floors.push({ id: m[1], name: m[2].trim() });
+    }
+  }
+
+  // Default floors if none configured
+  if (floors.length === 0) {
+    floors = [
+      { id: 'ground', name: 'Rez-de-chaussée' },
+      { id: 'upper', name: 'Étage' },
+      { id: 'basement', name: 'Sous-sol' },
+    ];
+  }
+
+  return floors;
+}
+
+/**
+ * Get hotel rooms with guest occupancy from YAML.
+ */
+export function getHotelRooms() {
+  if (!config) loadConfig();
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return []; }
+
+  var rooms = [];
+  // Extract only the rooms: section (between "rooms:" and next sibling key like "common_spaces:")
+  var roomsStart = text.indexOf('\n  rooms:\n');
+  if (roomsStart === -1) return [];
+  var roomsEnd = text.indexOf('\n  common_spaces:', roomsStart);
+  if (roomsEnd === -1) roomsEnd = text.indexOf('\n  common_devices:', roomsStart);
+  if (roomsEnd === -1) roomsEnd = text.indexOf('\n  info:', roomsStart);
+  if (roomsEnd === -1) roomsEnd = text.length;
+  var roomsText = text.slice(roomsStart, roomsEnd);
+
+  var roomBlocks = roomsText.split(/^\s{4}-\s+id:/m);
+  for (var i = 1; i < roomBlocks.length; i++) {
+    var block = roomBlocks[i];
+    var id = (block.match(/^([^\n]+)/) || [])[1]?.trim() || '';
+    var name = (block.match(/name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || id;
+    var floor = (block.match(/floor:\s*(\S+)/) || [])[1]?.trim() || '';
+
+    // Parse devices array
+    var devices = [];
+    var devMatch = block.match(/devices:\s*\n((?:\s+-\s+[^\n]+\n)*)/);
+    if (devMatch) {
+      var devLines = devMatch[1].match(/-\s+([^\n]+)/g) || [];
+      devices = devLines.map(function(d) { return d.replace(/^\s*-\s+/, '').trim(); });
+    }
+
+    // Parse amenities array
+    var amenities = [];
+    var amenMatch = block.match(/amenities:\s*\n((?:\s+-\s+[^\n]+\n)*)/);
+    if (amenMatch) {
+      var amenLines = amenMatch[1].match(/-\s+([^\n]+)/g) || [];
+      amenities = amenLines.map(function(a) { return a.replace(/^\s*-\s+/, '').trim(); });
+    }
+
+    // Parse guest info
+    var guestName = (block.match(/guest:\s*\n\s+name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+    var guestLang = (block.match(/guest:\s*\n(?:\s+\S+.*\n)*?\s+language:\s*(\S+)/) || [])[1]?.trim() || 'auto';
+    var guestCheckIn = (block.match(/guest:\s*\n(?:\s+\S+.*\n)*?\s+check_in:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+    var guestCheckOut = (block.match(/guest:\s*\n(?:\s+\S+.*\n)*?\s+check_out:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+
+    rooms.push({
+      id: id,
+      name: name,
+      floor: floor,
+      devices: devices,
+      amenities: amenities,
+      guest: guestName ? {
+        name: guestName,
+        language: guestLang,
+        checkIn: guestCheckIn,
+        checkOut: guestCheckOut,
+      } : null,
+    });
+  }
+
+  return rooms;
+}
+
+/**
+ * Add a new hotel room to the YAML config.
+ * Auto-generates an ID from the room name.
+ */
+export function addHotelRoom(roomData) {
+  if (!roomData || !roomData.name) {
+    return { error: 'Room name is required' };
+  }
+  if (!config) loadConfig();
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return { error: 'Cannot read config' }; }
+
+  // Generate ID from name (lowercase, spaces to dashes, remove accents)
+  var id = roomData.id || roomData.name.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+  // Check if room already exists
+  if (text.includes('id: ' + id)) {
+    return { error: 'Une chambre avec cet ID existe déjà: ' + id };
+  }
+
+  // Build the new room YAML block
+  var floor = roomData.floor || 'upper';
+  var devices = roomData.devices || [];
+  var amenities = roomData.amenities || ['WiFi'];
+
+  var roomYaml = '\n    - id: ' + id +
+    '\n      name: "' + roomData.name + '"' +
+    '\n      floor: ' + floor +
+    '\n      devices:';
+  if (devices.length > 0) {
+    for (var d of devices) roomYaml += '\n        - ' + d;
+  } else {
+    roomYaml += ' []';
+  }
+  roomYaml += '\n      amenities:';
+  for (var a of amenities) roomYaml += '\n        - ' + a;
+  roomYaml += '\n      guest:' +
+    '\n        name: ""' +
+    '\n        language: auto' +
+    '\n        check_in: ""' +
+    '\n        check_out: ""' +
+    '\n        preferences: {}\n';
+
+  // Insert before common_spaces or at end of rooms section
+  var insertPoint = text.indexOf('\n  common_spaces:');
+  if (insertPoint === -1) insertPoint = text.indexOf('\n  info:', text.indexOf('hotel:'));
+  if (insertPoint === -1) {
+    return { error: 'Cannot find insertion point in YAML' };
+  }
+
+  text = text.slice(0, insertPoint) + roomYaml + text.slice(insertPoint);
+
+  try {
+    writeFileSync(configPath, text);
+    log.info('Hotel room added: ' + id + ' (' + roomData.name + ')');
+    return { success: true, id: id, name: roomData.name };
+  } catch (err) {
+    return { error: 'Failed to write config: ' + err.message };
+  }
+}
+
+/**
+ * Remove a hotel room from the YAML config.
+ */
+export function removeHotelRoom(roomId) {
+  if (!roomId) return { error: 'Missing roomId' };
+  if (!config) loadConfig();
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return { error: 'Cannot read config' }; }
+
+  // Find and remove the room block
+  var roomRegex = new RegExp('\\n    - id: ' + roomId + '\\n[\\s\\S]*?(?=\\n    - id:|\\n  common_spaces:|\\n  info:)', 'm');
+  var match = text.match(roomRegex);
+  if (!match) {
+    return { error: 'Room not found: ' + roomId };
+  }
+
+  text = text.replace(match[0], '');
+
+  try {
+    writeFileSync(configPath, text);
+    log.info('Hotel room removed: ' + roomId);
+    return { success: true, roomId: roomId };
+  } catch (err) {
+    return { error: 'Failed to write config: ' + err.message };
+  }
+}
+
+/**
+ * Assign a guest to a hotel room (persists to YAML).
+ */
+export function assignHotelGuest(roomId, guestData) {
+  if (!roomId || !guestData || !guestData.name) {
+    return { error: 'Missing roomId or guest name' };
+  }
+  if (!config) loadConfig();
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return { error: 'Cannot read config' }; }
+
+  // Find the room block by id and update guest fields
+  var roomRegex = new RegExp('(\\s{4}-\\s+id:\\s*' + roomId + '\\n[\\s\\S]*?guest:\\s*\\n)' +
+    '(\\s+name:\\s*"?[^"\\n]*"?\\n\\s+language:\\s*\\S+\\n\\s+check_in:\\s*"?[^"\\n]*"?\\n\\s+check_out:\\s*"?[^"\\n]*"?)');
+
+  var match = text.match(roomRegex);
+  if (!match) {
+    return { error: 'Room not found: ' + roomId };
+  }
+
+  var newGuestBlock = '        name: "' + guestData.name + '"\n' +
+    '        language: ' + (guestData.language || 'auto') + '\n' +
+    '        check_in: "' + (guestData.checkIn || new Date().toISOString().slice(0, 10)) + '"\n' +
+    '        check_out: "' + (guestData.checkOut || '') + '"';
+
+  text = text.replace(roomRegex, '$1' + newGuestBlock);
+
+  try {
+    writeFileSync(configPath, text);
+    log.info('Hotel guest assigned: ' + guestData.name + ' → ' + roomId);
+    return { success: true, roomId: roomId, guest: guestData };
+  } catch (err) {
+    return { error: 'Failed to write config: ' + err.message };
+  }
+}
+
+/**
+ * Checkout a guest from a hotel room (clears guest fields in YAML).
+ */
+export function checkoutHotelGuest(roomId) {
+  if (!roomId) return { error: 'Missing roomId' };
+  if (!config) loadConfig();
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return { error: 'Cannot read config' }; }
+
+  var roomRegex = new RegExp('(\\s{4}-\\s+id:\\s*' + roomId + '\\n[\\s\\S]*?guest:\\s*\\n)' +
+    '(\\s+name:\\s*"?[^"\\n]*"?\\n\\s+language:\\s*\\S+\\n\\s+check_in:\\s*"?[^"\\n]*"?\\n\\s+check_out:\\s*"?[^"\\n]*"?)');
+
+  var match = text.match(roomRegex);
+  if (!match) {
+    return { error: 'Room not found: ' + roomId };
+  }
+
+  var emptyGuestBlock = '        name: ""\n' +
+    '        language: auto\n' +
+    '        check_in: ""\n' +
+    '        check_out: ""';
+
+  text = text.replace(roomRegex, '$1' + emptyGuestBlock);
+
+  try {
+    writeFileSync(configPath, text);
+    log.info('Hotel guest checked out from: ' + roomId);
+    return { success: true, roomId: roomId };
+  } catch (err) {
+    return { error: 'Failed to write config: ' + err.message };
+  }
+}
+
+/**
+ * Save hospitality config changes (airbnb guest form → YAML).
+ */
+export function saveHospitalityConfig(data) {
+  if (!config) loadConfig();
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch { return { error: 'Cannot read config' }; }
+
+  // Update airbnb guest fields
+  if (data.guestName !== undefined) {
+    text = text.replace(/(guest:\s*\n\s+name:\s*)"?[^"\n]*"?/, '$1"' + data.guestName + '"');
+  }
+  if (data.guestEmail !== undefined) {
+    text = text.replace(/(guest:\s*\n(?:\s+\S+.*\n)*?\s+email:\s*)"?[^"\n]*"?/, '$1"' + data.guestEmail + '"');
+  }
+  if (data.guestLang !== undefined) {
+    text = text.replace(/(guest:\s*\n(?:\s+\S+.*\n)*?\s+language:\s*)\S+/, '$1' + data.guestLang);
+  }
+  if (data.checkIn !== undefined) {
+    text = text.replace(/(check_in:\s*)"?[^"\n]*"?/, '$1"' + data.checkIn + '"');
+  }
+  if (data.checkOut !== undefined) {
+    text = text.replace(/(check_out:\s*)"?[^"\n]*"?/, '$1"' + data.checkOut + '"');
+  }
+
+  // Update shared guest_info fields
+  if (data.wifiName !== undefined) {
+    text = text.replace(/(guest_info:\s*\n\s+wifi_name:\s*)"?[^"\n]*"?/, '$1"' + data.wifiName + '"');
+  }
+  if (data.wifiPass !== undefined) {
+    text = text.replace(/(guest_info:\s*\n(?:\s+\S+.*\n)*?\s+wifi_password:\s*)"?[^"\n]*"?/, '$1"' + data.wifiPass + '"');
+  }
+  if (data.rules !== undefined) {
+    var rulesIndented = data.rules.split('\n').map(function(l) { return '    ' + l; }).join('\n');
+    text = text.replace(/(guest_info:\s*\n(?:[\s\S]*?)rules:\s*\|\s*\n)(?:\s{4}.*\n)*/, '$1' + rulesIndented + '\n');
+  }
+  if (data.emergency !== undefined) {
+    var emergIndented = data.emergency.split('\n').map(function(l) { return '    ' + l; }).join('\n');
+    text = text.replace(/(guest_info:\s*\n(?:[\s\S]*?)emergency_contacts:\s*\|\s*\n)(?:\s{4}.*\n)*/, '$1' + emergIndented + '\n');
+  }
+  if (data.propertyDescription !== undefined) {
+    var descIndented = data.propertyDescription.split('\n').map(function(l) { return '    ' + l; }).join('\n');
+    text = text.replace(/(guest_info:\s*\n(?:[\s\S]*?)property_description:\s*\|\s*\n)(?:\s{4}.*\n)*/, '$1' + descIndented + '\n');
+  }
+  if (data.checkoutTime !== undefined) {
+    text = text.replace(/(guest_info:\s*\n(?:[\s\S]*?)checkout_time:\s*)"?[^"\n]*"?/, '$1"' + data.checkoutTime + '"');
+  }
+
+  try {
+    writeFileSync(configPath, text);
+    log.info('Hospitality config saved');
+    return { saved: true };
+  } catch (err) {
+    return { error: 'Failed to write: ' + err.message };
+  }
+}
+
+/**
  * Send the access code to the guest via email.
  */
 export async function sendGuestCodeEmail() {
@@ -401,51 +782,172 @@ export async function sendGuestCodeEmail() {
     return false;
   }
 
-  // Read email config from hospitality.yaml
-  var configPath = join(projectDir, 'config', 'hospitality.yaml');
-  var text = '';
-  try { text = readFileSync(configPath, 'utf8'); } catch { return false; }
-
-  var emailAddress = (text.match(/airbnb:\s*\n\s+port:.*\n\s+listing_type:.*\n\s+email:\s*\n\s+address:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
-  var emailPassword = (text.match(/password:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
-
-  if (!emailAddress || !emailPassword) {
-    // Fallback to main email config
-    emailAddress = process.env.EMAIL_MONITOR_ADDRESS || '';
-    emailPassword = process.env.EMAIL_MONITOR_PASSWORD || '';
-  }
-
-  if (!emailAddress || !emailPassword) {
-    log.warn('Cannot send code: no email configured');
-    return false;
-  }
+  var emailCreds = getEmailCredentials();
+  if (!emailCreds) return false;
 
   try {
     var nodemailer = await import('nodemailer');
     var transporter = nodemailer.default.createTransport({
       service: 'gmail',
-      auth: { user: emailAddress, pass: emailPassword },
+      auth: { user: emailCreds.address, pass: emailCreds.password },
     });
 
     var guestLang = guest.language || 'en';
-    var subject = guestLang === 'fr' ? 'Votre code d\'accès — Bienvenue!' : 'Your access code — Welcome!';
-    var body = guestLang === 'fr'
-      ? 'Bonjour ' + guest.name + ',\n\nVotre code d\'accès au portail guest est: ' + guest.code + '\n\nUtilisez-le sur le portail pour accéder aux informations de votre séjour.\n\nBon séjour!'
-      : 'Hello ' + guest.name + ',\n\nYour guest portal access code is: ' + guest.code + '\n\nUse it on the guest portal to access your stay information.\n\nEnjoy your stay!';
+    var portalUrl = 'https://' + (process.env.HOME_LAN_IP || 'localhost') + ':3081';
+
+    var subject, body;
+    if (guestLang === 'fr') {
+      subject = '🏡 Bienvenue! Votre accès au portail guest';
+      body = 'Bonjour ' + guest.name + ',\n\n' +
+        'Bienvenue chez nous! Voici vos informations d\'accès:\n\n' +
+        '🔑 Code d\'accès: ' + guest.code + '\n' +
+        '🌐 Portail: ' + portalUrl + '\n\n' +
+        '📅 Séjour: ' + (guest.checkIn || '?') + ' → ' + (guest.checkOut || '?') + '\n\n' +
+        'Sur le portail, vous trouverez:\n' +
+        '• Les infos WiFi et règles de la maison\n' +
+        '• Un assistant IA pour répondre à vos questions\n' +
+        '• Les infos locales (restaurants, transport)\n\n' +
+        'Bon séjour! 🏠';
+    } else {
+      subject = '🏡 Welcome! Your guest portal access';
+      body = 'Hello ' + guest.name + ',\n\n' +
+        'Welcome! Here are your access details:\n\n' +
+        '🔑 Access code: ' + guest.code + '\n' +
+        '🌐 Portal: ' + portalUrl + '\n\n' +
+        '📅 Stay: ' + (guest.checkIn || '?') + ' → ' + (guest.checkOut || '?') + '\n\n' +
+        'On the portal you\'ll find:\n' +
+        '• WiFi info and house rules\n' +
+        '• An AI assistant to answer your questions\n' +
+        '• Local info (restaurants, transport)\n\n' +
+        'Enjoy your stay! 🏠';
+    }
 
     await transporter.sendMail({
-      from: emailAddress,
+      from: emailCreds.address,
       to: guest.email,
       subject: subject,
       text: body,
     });
 
-    log.info('Guest code sent to: ' + guest.email);
+    log.info('Guest code email sent to: ' + guest.email);
     return true;
   } catch (err) {
     log.error('Failed to send guest code email: ' + err.message);
     return false;
   }
+}
+
+/**
+ * Send a welcome email to a hotel guest with room info and portal access.
+ */
+export async function sendHotelGuestEmail(roomId, guestData) {
+  if (!guestData?.email) {
+    log.warn('Cannot send hotel email: no guest email');
+    return false;
+  }
+  if (!config) loadConfig();
+
+  var emailCreds = getEmailCredentials();
+  if (!emailCreds) return false;
+
+  // Get room details
+  var rooms = getHotelRooms();
+  var room = rooms.find(function(r) { return r.id === roomId; });
+  var roomName = room ? room.name : roomId;
+  var amenities = room ? room.amenities.join(', ') : '';
+
+  // Get hotel info
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch {}
+  var hotelName = config.hotel?.name || 'Hotel';
+  var wifiName = (text.match(/hotel:[\s\S]*?info:\s*\n\s+wifi_name:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+  var wifiPass = (text.match(/hotel:[\s\S]*?info:\s*\n(?:\s+\S+.*\n)*?\s+wifi_password:\s*"?([^"\n]*)"?/) || [])[1]?.trim() || '';
+  var portalUrl = 'https://' + (process.env.HOME_LAN_IP || 'localhost') + ':3082';
+
+  var guestLang = guestData.language || 'en';
+
+  try {
+    var nodemailer = await import('nodemailer');
+    var transporter = nodemailer.default.createTransport({
+      service: 'gmail',
+      auth: { user: emailCreds.address, pass: emailCreds.password },
+    });
+
+    var subject, body;
+    if (guestLang === 'fr') {
+      subject = '🏨 ' + hotelName + ' — Bienvenue, ' + guestData.name + '!';
+      body = 'Bonjour ' + guestData.name + ',\n\n' +
+        'Bienvenue à ' + hotelName + '! Voici les détails de votre séjour:\n\n' +
+        '🛏️ Chambre: ' + roomName + '\n' +
+        '📅 Séjour: ' + (guestData.checkIn || 'aujourd\'hui') + ' → ' + (guestData.checkOut || 'à confirmer') + '\n' +
+        (amenities ? '✨ Équipements: ' + amenities + '\n' : '') +
+        '\n' +
+        (wifiName ? '📶 WiFi: ' + wifiName + (wifiPass ? ' (mot de passe: ' + wifiPass + ')' : '') + '\n\n' : '\n') +
+        '🌐 Portail guest: ' + portalUrl + '\n' +
+        'Connectez-vous avec votre nom et numéro de chambre.\n\n' +
+        'Sur le portail vous trouverez:\n' +
+        '• Un assistant IA multilingue pour toutes vos questions\n' +
+        '• Les infos pratiques et recommandations locales\n' +
+        '• Le contrôle des appareils de votre chambre\n\n' +
+        'N\'hésitez pas à nous contacter pour tout besoin.\n' +
+        'Bon séjour! 🏨';
+    } else {
+      subject = '🏨 ' + hotelName + ' — Welcome, ' + guestData.name + '!';
+      body = 'Hello ' + guestData.name + ',\n\n' +
+        'Welcome to ' + hotelName + '! Here are your stay details:\n\n' +
+        '🛏️ Room: ' + roomName + '\n' +
+        '📅 Stay: ' + (guestData.checkIn || 'today') + ' → ' + (guestData.checkOut || 'TBD') + '\n' +
+        (amenities ? '✨ Amenities: ' + amenities + '\n' : '') +
+        '\n' +
+        (wifiName ? '📶 WiFi: ' + wifiName + (wifiPass ? ' (password: ' + wifiPass + ')' : '') + '\n\n' : '\n') +
+        '🌐 Guest portal: ' + portalUrl + '\n' +
+        'Log in with your name and room number.\n\n' +
+        'On the portal you\'ll find:\n' +
+        '• A multilingual AI assistant for any questions\n' +
+        '• Practical info and local recommendations\n' +
+        '• Control of your room devices\n\n' +
+        'Don\'t hesitate to reach out if you need anything.\n' +
+        'Enjoy your stay! 🏨';
+    }
+
+    await transporter.sendMail({
+      from: emailCreds.address,
+      to: guestData.email,
+      subject: subject,
+      text: body,
+    });
+
+    log.info('Hotel welcome email sent to: ' + guestData.email + ' (room: ' + roomId + ')');
+    return true;
+  } catch (err) {
+    log.error('Failed to send hotel guest email: ' + err.message);
+    return false;
+  }
+}
+
+/**
+ * Get email credentials from config or env.
+ */
+function getEmailCredentials() {
+  var configPath = join(projectDir, 'config', 'hospitality.yaml');
+  var text = '';
+  try { text = readFileSync(configPath, 'utf8'); } catch {}
+
+  var emailAddress = (text.match(/email:\s*\n\s+address:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+  var emailPassword = (text.match(/email:\s*\n(?:\s+\S+.*\n)*?\s+password:\s*"?([^"\n]+)"?/) || [])[1]?.trim() || '';
+
+  if (!emailAddress || !emailPassword) {
+    emailAddress = process.env.EMAIL_MONITOR_ADDRESS || '';
+    emailPassword = process.env.EMAIL_MONITOR_PASSWORD || '';
+  }
+
+  if (!emailAddress || !emailPassword) {
+    log.warn('Cannot send email: no email credentials configured');
+    return null;
+  }
+
+  return { address: emailAddress, password: emailPassword };
 }
 
 /**
